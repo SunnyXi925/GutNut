@@ -1,0 +1,54 @@
+paths:
+  microbiome_csv: data/microbiome/microbiome_example.csv
+  phenotypes_csv: data/microbiome/phenotypes_example.csv
+  nutrients_csv: data/nutrient_table/nutrients_example.csv
+  foods_csv: data/food_composition/food_example.csv
+  outputs_dir: outputs
+
+preprocessing:
+  taxonomy_level: Species
+  pseudo_count: 1e-6
+
+feature_selection:
+  n_bootstrap: 100
+  top_k: 20
+  xgboost:
+    n_estimators: 200
+    max_depth: 4
+    learning_rate: 0.1
+    subsample: 0.8
+    colsample_bytree: 0.8
+    random_state: 42
+
+model:
+  labels: [obesity, diabetes, ldl]
+  svm_bayes_search:
+    n_iter: 25
+    cv_folds: 5
+    n_jobs: -1
+    random_state: 42
+    space:
+      C:
+        low: 1e-3
+        high: 1e3
+      gamma:
+        low: 1e-5
+        high: 1e1
+
+simulation:
+  sigma_scale: 0.1
+  n_candidates: 1000
+  clip_low: -5
+  clip_high: 5
+  target_label: obesity
+
+nutrient:
+  elastic_net:
+    alpha: 0.5
+    l1_ratio: 0.7
+
+scoring:
+  filters:
+    allergies: []
+    max_gi: 70
+    exclude_diseases: []
