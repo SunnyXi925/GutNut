@@ -48,24 +48,35 @@ MiNPS/
 
 ## 快速开始
 
-### 1. 创建 Conda 环境
+### 1. 使用 uv 管理环境
 ```
-conda create -n minps python=3.11 -y
-conda activate minps
-pip install -r requirements.txt
+irm https://astral.sh/uv/install.ps1 | iex
+uv venv .venv
+.\.venv\Scripts\activate
+uv pip install -r requirements.txt
 ```
 
 ### 2. 运行全流程（示例）
 ```
-python -m src.feature_selection --config config.yaml
-python -m src.model_train --config config.yaml
-python -m src.microbiome_simulation --config config.yaml --subject_id 1 --label obesity
-python -m src.nutrient_weight --config config.yaml
-python -m src.scoring --config config.yaml --output outputs/scores/food_scores.csv
+uv run python -m src.feature_selection --config config.yaml
+uv run python -m src.model_train --config config.yaml
+uv run python -m src.microbiome_simulation --config config.yaml --subject_id 1 --label obesity
+uv run python -m src.nutrient_weight --config config.yaml
+uv run python -m src.scoring --config config.yaml --output outputs/scores/food_scores.csv
 ```
 
 ### 3. 打开笔记本
 使用 JupyterLab 或 VS Code 打开 `notebooks/` 目录下的 `.ipynb` 文件，逐步运行各步骤。
+
+### 4. 使用 uv 进行包管理
+```
+uv pip install <package>
+uv pip freeze > requirements.txt
+uv pip uninstall <package>
+uv pip freeze > requirements.txt
+uv pip install -r requirements.txt
+```
+也可以使用 `uv run python ...` 在未激活虚拟环境时运行命令。
 
 ## 示例数据说明
 - `microbiome_example.csv`：模拟 30 名受试者 × 25 个物种的相对丰度数据（含属、种信息），用于构建矩阵
@@ -86,7 +97,7 @@ python -m src.scoring --config config.yaml --output outputs/scores/food_scores.c
 
 ## 测试
 ```
-python -m unittest discover -s MiNPS/tests -v
+uv run python -m unittest discover -s MiNPS/tests -v
 ```
 
 ## 许可
