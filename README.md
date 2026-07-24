@@ -1,7 +1,10 @@
 # GMNPS
 
-Gut Microbiome-informed Nutrient Profiling System (GMNPS) for the Nature Food
-article framework:
+The source code of the article framework "Harnessing Gut Microbiome with
+Machine Learning to Advance Nutrient Profiling".
+
+Gut Microbiome-informed Nutrient Profiling System (GMNPS) is implemented here
+as a Food Compass 2.0-anchored Nature Food article framework:
 
 ```text
 GMNPS_ij = clip_1-100(FCS2_j + D_ij)
