@@ -1,0 +1,33 @@
+# GMNPS Nature Food article configuration.
+# This config intentionally treats Food Compass 2.0 as the universal NPS prior
+# and gut microbiome information as a bounded personalized calibration layer.
+
+baseline_nps: FoodCompass2.0
+score_range: [1, 100]
+delta_cap_primary: 12
+delta_cap_sensitivity: [8, 15]
+primary_mask: expert_revised_dual_channel
+
+policies:
+  carbohydrate_policy: sensitivity_proxy_only
+  zinc_copper_policy: remove_from_microbiome_channels
+  vitamin_a_rae_policy: remove_from_lipid_channel
+  retinol_policy: retain_lipid_marker
+  clinical_experiment: false
+
+validation:
+  nps_preservation_min_spearman: 0.90
+  retrospective_claim_level: plausibility_not_causality
+  synthetic_twin_required_models:
+    - FCS2 only
+    - unanchored microbiome score
+    - anchored GMNPS
+    - random microbiome
+    - shuffled microbiome
+    - original mask
+    - expert-revised mask
+
+manuscript:
+  title: Gut microbiome-informed nutrient profiling reconciles universal dietary guidelines with personalized metabolic traits
+  figure_policy: quantitative_panels_from_code_only
+  image_generation_policy: conceptual_schematic_or_visual_polish_only

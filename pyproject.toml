@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gmnps"
+version = "0.1.0"
+description = "Food Compass 2.0-anchored gut microbiome-informed nutrient profiling"
+requires-python = ">=3.9"
+dependencies = [
+  "numpy>=1.21",
+  "pandas>=1.3",
+]
+
+[project.optional-dependencies]
+article = [
+  "pytest>=7",
+]
+
+[tool.setuptools]
+package-dir = {"" = "code/src"}
+
+[tool.setuptools.packages.find]
+where = ["code/src"]
