@@ -18,6 +18,7 @@ venv/
 data/
 datasets/
 outputs/
+expert_review/
 backup/
 *.parquet
 *.joblib

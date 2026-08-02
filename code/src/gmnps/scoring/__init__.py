@@ -12,6 +12,8 @@ from gmnps.scoring.anchored import (
 from gmnps.scoring.masks import (
     EXPERT_REVISED_LIPID,
     EXPERT_REVISED_MAC,
+    EXPERT_REVISED_V4_MASK_VERSION,
+    LEGACY_EXPERT_REVISED_MASK_VERSION,
     MASK_POLICY,
     ORIGINAL_LIPID,
     ORIGINAL_MAC,
@@ -32,6 +34,8 @@ __all__ = [
     "summarize_foods",
     "EXPERT_REVISED_LIPID",
     "EXPERT_REVISED_MAC",
+    "EXPERT_REVISED_V4_MASK_VERSION",
+    "LEGACY_EXPERT_REVISED_MASK_VERSION",
     "MASK_POLICY",
     "ORIGINAL_LIPID",
     "ORIGINAL_MAC",

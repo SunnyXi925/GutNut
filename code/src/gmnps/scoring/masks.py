@@ -13,7 +13,9 @@ import numpy as np
 
 
 SCORING_VERSION = "anchored-gmnps-v1"
-PRIMARY_MASK_VERSION = "expert_revised_dual_channel"
+EXPERT_REVISED_V4_MASK_VERSION = "expert_revised_v4_dual_channel"
+PRIMARY_MASK_VERSION = EXPERT_REVISED_V4_MASK_VERSION
+LEGACY_EXPERT_REVISED_MASK_VERSION = "expert_revised_dual_channel"
 ORIGINAL_MASK_VERSION = "original_15x15_dual_channel"
 
 
@@ -110,7 +112,7 @@ class ChannelMaskDefinition:
 def get_mask_definition(version: str = PRIMARY_MASK_VERSION) -> ChannelMaskDefinition:
     """Return the requested channel definition."""
 
-    if version == PRIMARY_MASK_VERSION:
+    if version in {PRIMARY_MASK_VERSION, LEGACY_EXPERT_REVISED_MASK_VERSION}:
         return ChannelMaskDefinition(version, EXPERT_REVISED_MAC, EXPERT_REVISED_LIPID)
     if version == ORIGINAL_MASK_VERSION:
         return ChannelMaskDefinition(version, ORIGINAL_MAC, ORIGINAL_LIPID)

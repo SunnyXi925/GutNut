@@ -9,6 +9,7 @@ from gmnps.scoring import (
     score_individual_foods,
 )
 from gmnps.scoring.masks import EXPERT_REVISED_LIPID, EXPERT_REVISED_MAC
+from gmnps.scoring.masks import EXPERT_REVISED_V4_MASK_VERSION, LEGACY_EXPERT_REVISED_MASK_VERSION, get_mask_definition
 from gmnps.validation.preservation import nps_preservation_metrics
 from gmnps.validation.synthetic_twin import run_synthetic_benchmark, simulate_synthetic_twin
 
@@ -40,6 +41,18 @@ def test_expert_revised_mask_boundaries():
         audit["excluded_present_as_columns"]
     )
     assert audit["retinol_present"] == ["Retinol (mcg)"]
+
+
+def test_expert_revised_v4_alias_matches_legacy_mask():
+    v4 = get_mask_definition(EXPERT_REVISED_V4_MASK_VERSION)
+    legacy = get_mask_definition(LEGACY_EXPERT_REVISED_MASK_VERSION)
+    assert v4.mac == legacy.mac
+    assert v4.lipid == legacy.lipid
+    assert "Carbohydrate (g)" not in v4.mac
+    assert "Zinc (mg)" not in v4.mac
+    assert "Copper (mg)" not in v4.mac
+    assert "Vitamin A, RAE (mcg_RAE)" not in v4.lipid
+    assert "Retinol (mcg)" in v4.lipid
 
 
 def test_bounded_delta_is_centered_and_capped():
