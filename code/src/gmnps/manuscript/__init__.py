@@ -5,8 +5,11 @@ from gmnps.manuscript.export import (
     latex_table_from_frame,
     manuscript_table_summaries,
 )
+from gmnps.manuscript.style_guard import StyleIssue, check_academic_style
 
 __all__ = [
+    "StyleIssue",
+    "check_academic_style",
     "export_article_bundle",
     "latex_table_from_frame",
     "manuscript_table_summaries",
