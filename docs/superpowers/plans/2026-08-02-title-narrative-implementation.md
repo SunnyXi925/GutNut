@@ -99,7 +99,7 @@ def test_manuscript_style_guard_rules():
 Run:
 
 ```bash
-cd /Users/fengxi.25/Desktop/GMNPS/code/src
+cd "$(git rev-parse --show-toplevel)/code/src"
 /Users/fengxi.25/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 - <<'PY'
 from tests import test_title_narrative as t
 for name in sorted(dir(t)):
@@ -196,7 +196,7 @@ Then keep the existing explanation of the selected baseline NPS as the universal
 Run:
 
 ```bash
-cd /Users/fengxi.25/Desktop/GMNPS/code/src
+cd "$(git rev-parse --show-toplevel)/code/src"
 /Users/fengxi.25/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 - <<'PY'
 from tests import test_title_narrative as t
 for name in ["test_config_uses_approved_title", "test_public_docs_do_not_use_old_title"]:
@@ -318,7 +318,7 @@ Future NPS can incorporate genetics, metabolomics, continuous glucose response o
 Run:
 
 ```bash
-cd /Users/fengxi.25/Desktop/GMNPS/code/src
+cd "$(git rev-parse --show-toplevel)/code/src"
 /Users/fengxi.25/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 - <<'PY'
 from tests import test_title_narrative as t
 for name in ["test_narrative_blueprint_covers_results_and_discussion", "test_manuscript_style_guard_rules"]:
@@ -387,7 +387,7 @@ def test_style_guard_accepts_restrained_academic_sentence():
 Run:
 
 ```bash
-cd /Users/fengxi.25/Desktop/GMNPS/code/src
+cd "$(git rev-parse --show-toplevel)/code/src"
 /Users/fengxi.25/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 - <<'PY'
 from tests import test_manuscript_style_guard as t
 for name in sorted(dir(t)):
@@ -494,7 +494,7 @@ __all__ = [
 Run:
 
 ```bash
-cd /Users/fengxi.25/Desktop/GMNPS/code/src
+cd "$(git rev-parse --show-toplevel)/code/src"
 /Users/fengxi.25/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 - <<'PY'
 from tests import test_manuscript_style_guard as t
 for name in sorted(dir(t)):
@@ -534,7 +534,7 @@ Expected: commit succeeds.
 Run:
 
 ```bash
-cd /Users/fengxi.25/Desktop/GMNPS
+cd "$(git rev-parse --show-toplevel)"
 /Users/fengxi.25/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m py_compile \
   code/src/gmnps/scoring/masks.py \
   code/src/gmnps/scoring/anchored.py \
@@ -555,7 +555,7 @@ Expected: exit code 0.
 Run:
 
 ```bash
-cd /Users/fengxi.25/Desktop/GMNPS/code/src
+cd "$(git rev-parse --show-toplevel)/code/src"
 /Users/fengxi.25/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 - <<'PY'
 from tests import test_article_scoring, test_title_narrative, test_manuscript_style_guard
 
@@ -584,7 +584,7 @@ Expected: PASS with `ALL DIRECT TESTS OK`.
 Run:
 
 ```bash
-cd /Users/fengxi.25/Desktop/GMNPS
+cd "$(git rev-parse --show-toplevel)"
 OUT=/tmp/gmnps_title_narrative_smoke_$$
 /Users/fengxi.25/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 code/src/scripts/run_nature_food_article.py synthetic \
   --output-dir "$OUT" \
