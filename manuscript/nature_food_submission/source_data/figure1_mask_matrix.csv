@@ -1,0 +1,31 @@
+nutrient,channel,status
+"Carotene, alpha (mcg)",microbiota-accessible and plant matrix,primary
+"Carotene, beta (mcg)",microbiota-accessible and plant matrix,primary
+"Cryptoxanthin, beta (mcg)",microbiota-accessible and plant matrix,primary
+"Fiber, total dietary (g)",microbiota-accessible and plant matrix,primary
+"Folate, food (mcg)",microbiota-accessible and plant matrix,primary
+Lutein + zeaxanthin (mcg),microbiota-accessible and plant matrix,primary
+Lycopene (mcg),microbiota-accessible and plant matrix,primary
+Magnesium (mg),microbiota-accessible and plant matrix,primary
+Potassium (mg),microbiota-accessible and plant matrix,primary
+Vitamin C (mg),microbiota-accessible and plant matrix,primary
+Vitamin E (alpha-tocopherol) (mg),microbiota-accessible and plant matrix,primary
+Vitamin K (phylloquinone) (mcg),microbiota-accessible and plant matrix,primary
+10:0 (g),lipid and bile-acid related,primary
+12:0 (g),lipid and bile-acid related,primary
+14:0 (g),lipid and bile-acid related,primary
+16:0 (g),lipid and bile-acid related,primary
+18:0 (g),lipid and bile-acid related,primary
+4:0 (g),lipid and bile-acid related,primary
+6:0 (g),lipid and bile-acid related,primary
+8:0 (g),lipid and bile-acid related,primary
+Cholesterol (mg),lipid and bile-acid related,primary
+"Choline, total (mg)",lipid and bile-acid related,primary
+"Fatty acids, total saturated (g)",lipid and bile-acid related,primary
+Retinol (mcg),lipid and bile-acid related,primary
+Total Fat (g),lipid and bile-acid related,primary
+Vitamin B-12 (mcg),lipid and bile-acid related,primary
+Carbohydrate (g),not in primary channel,expert-revised exclusion
+Copper (mg),not in primary channel,expert-revised exclusion
+"Vitamin A, RAE (mcg_RAE)",not in primary channel,expert-revised exclusion
+Zinc (mg),not in primary channel,expert-revised exclusion
