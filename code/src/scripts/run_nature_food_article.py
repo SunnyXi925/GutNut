@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -40,7 +41,19 @@ def _read_indexed_csv(path: str | Path, index_col: str | None = None) -> pd.Data
 
 
 def _write_json(path: str | Path, payload: dict[str, object]) -> None:
-    Path(path).write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    def clean(value):
+        if isinstance(value, dict):
+            return {k: clean(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [clean(v) for v in value]
+        if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+            return None
+        return value
+
+    Path(path).write_text(
+        json.dumps(clean(payload), indent=2, ensure_ascii=False, allow_nan=False),
+        encoding="utf-8",
+    )
 
 
 def run_score(args: argparse.Namespace) -> None:

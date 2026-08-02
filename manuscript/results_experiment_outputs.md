@@ -62,7 +62,7 @@ Model benchmark:
 
 | Model | Individual response Spearman | Personalized residual Spearman | NPS preservation Spearman |
 | --- | ---: | ---: | ---: |
-| FCS2 only | 0.910854 | 0.000000 | 1.000000 |
+| FCS2 only | 0.910854 | NA | 1.000000 |
 | Unanchored microbiome score | 0.206337 | 0.247912 | 0.932292 |
 | Anchored GMNPS | 0.940040 | 0.395680 | 0.999965 |
 | Random microbiome | 0.900962 | 0.047131 | 0.999937 |
@@ -80,11 +80,30 @@ Food-group heterogeneity:
 
 Interpretation: in a known-ground-truth synthetic benchmark, anchored GMNPS
 preserves the population-level NPS prior while recovering more simulated
-personalized residual signal than baseline or shuffled controls. The simulated
-channel pattern is aligned with the design: plant foods show MAC-dominant
-heterogeneity, whereas animal foods show lipid-dominant heterogeneity. Random
-and shuffled microbiome controls lose most of the simulated personalized
-residual signal.
+personalized residual signal than shuffled controls. The FCS2-only residual
+metric is not estimable because the predicted personalized residual is constant.
+The simulated channel pattern is aligned with the design: plant foods show
+MAC-dominant heterogeneity, whereas animal foods show lipid-dominant
+heterogeneity. Random and shuffled microbiome controls lose most of the
+simulated personalized residual signal.
+
+## Main Figure Drafts
+
+Figure drafts are generated from code and source data, then written outside Git:
+
+```bash
+.venv/bin/python code/src/scripts/make_main_figures.py \
+  --synthetic-dir outputs/nature_food_article_synthetic \
+  --fcs-audit outputs/fcs2/table_s5_audit.json \
+  --output-dir outputs/manuscript_figures
+```
+
+Generated files:
+
+- `figure_1_framework`: conceptual framework and bounded transform.
+- `figure_2_preservation`: FCS2 audit, NPS preservation scatter and category transitions.
+- `figure_3_heterogeneity`: individual-food deltas, channel variance and score intervals.
+- `figure_4_benchmark`: synthetic benchmark and preservation-personalization trade-off.
 
 ## Gated Retrospective Validation
 

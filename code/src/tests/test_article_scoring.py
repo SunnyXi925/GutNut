@@ -91,7 +91,9 @@ def test_synthetic_twin_benchmark_expected_tradeoff():
     bundle = simulate_synthetic_twin(n_individuals=60, n_foods=36, seed=10)
     bench = run_synthetic_benchmark(bundle=bundle, seed=10).set_index("model")
     assert bench.loc["anchored GMNPS", "individual_response_spearman"] > bench.loc["FCS2 only", "individual_response_spearman"]
-    assert bench.loc["anchored GMNPS", "personalized_residual_spearman"] > bench.loc["FCS2 only", "personalized_residual_spearman"]
+    assert not bench.loc["FCS2 only", "personalized_residual_defined"]
+    assert pd.isna(bench.loc["FCS2 only", "personalized_residual_spearman"])
+    assert bench.loc["anchored GMNPS", "personalized_residual_defined"]
     assert bench.loc["anchored GMNPS", "personalized_residual_spearman"] > bench.loc["shuffled microbiome", "personalized_residual_spearman"]
     assert bench.loc["anchored GMNPS", "personalized_residual_spearman"] > bench.loc["random microbiome", "personalized_residual_spearman"]
     assert bench.loc["anchored GMNPS", "nps_preservation_spearman"] > bench.loc["unanchored microbiome score", "nps_preservation_spearman"]
@@ -115,3 +117,22 @@ def test_article_bundle_export(tmp_path):
     assert {"individual_food_csv", "food_summary_csv", "manifest_json", "top_food_summary_tex"}.issubset(paths)
     for path in paths.values():
         assert Path(path).exists()
+
+
+def test_run_report_json_uses_null_for_undefined_residual(tmp_path):
+    import json
+    from scripts.run_nature_food_article import run_synthetic
+
+    class Args:
+        output_dir = tmp_path
+        n_individuals = 20
+        n_foods = 12
+        seed = 10
+        delta_cap = 12.0
+        min_preservation_rho = 0.80
+
+    run_synthetic(Args())
+    report = json.loads((tmp_path / "run_synthetic_report.json").read_text())
+    fcs2 = next(row for row in report["benchmark"] if row["model"] == "FCS2 only")
+    assert fcs2["personalized_residual_spearman"] is None
+    assert fcs2["personalized_residual_defined"] is False

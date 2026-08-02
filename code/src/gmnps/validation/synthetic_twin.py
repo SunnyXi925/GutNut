@@ -93,13 +93,13 @@ def simulate_synthetic_twin(
     return SyntheticTwinBundle(weights, nutrients, food_metadata, true_response, capacities)
 
 
-def _flat_spearman(pred: np.ndarray, truth: np.ndarray) -> float:
+def _flat_spearman(pred: np.ndarray, truth: np.ndarray, undefined: float = 0.0) -> float:
     pred_rank = pd.Series(pred.ravel()).rank()
     truth_rank = pd.Series(truth.ravel()).rank()
     if pred_rank.nunique() <= 1 or truth_rank.nunique() <= 1:
-        return 0.0
+        return undefined
     corr = pred_rank.corr(truth_rank)
-    return 0.0 if pd.isna(corr) else float(corr)
+    return undefined if pd.isna(corr) else float(corr)
 
 
 def _mean_preservation(pred: np.ndarray, fcs2: np.ndarray) -> float:
@@ -181,14 +181,22 @@ def run_synthetic_benchmark(
         ("original mask", original_matrix),
         ("expert-revised mask", anchored_matrix),
     ]:
+        residual_pred = pred - fcs2[None, :]
+        residual_truth = truth - fcs2[None, :]
+        residual_defined = (
+            pd.Series(residual_pred.ravel()).rank().nunique() > 1
+            and pd.Series(residual_truth.ravel()).rank().nunique() > 1
+        )
         rows.append(
             {
                 "model": name,
                 "individual_response_spearman": _flat_spearman(pred, truth),
                 "personalized_residual_spearman": _flat_spearman(
-                    pred - fcs2[None, :],
-                    truth - fcs2[None, :],
+                    residual_pred,
+                    residual_truth,
+                    undefined=np.nan,
                 ),
+                "personalized_residual_defined": bool(residual_defined),
                 "nps_preservation_spearman": _mean_preservation(pred, fcs2),
             }
         )

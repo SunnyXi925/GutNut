@@ -15,6 +15,7 @@ dependencies = [
 [project.optional-dependencies]
 article = [
   "pytest>=7",
+  "matplotlib>=3.7",
 ]
 
 [tool.setuptools]
