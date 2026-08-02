@@ -1,19 +1,19 @@
 # GMNPS
 
-The source code of the article framework "Harnessing Gut Microbiome with
-Machine Learning to Advance Nutrient Profiling".
+The source code of the article framework **Personalized calibration transforms nutrient profiling systems for precision nutrition**.
 
 Gut Microbiome-informed Nutrient Profiling System (GMNPS) is implemented here
-as a Food Compass 2.0-anchored Nature Food article framework:
+as a proof-of-concept for anchored personalized calibration in nutrient
+profiling:
 
 ```text
 GMNPS_ij = clip_1-100(FCS2_j + D_ij)
 ```
 
-Food Compass 2.0 is treated as the universal nutrient profiling prior. Gut
-microbiome information contributes a bounded personalized deviation, allowing
-GMNPS to preserve population-level NPS consensus while revealing personalized
-metabolic heterogeneity.
+The selected anchored baseline prior is Food Compass 2.0 because of its broad
+attribute coverage. Gut microbiome information contributes a bounded
+personalized deviation, allowing GMNPS to preserve population-level NPS
+consensus while revealing personalized metabolic heterogeneity.
 
 ## Article Workflow
 

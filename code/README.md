@@ -1,12 +1,15 @@
 # GMNPS Reproducible Pipeline
 
+Article title: **Personalized calibration transforms nutrient profiling systems for precision nutrition**.
+
 ## Overview
 
 This repository contains the reproducible implementation of the Gut
 Microbiome-informed Nutrient Profiling System (GMNPS). The current
-article-facing framework treats **Food Compass 2.0 as the universal
-population-level nutrient profiling prior** and adds a **bounded,
-microbiome-defined personalized deviation**:
+article-facing framework uses a selected baseline NPS as the universal prior
+and adds a **bounded, microbiome-defined personalized deviation**. Food
+Compass 2.0 is the current baseline implementation because of its broad
+attribute coverage:
 
 ```text
 GMNPS_ij = clip_1-100(FCS2_j + D_ij)
