@@ -14,6 +14,7 @@
 - Main storyline: NPS methodological transformation from static population scores to anchored personalized calibration.
 - Significance framing: precision nutrition needs NPS that preserve population nutrition consensus while representing individual metabolic heterogeneity.
 - GMNPS framing: gut microbiome-informed nutrient responses are the pivotal proof-of-concept calibration layer, not the only possible personalization layer.
+- Baseline framing: Food Compass 2.0 is the currently selected anchored baseline because it offers broad and up-to-date NPS attribute coverage, but it should be described as the baseline prior rather than the manuscript's main subject.
 - Evidence boundary: retrospective and synthetic validation support feasibility and plausibility, not causal clinical intervention efficacy.
 - Writing style: avoid excessive quotation marks, avoid em dashes, avoid zombie nouns, prefer concrete nouns and active verbs, keep academic claims precise and restrained.
 - Repository hygiene: do not modify or commit the untracked `.joycode/` directory.
@@ -188,7 +189,7 @@ Article title: **Personalized calibration transforms nutrient profiling systems
 for precision nutrition**.
 ```
 
-Then keep the existing explanation of Food Compass 2.0 as the universal prior and bounded microbiome-defined personalized deviation.
+Then keep the existing explanation of the selected baseline NPS as the universal prior and bounded microbiome-defined personalized deviation. Food Compass 2.0 may be named once as the current baseline implementation because of its broad attribute coverage, but do not make it the paragraph's subject.
 
 - [ ] **Step 4: Run title tests**
 
@@ -252,7 +253,7 @@ Nutrient profiling systems rank foods for population-level dietary guidance, yet
 
 ### 1. Static NPS establishes the universal prior
 
-Open Results by defining Food Compass 2.0 or the selected baseline NPS as the population-level nutrition consensus. The purpose is to show what GMNPS preserves before introducing personalization.
+Open Results by defining the selected static NPS baseline as the population-level nutrition consensus. Food Compass 2.0 is the current baseline implementation because of its broad attribute coverage, but the purpose is to show what GMNPS preserves before introducing personalization.
 
 ### 2. Personalized calibration is bounded and interpretable
 
@@ -282,7 +283,7 @@ The Discussion should start from the title claim: personalized calibration trans
 
 ### Conceptual implication
 
-The central advance is not a replacement for Food Compass 2.0. It is a general architecture for precision-ready NPS.
+The central advance is not a replacement for the baseline NPS. It is a general architecture for precision-ready NPS.
 
 ### Biological implication
 
