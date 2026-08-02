@@ -1,0 +1,4 @@
+model,individual_response_spearman,personalized_residual_spearman,personalized_residual_defined,nps_preservation_spearman,delta_cap
+anchored GMNPS cap 8,0.9362054238814184,0.396857657280652,True,0.999965274763424,8.0
+anchored GMNPS cap 12,0.94003972989554,0.3956801180682886,True,0.999965274763424,12.0
+anchored GMNPS cap 15,0.9405120823797124,0.3938893338550129,True,0.999965274763424,15.0
