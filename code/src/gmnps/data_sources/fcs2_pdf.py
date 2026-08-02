@@ -250,3 +250,36 @@ def write_extraction_outputs(
     audit_json.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_csv, index=False)
     audit_json.write_text(json.dumps(audit.to_dict(), indent=2), encoding="utf-8")
+
+
+def filter_primary_fcs2_foods(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, int]]:
+    """Exclude rows that are not join-ready for the primary food table.
+
+    Rows with duplicated Foodcode values or missing Nutri-Score labels are kept
+    out of the primary join table. They remain available in the full extracted
+    table for provenance review and sensitivity analyses.
+    """
+
+    data = df.copy()
+    duplicate_mask = data["Foodcode"].duplicated(keep=False)
+    missing_label_mask = data["Nutri_Score"].fillna("").eq("")
+    exclude_mask = duplicate_mask | missing_label_mask
+    reasons = []
+    for is_dup, is_missing in zip(duplicate_mask, missing_label_mask, strict=True):
+        row_reasons = []
+        if is_dup:
+            row_reasons.append("duplicate_foodcode")
+        if is_missing:
+            row_reasons.append("missing_nutri_score")
+        reasons.append(";".join(row_reasons))
+    excluded = data.loc[exclude_mask].copy()
+    excluded["exclusion_reason"] = [r for r, keep in zip(reasons, exclude_mask, strict=True) if keep]
+    primary = data.loc[~exclude_mask].copy()
+    summary = {
+        "input_rows": int(len(data)),
+        "primary_rows": int(len(primary)),
+        "excluded_rows": int(len(excluded)),
+        "excluded_duplicate_foodcode_rows": int(duplicate_mask.sum()),
+        "excluded_missing_nutri_score_rows": int(missing_label_mask.sum()),
+    }
+    return primary, excluded, summary

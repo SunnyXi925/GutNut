@@ -28,3 +28,4 @@ backup/
 article_export_manifest.json
 run_score_report.json
 run_synthetic_report.json
+manuscript/*_package.zip

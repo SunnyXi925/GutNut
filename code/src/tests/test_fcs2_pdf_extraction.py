@@ -1,4 +1,4 @@
-from gmnps.data_sources.fcs2_pdf import parse_fcs2_table_s5_text
+from gmnps.data_sources.fcs2_pdf import filter_primary_fcs2_foods, parse_fcs2_table_s5_text
 
 
 def test_parse_table_s5_handles_wrapped_descriptions_and_spaced_groups():
@@ -55,3 +55,22 @@ HSR Health Star Rating; FCS Food Compass Score; NS Not specified; NFS Not furthe
     assert audit.malformed_foodcode_line_count == 1
     assert "56204006" in audit.malformed_foodcode_line_examples[0]
     assert not audit.join_ready
+
+
+def test_filter_primary_fcs2_foods_excludes_duplicate_and_missing_labels():
+    text = """Foodcode          Description                                                       Food group        FCS 2.0        FCS 1.0        Difference         NOVAa       HSR         Nutri-Score
+56204005   Quinoa, no added fat                                              1000_Grains                 89             88                1             1         4                   A
+53720510   Snickers Marathon Energy bar                                      1000_Grains                 55             66               -11            4         2                   D
+53720510   Snickers Marathon Energy bar                                      1000_Grains                 53             67               -14            4         2                   D
+12345678   Missing label food                                                1000_Grains                 44             44                0             1         3
+HSR Health Star Rating; FCS Food Compass Score; NS Not specified; NFS Not further specified
+"""
+    df, _ = parse_fcs2_table_s5_text(text)
+
+    primary, excluded, summary = filter_primary_fcs2_foods(df)
+
+    assert primary["Foodcode"].tolist() == ["56204005"]
+    assert set(excluded["Foodcode"]) == {"53720510", "12345678"}
+    assert summary["input_rows"] == 4
+    assert summary["primary_rows"] == 1
+    assert summary["excluded_rows"] == 3

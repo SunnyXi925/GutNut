@@ -28,7 +28,12 @@ if str(SRC_ROOT) not in sys.path:
 from gmnps.manuscript import export_article_bundle
 from gmnps.scoring import AnchoredScoringConfig, audit_primary_mask, score_individual_foods
 from gmnps.validation import heterogeneity_metrics, nps_preservation_metrics
-from gmnps.validation.synthetic_twin import run_synthetic_benchmark, simulate_synthetic_twin
+from gmnps.validation.synthetic_twin import (
+    run_delta_cap_sensitivity,
+    run_design_ablation,
+    run_synthetic_benchmark,
+    simulate_synthetic_twin,
+)
 
 
 def _read_indexed_csv(path: str | Path, index_col: str | None = None) -> pd.DataFrame:
@@ -103,6 +108,8 @@ def run_synthetic(args: argparse.Namespace) -> None:
     preservation = nps_preservation_metrics(individual_food, min_rho=args.min_preservation_rho)
     heterogeneity = heterogeneity_metrics(individual_food)
     benchmark = run_synthetic_benchmark(bundle=bundle, seed=args.seed)
+    delta_cap_sensitivity = run_delta_cap_sensitivity(bundle=bundle, seed=args.seed)
+    design_ablation = run_design_ablation(bundle=bundle, seed=args.seed)
     manifest["synthetic_twin"] = {
         "n_individuals": args.n_individuals,
         "n_foods": args.n_foods,
@@ -119,12 +126,21 @@ def run_synthetic(args: argparse.Namespace) -> None:
         heterogeneity=heterogeneity,
         benchmark=benchmark,
     )
+    figure_dir = Path(args.output_dir) / "figure_source_data"
+    sensitivity_path = figure_dir / "delta_cap_sensitivity.csv"
+    ablation_path = figure_dir / "design_ablation.csv"
+    delta_cap_sensitivity.to_csv(sensitivity_path, index=False)
+    design_ablation.to_csv(ablation_path, index=False)
+    paths["delta_cap_sensitivity_csv"] = str(sensitivity_path)
+    paths["design_ablation_csv"] = str(ablation_path)
     _write_json(
         Path(args.output_dir) / "run_synthetic_report.json",
         {
             "paths": paths,
             "preservation": preservation,
             "benchmark": benchmark.to_dict(orient="records"),
+            "delta_cap_sensitivity": delta_cap_sensitivity.to_dict(orient="records"),
+            "design_ablation": design_ablation.to_dict(orient="records"),
         },
     )
 

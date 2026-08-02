@@ -203,9 +203,12 @@ def figure_heterogeneity(out_dir: Path, scores: Path, heterogeneity: Path, summa
     save_figure(fig, out_dir, "figure_3_heterogeneity")
 
 
-def figure_benchmark(out_dir: Path, benchmark: Path) -> None:
+def figure_benchmark(out_dir: Path, benchmark: Path, design_ablation: Path, delta_cap_sensitivity: Path) -> None:
     bench = pd.read_csv(benchmark)
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4.4))
+    design = pd.read_csv(design_ablation)
+    caps = pd.read_csv(delta_cap_sensitivity)
+    fig, axes = plt.subplots(2, 2, figsize=(13.5, 8.2))
+    axes = axes.ravel()
     order = ["FCS2 only", "unanchored microbiome score", "anchored GMNPS", "random microbiome", "shuffled microbiome"]
     b = bench.set_index("model").loc[order].reset_index()
     colors = [PALETTE["neutral"], PALETTE["red_light"], PALETTE["blue"], PALETTE["neutral"], PALETTE["neutral"]]
@@ -246,6 +249,32 @@ def figure_benchmark(out_dir: Path, benchmark: Path) -> None:
     )
     ax.legend(fontsize=9)
 
+    ax = axes[3]
+    design_order = ["FCS2 only", "anchored GMNPS", "no centering", "unanchored microbiome score", "random microbiome", "shuffled microbiome"]
+    d = design.set_index("model").loc[design_order].reset_index()
+    x = np.arange(len(d))
+    residual = d["personalized_residual_spearman"].fillna(0)
+    preservation = d["nps_preservation_spearman"]
+    ax.bar(x - 0.18, residual, width=0.36, color=PALETTE["blue2"], edgecolor="black", label="Residual recovery")
+    ax.bar(x + 0.18, preservation, width=0.36, color=PALETTE["green"], edgecolor="black", label="NPS preservation")
+    for idx, row in d.iterrows():
+        if pd.isna(row["personalized_residual_spearman"]):
+            ax.text(idx - 0.18, 0.05, "NA", ha="center", va="bottom", fontsize=8, rotation=90)
+    ax.set_ylim(0, 1.05)
+    ax.set_xticks(x, [label.replace(" microbiome", "\nmicrobiome").replace(" score", "\nscore") for label in d["model"]], rotation=35, ha="right")
+    ax.set_ylabel("Spearman")
+    ax.set_title("d  Design ablation and negative controls", loc="left", fontweight="bold")
+    ax.legend(fontsize=9, loc="lower left")
+
+    inset = ax.inset_axes([0.56, 0.50, 0.40, 0.42])
+    inset.plot(caps["delta_cap"], caps["personalized_residual_spearman"], marker="o", color=PALETTE["blue"], label="Residual")
+    inset.plot(caps["delta_cap"], caps["nps_preservation_spearman"], marker="o", color=PALETTE["green"], label="Preservation")
+    inset.set_xlabel("Cap", fontsize=8)
+    inset.set_ylabel("Spearman", fontsize=8)
+    inset.set_ylim(0.35, 1.02)
+    inset.tick_params(labelsize=8)
+    inset.set_title("Cap sensitivity", fontsize=9)
+
     fig.suptitle("Figure 4. Synthetic digital-gut-twin benchmark supports the anchored calibration trade-off.", y=1.03, fontsize=14)
     fig.tight_layout(pad=1.4)
     save_figure(fig, out_dir, "figure_4_benchmark")
@@ -277,7 +306,12 @@ def main() -> None:
         synthetic / "figure_source_data" / "food_group_heterogeneity.csv",
         synthetic / "tables" / "food_summary.csv",
     )
-    figure_benchmark(out, synthetic / "figure_source_data" / "synthetic_benchmark.csv")
+    figure_benchmark(
+        out,
+        synthetic / "figure_source_data" / "synthetic_benchmark.csv",
+        synthetic / "figure_source_data" / "design_ablation.csv",
+        synthetic / "figure_source_data" / "delta_cap_sensitivity.csv",
+    )
 
 
 if __name__ == "__main__":

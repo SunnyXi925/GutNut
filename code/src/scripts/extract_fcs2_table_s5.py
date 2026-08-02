@@ -11,7 +11,11 @@ SRC_ROOT = Path(__file__).resolve().parents[1]
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from gmnps.data_sources.fcs2_pdf import extract_fcs2_table_s5, write_extraction_outputs
+from gmnps.data_sources.fcs2_pdf import (
+    extract_fcs2_table_s5,
+    filter_primary_fcs2_foods,
+    write_extraction_outputs,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -22,6 +26,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pdftotext-bin", help="Poppler pdftotext binary, required with --pdf")
     parser.add_argument("--output-csv", required=True)
     parser.add_argument("--audit-json", required=True)
+    parser.add_argument("--primary-output-csv", help="Optional join-ready primary FCS2 table")
+    parser.add_argument("--excluded-output-csv", help="Optional excluded-row audit table")
     parser.add_argument(
         "--strict",
         action="store_true",
@@ -46,7 +52,15 @@ def main() -> None:
         pdftotext_bin=args.pdftotext_bin,
     )
     write_extraction_outputs(df, audit, args.output_csv, args.audit_json)
-    print(json.dumps(audit.to_dict(), indent=2))
+    report = audit.to_dict()
+    if args.primary_output_csv or args.excluded_output_csv:
+        primary, excluded, summary = filter_primary_fcs2_foods(df)
+        if args.primary_output_csv:
+            primary.to_csv(args.primary_output_csv, index=False)
+        if args.excluded_output_csv:
+            excluded.to_csv(args.excluded_output_csv, index=False)
+        report["primary_filter"] = summary
+    print(json.dumps(report, indent=2))
 
     if args.strict and not audit.core_checks_ok:
         raise SystemExit(1)

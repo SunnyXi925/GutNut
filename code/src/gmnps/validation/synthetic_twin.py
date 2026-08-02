@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from gmnps.scoring import AnchoredScoringConfig, score_individual_foods
+from gmnps.scoring.anchored import raw_channel_responses, robust_zscore_by_food
 from gmnps.scoring.masks import (
     EXPERT_REVISED_LIPID,
     EXPERT_REVISED_MAC,
@@ -113,6 +114,43 @@ def _scale_to_1_100(raw: np.ndarray) -> np.ndarray:
     return np.clip(1 + 99 * (raw - lo) / (hi - lo), 1, 100)
 
 
+def _score_to_matrix(scored: pd.DataFrame, bundle: SyntheticTwinBundle) -> np.ndarray:
+    matrix = scored.pivot(index="individual_id", columns="food_id", values="GMNPS_score")
+    return matrix.loc[bundle.weights.index, bundle.nutrients.index].to_numpy()
+
+
+def _uncentered_gmnps_matrix(
+    bundle: SyntheticTwinBundle,
+    delta_cap: float = 12.0,
+    z_scale: float = 2.0,
+) -> np.ndarray:
+    responses = raw_channel_responses(bundle.weights, bundle.nutrients, PRIMARY_MASK_VERSION)
+    z = robust_zscore_by_food(responses["total"]).to_numpy(dtype=float)
+    delta = np.clip(delta_cap * np.tanh(z / z_scale), -delta_cap, delta_cap)
+    fcs2 = bundle.food_metadata.loc[bundle.nutrients.index, "FCS2"].to_numpy(dtype=float)
+    return np.clip(delta + fcs2[None, :], 1, 100)
+
+
+def _benchmark_row(name: str, pred: np.ndarray, truth: np.ndarray, fcs2: np.ndarray) -> dict[str, object]:
+    residual_pred = pred - fcs2[None, :]
+    residual_truth = truth - fcs2[None, :]
+    residual_defined = (
+        pd.Series(residual_pred.ravel()).rank().nunique() > 1
+        and pd.Series(residual_truth.ravel()).rank().nunique() > 1
+    )
+    return {
+        "model": name,
+        "individual_response_spearman": _flat_spearman(pred, truth),
+        "personalized_residual_spearman": _flat_spearman(
+            residual_pred,
+            residual_truth,
+            undefined=np.nan,
+        ),
+        "personalized_residual_defined": bool(residual_defined),
+        "nps_preservation_spearman": _mean_preservation(pred, fcs2),
+    }
+
+
 def run_synthetic_benchmark(
     bundle: SyntheticTwinBundle | None = None,
     seed: int = 42,
@@ -181,23 +219,87 @@ def run_synthetic_benchmark(
         ("original mask", original_matrix),
         ("expert-revised mask", anchored_matrix),
     ]:
-        residual_pred = pred - fcs2[None, :]
-        residual_truth = truth - fcs2[None, :]
-        residual_defined = (
-            pd.Series(residual_pred.ravel()).rank().nunique() > 1
-            and pd.Series(residual_truth.ravel()).rank().nunique() > 1
+        rows.append(_benchmark_row(name, pred, truth, fcs2))
+    return pd.DataFrame(rows)
+
+
+def run_delta_cap_sensitivity(
+    bundle: SyntheticTwinBundle | None = None,
+    caps: tuple[float, ...] = (8.0, 12.0, 15.0),
+    seed: int = 42,
+) -> pd.DataFrame:
+    """Evaluate anchored GMNPS across bounded-deviation caps."""
+
+    bundle = bundle or simulate_synthetic_twin(seed=seed)
+    truth = bundle.true_response.to_numpy(dtype=float)
+    fcs2 = bundle.food_metadata["FCS2"].to_numpy(dtype=float)
+    rows = []
+    for cap in caps:
+        scored, _, _ = score_individual_foods(
+            bundle.weights,
+            bundle.nutrients,
+            bundle.food_metadata,
+            AnchoredScoringConfig(delta_cap=cap, mask_version=PRIMARY_MASK_VERSION),
         )
-        rows.append(
-            {
-                "model": name,
-                "individual_response_spearman": _flat_spearman(pred, truth),
-                "personalized_residual_spearman": _flat_spearman(
-                    residual_pred,
-                    residual_truth,
-                    undefined=np.nan,
-                ),
-                "personalized_residual_defined": bool(residual_defined),
-                "nps_preservation_spearman": _mean_preservation(pred, fcs2),
-            }
-        )
+        row = _benchmark_row(f"anchored GMNPS cap {cap:g}", _score_to_matrix(scored, bundle), truth, fcs2)
+        row["delta_cap"] = cap
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def run_design_ablation(
+    bundle: SyntheticTwinBundle | None = None,
+    seed: int = 42,
+) -> pd.DataFrame:
+    """Ablate anchoring, centering and microbiome specificity."""
+
+    bundle = bundle or simulate_synthetic_twin(seed=seed)
+    truth = bundle.true_response.to_numpy(dtype=float)
+    fcs2 = bundle.food_metadata["FCS2"].to_numpy(dtype=float)
+    fcs_only = np.broadcast_to(fcs2[None, :], truth.shape)
+
+    centered, _, _ = score_individual_foods(
+        bundle.weights,
+        bundle.nutrients,
+        bundle.food_metadata,
+        AnchoredScoringConfig(mask_version=PRIMARY_MASK_VERSION),
+    )
+    centered_matrix = _score_to_matrix(centered, bundle)
+    uncentered_matrix = _uncentered_gmnps_matrix(bundle)
+    unanchored = _scale_to_1_100(bundle.weights.to_numpy() @ bundle.nutrients.to_numpy().T)
+
+    rng = np.random.default_rng(seed + 1)
+    random_weights = pd.DataFrame(
+        rng.normal(0, 1, size=bundle.weights.shape),
+        index=bundle.weights.index,
+        columns=bundle.weights.columns,
+    )
+    random_scored, _, _ = score_individual_foods(
+        random_weights,
+        bundle.nutrients,
+        bundle.food_metadata,
+        AnchoredScoringConfig(mask_version=PRIMARY_MASK_VERSION),
+    )
+    shuffled_weights = bundle.weights.sample(frac=1.0, random_state=seed + 1).copy()
+    shuffled_weights.index = bundle.weights.index
+    shuffled_scored, _, _ = score_individual_foods(
+        shuffled_weights,
+        bundle.nutrients,
+        bundle.food_metadata,
+        AnchoredScoringConfig(mask_version=PRIMARY_MASK_VERSION),
+    )
+
+    variants = [
+        ("FCS2 only", fcs_only, "static prior"),
+        ("anchored GMNPS", centered_matrix, "full model"),
+        ("no centering", uncentered_matrix, "remove food-level centering"),
+        ("unanchored microbiome score", unanchored, "remove NPS prior"),
+        ("random microbiome", _score_to_matrix(random_scored, bundle), "negative control"),
+        ("shuffled microbiome", _score_to_matrix(shuffled_scored, bundle), "negative control"),
+    ]
+    rows = []
+    for name, pred, ablation in variants:
+        row = _benchmark_row(name, pred, truth, fcs2)
+        row["ablation"] = ablation
+        rows.append(row)
     return pd.DataFrame(rows)

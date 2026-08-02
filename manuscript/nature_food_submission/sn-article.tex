@@ -1,23 +1,30 @@
-\title{Personalized calibration transforms nutrient profiling systems for precision nutrition}
+%Version 3.1 December 2024
+% Springer Nature / Nature Portfolio compatible LaTeX submission draft.
+\documentclass[pdflatex,sn-nature]{sn-jnl}
 
-\begin{abstract}
-Nutrient profiling systems provide population-level guidance on food
-healthfulness, but static scores cannot represent individual metabolic
-heterogeneity. We introduce GMNPS, an anchored calibration framework that adds a
-bounded personalized deviation to a universal nutrient-profiling prior. Food
-Compass 2.0 supplies the population prior, while gut microbiome-informed
-nutrient responses provide a proof-of-concept calibration layer. In an audited
-baseline extraction, we recovered 9,273 Food Compass 2.0 food records and
-defined a 9,205-row primary join-ready table after excluding duplicated
-Foodcode records and missing external category labels. In a known-ground-truth
-synthetic digital-gut-twin benchmark, anchored GMNPS achieved higher
-personalized residual recovery than unanchored microbiome scoring (Spearman
-0.396 versus 0.248) while preserving the population NPS ranking (Spearman
-0.999965 versus 0.932292). These results establish computational feasibility
-for microbiome-informed nutrient-profiling calibration, while leaving clinical
-efficacy and real-world response prediction to prospective or individual-level
-retrospective validation.
-\end{abstract}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{booktabs}
+\usepackage{xcolor}
+
+\raggedbottom
+\unnumbered
+
+\begin{document}
+
+\title[Personalized calibration transforms NPS]{Personalized calibration transforms nutrient profiling systems for precision nutrition}
+
+% Author metadata require final confirmation before journal submission.
+\author*[1]{\fnm{Fengxi} \sur{Xi}}\email{corresponding.author@example.com}
+\author[1]{\fnm{GMNPS} \sur{Study Group}}
+
+\affil*[1]{\orgdiv{Department to be confirmed}, \orgname{Institution to be confirmed}, \orgaddress{\city{City to be confirmed}, \country{Country to be confirmed}}}
+
+\abstract{Nutrient profiling systems provide population-level guidance on food healthfulness, but static scores cannot represent individual metabolic heterogeneity. We introduce GMNPS, an anchored calibration framework that adds a bounded personalized deviation to a universal nutrient-profiling prior. Food Compass 2.0 supplies the population prior, while gut microbiome-informed nutrient responses provide a proof-of-concept calibration layer. In an audited baseline extraction, we recovered 9,273 Food Compass 2.0 food records and defined a 9,205-row primary join-ready table after excluding duplicated Foodcode records and missing external category labels. In a known-ground-truth synthetic digital-gut-twin benchmark, anchored GMNPS achieved higher personalized residual recovery than unanchored microbiome scoring (Spearman 0.396 versus 0.248) while preserving the population NPS ranking (Spearman 0.999965 versus 0.932292). These results establish computational feasibility for microbiome-informed nutrient-profiling calibration, while leaving clinical efficacy and real-world response prediction to prospective or individual-level retrospective validation.}
+
+\keywords{nutrient profiling; precision nutrition; gut microbiome; personalized calibration; digital gut twin; Food Compass}
+
+\maketitle
 
 \section*{Introduction}
 
@@ -96,6 +103,15 @@ These channels are modelling constraints used for interpretability, not
 evidence that the same channel structure has been estimated from human outcome
 data.
 
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{figure_1_framework.pdf}
+\caption{\textbf{Personalized calibration transforms static nutrient profiling
+into an anchored precision-nutrition score.} Full legend provided in the Figure
+legends section.}
+\label{fig:framework}
+\end{figure}
+
 \subsection*{Food Compass 2.0 provides an audited population-level prior}
 
 We extracted Food Compass 2.0 Supplementary Table S5 from the provided
@@ -132,6 +148,15 @@ anchor, microbiome-derived scoring can capture individual signal but risks
 damaging the population ranking. GMNPS avoids that trade-off by making the
 static NPS the prior and the microbiome response the calibration layer.
 
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{figure_2_preservation.pdf}
+\caption{\textbf{Anchored calibration preserves population-level
+nutrient-profiling consensus.} Full legend provided in the Figure legends
+section.}
+\label{fig:preservation}
+\end{figure}
+
 \subsection*{Bounded calibration reveals channel-specific heterogeneity}
 
 GMNPS created individual-food heterogeneity that a static NPS cannot express.
@@ -149,6 +174,14 @@ pattern itself. The relevant result is that GMNPS can recover and report a
 known channel-attributed structure while keeping each food anchored to a
 universal NPS prior. This directly tests the computational behaviour required
 for interpretable personalized calibration.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{figure_3_heterogeneity.pdf}
+\caption{\textbf{GMNPS reveals bounded and interpretable heterogeneity across
+foods and individuals.} Full legend provided in the Figure legends section.}
+\label{fig:heterogeneity}
+\end{figure}
 
 \subsection*{Anchored GMNPS balances NPS preservation and personalized recovery}
 
@@ -179,6 +212,14 @@ whereas random and shuffled microbiome controls reduced personalized residual
 recovery. Removing centering had little performance effect in this simulation,
 which indicates that centering acts primarily as a calibration constraint in
 the present benchmark rather than as a source of apparent accuracy.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{figure_4_benchmark.pdf}
+\caption{\textbf{Synthetic digital-gut-twin benchmark supports the anchored
+calibration trade-off.} Full legend provided in the Figure legends section.}
+\label{fig:benchmark}
+\end{figure}
 
 \subsection*{Retrospective microbiome evidence supports plausibility but not efficacy}
 
@@ -373,3 +414,25 @@ GMNPS scoring, synthetic benchmarking, Food Compass 2.0 extraction utilities and
 figure-generation scripts are maintained in the project repository. Generated
 tables and figures are reproducible from the committed scripts but are excluded
 from Git by default.
+
+
+\backmatter
+
+\bmhead{Acknowledgements}
+The authors thank the six domain experts who reviewed the microbiome-channel boundary definitions used in the GMNPS framework. Funding information should be confirmed before submission.
+
+\bmhead{Author contributions}
+F.X. conceived the study direction. The GMNPS Study Group designed the scoring framework, implemented the computational benchmark, interpreted the results and drafted the manuscript. The final author-contribution statement should be updated after confirming the full author list.
+
+\bmhead{Competing interests}
+The authors declare no competing interests. This statement should be re-checked before submission.
+
+\bmhead{Ethics declarations}
+The current manuscript reports a computational framework, public-data provenance review and synthetic benchmark. No new human participant recruitment or clinical intervention was conducted.
+
+\bmhead{Additional information}
+Correspondence and requests for materials should be addressed to the corresponding author after final author metadata are confirmed.
+
+\bibliography{references}
+
+\end{document}
