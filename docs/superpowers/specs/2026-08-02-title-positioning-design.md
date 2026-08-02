@@ -105,6 +105,54 @@ step:
 - Ensure figures show both NPS preservation and personalized heterogeneity.
 - Keep clinical efficacy claims out of the main claim language.
 
+## Results Narrative Architecture
+
+The Results section should not read as a collection of validation exercises. It
+should demonstrate the title claim step by step:
+
+1. **Static NPS establishes the universal prior.** Start by showing Food Compass
+   2.0 or the selected baseline NPS as the population-level nutrition consensus
+   that GMNPS preserves rather than replaces.
+2. **Personalized calibration is mathematically bounded and interpretable.**
+   Introduce the anchored score architecture, the personalized deviation term
+   and the expert-reviewed mechanistic channels.
+3. **Population consensus is preserved.** Show that population-mean GMNPS
+   remains highly concordant with the baseline NPS and does not produce
+   implausible food-group reversals.
+4. **Individual heterogeneity is revealed.** Show that the personalized
+   deviation creates non-random individual-food variation absent from static
+   NPS, with channel-specific patterns across food groups.
+5. **Gut microbiome provides a proof-of-concept calibration layer.** Present
+   microbiome-informed MAC and lipid/TMAO axes as biologically interpretable
+   sources of personalized calibration.
+6. **Digital-gut-twin and retrospective validation support feasibility.**
+   Benchmark anchored GMNPS against FCS2-only, unanchored microbiome scoring,
+   random microbiome and shuffled-mask controls to show the intended trade-off:
+   high NPS preservation plus improved personalized signal.
+
+This order makes every result answer the same question: how can NPS become
+precision-ready without losing its public-health foundation?
+
+## Discussion Narrative Architecture
+
+The Discussion should return to the broader NPS transformation rather than
+ending as a microbiome modelling paper. Recommended order:
+
+1. **Main finding.** Personalized calibration transforms NPS by adding bounded
+   individual adaptation on top of a universal nutrition prior.
+2. **Conceptual implication.** The central advance is not a replacement for
+   Food Compass 2.0, but a general architecture for precision-ready NPS.
+3. **Biological implication.** Gut microbiome is a pivotal proof-of-concept
+   because it links diet, microbial metabolism and host metabolic heterogeneity.
+4. **Methodological implication.** Anchoring prevents personalized models from
+   drifting into unstructured recommendation systems; bounded deviations
+   preserve public-health interpretability.
+5. **Evidence boundary.** Retrospective and synthetic validation support
+   plausibility and feasibility, but not clinical intervention efficacy.
+6. **Future direction.** Future NPS can incorporate additional calibration
+   layers such as genetics, metabolomics, continuous glucose response or
+   lifestyle context, provided they remain anchored, bounded and interpretable.
+
 ## Non-Goals
 
 This title does not claim:
