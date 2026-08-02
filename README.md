@@ -10,8 +10,8 @@ profiling:
 GMNPS_ij = clip_1-100(FCS2_j + D_ij)
 ```
 
-The selected anchored baseline prior is Food Compass 2.0 because of its broad
-attribute coverage. Gut microbiome information contributes a bounded
+The selected anchored baseline prior is Food Compass 2.0 because of its
+broad and up-to-date NPS attribute coverage. Gut microbiome information contributes a bounded
 personalized deviation, allowing GMNPS to preserve population-level NPS
 consensus while revealing personalized metabolic heterogeneity.
 

@@ -23,6 +23,12 @@ def test_public_docs_do_not_use_old_title():
         assert OLD_TITLE not in text
 
 
+def test_baseline_rationale_names_attribute_coverage():
+    phrase = "broad and up-to-date NPS attribute coverage"
+    for path in ["README.md", "code/README.md", "manuscript/narrative_blueprint.md"]:
+        assert phrase in read(path)
+
+
 def test_narrative_blueprint_covers_results_and_discussion():
     text = read("manuscript/narrative_blueprint.md")
     required_phrases = [

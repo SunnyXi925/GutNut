@@ -8,8 +8,8 @@ This repository contains the reproducible implementation of the Gut
 Microbiome-informed Nutrient Profiling System (GMNPS). The current
 article-facing framework uses a selected baseline NPS as the universal prior
 and adds a **bounded, microbiome-defined personalized deviation**. Food
-Compass 2.0 is the current baseline implementation because of its broad
-attribute coverage:
+Compass 2.0 is the current baseline implementation because of its
+broad and up-to-date NPS attribute coverage:
 
 ```text
 GMNPS_ij = clip_1-100(FCS2_j + D_ij)

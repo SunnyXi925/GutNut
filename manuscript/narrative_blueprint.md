@@ -16,7 +16,7 @@ Nutrient profiling systems rank foods for population-level dietary guidance, yet
 
 ### 1. Static NPS establishes the universal prior
 
-Open Results by defining the selected static NPS baseline as the population-level nutrition consensus. Food Compass 2.0 is the current baseline implementation because of its broad attribute coverage, but the purpose is to show what GMNPS preserves before introducing personalization.
+Open Results by defining the selected static NPS baseline as the population-level nutrition consensus. Food Compass 2.0 is the current baseline implementation because of its broad and up-to-date NPS attribute coverage, but the purpose is to show what GMNPS preserves before introducing personalization.
 
 ### 2. Personalized calibration is bounded and interpretable
 
