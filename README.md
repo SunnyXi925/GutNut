@@ -20,6 +20,8 @@ consensus while revealing personalized metabolic heterogeneity.
 The reproducible article-facing implementation lives under `code/src`:
 
 - `gmnps.scoring`: Food Compass 2.0-anchored scoring and expert-revised masks.
+- `gmnps.data_sources`: audited extraction utilities for public baseline and
+  food-composition sources.
 - `gmnps.validation`: NPS preservation, heterogeneity and digital-gut-twin benchmarks.
 - `gmnps.manuscript`: CSV, figure-source-data and LaTeX table exports.
 - `scripts/run_nature_food_article.py`: command-line runner.
@@ -37,6 +39,10 @@ python code/src/scripts/run_nature_food_article.py synthetic \
   --n-foods 80 \
   --seed 42
 ```
+
+To extract the Food Compass 2.0 Table S5 baseline prior from the uploaded
+supplementary PDF text, see `docs/fcs2_table_s5_extraction.md`. Raw PDFs,
+scratch extraction files and generated outputs stay outside Git.
 
 For retrospective/public data scoring, provide:
 
