@@ -1,11 +1,13 @@
 import hashlib
 import json
+import re
+import subprocess
 from pathlib import Path
 
 import pandas as pd
 
 from scripts.build_beta_i_weights import build_parser as build_beta_i_parser
-from scripts.build_beta_i_weights import run
+from scripts.build_beta_i_weights import run, source_revision
 from scripts.run_l9_v4_scoring import build_parser as build_scoring_parser
 
 
@@ -23,7 +25,7 @@ class Args:
         self.batch_size = 2
 
 
-def test_build_beta_i_weights_script_writes_expected_bundle(tmp_path):
+def test_build_beta_i_weights_script_writes_expected_bundle(tmp_path, monkeypatch):
     root = tmp_path / "repo"
     l5 = root / "data/project_data/predict_multi/L5_gmnps_pipeline_v2"
     l1 = root / "data/project_data/predict_multi/L1_microbiome/cmd_processed"
@@ -56,6 +58,8 @@ def test_build_beta_i_weights_script_writes_expected_bundle(tmp_path):
     (l8 / "nutrient_index.json").write_text(json.dumps(["Fiber, total dietary (g)", "Total Fat (g)"]))
 
     out_dir = tmp_path / "out"
+    revision = {"sha": "a" * 40, "dirty": False}
+    monkeypatch.setattr("scripts.build_beta_i_weights.source_revision", lambda _: revision)
     run(Args(root, out_dir))
 
     weights = pd.read_parquet(out_dir / "W_personalized.parquet")
@@ -119,6 +123,9 @@ def test_build_beta_i_weights_script_writes_expected_bundle(tmp_path):
     assert manifest["health_training_backend"] == "numpy"
     assert manifest["health_training_solver"] == "proximal_gradient"
     assert manifest["health_model_serialization_backend"] == "pickle"
+    assert manifest["source_revision"] == revision
+    assert manifest["git_commit"] == revision["sha"]
+    assert manifest["git_dirty"] is False
     assert manifest["excluded_health_label_samples"]["sha256"] == manifest["output_sha256"][
         "excluded_health_label_samples.csv"
     ]
@@ -150,6 +157,50 @@ def test_build_beta_i_weights_script_writes_expected_bundle(tmp_path):
     for filename, digest in manifest["output_sha256"].items():
         assert hashlib.sha256((out_dir / filename).read_bytes()).hexdigest() == digest
     assert "not a causal nutrient effect" in manifest["interpretation_boundary"]
+
+
+def test_source_revision_reports_full_sha_and_dirty_state(tmp_path):
+    root = tmp_path / "repo"
+    root.mkdir()
+
+    def git(*args: str) -> None:
+        subprocess.run(
+            ["git", *args],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    git("init")
+    git("config", "user.email", "tests@example.com")
+    git("config", "user.name", "Beta I Tests")
+    tracked_file = root / "tracked.txt"
+    tracked_file.write_text("clean\n")
+    git("add", "tracked.txt")
+    git("commit", "-m", "test revision metadata")
+
+    clean = source_revision(root)
+    assert re.fullmatch(r"[0-9a-f]{40}", clean["sha"])
+    assert clean["dirty"] is False
+
+    tracked_file.write_text("dirty\n")
+    dirty = source_revision(root)
+    assert dirty["sha"] == clean["sha"]
+    assert dirty["dirty"] is True
+
+
+def test_production_manifest_has_explicit_source_revision_metadata():
+    root = Path(__file__).resolve().parents[3]
+    manifest_path = root / "data/project_data/predict_multi/L7_nutrient_bridge_beta_i/beta_i_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    revision = manifest["source_revision"]
+
+    assert re.fullmatch(r"[0-9a-f]{40}", revision["sha"])
+    assert isinstance(revision["dirty"], bool)
+    assert manifest["git_commit"] == revision["sha"]
+    assert manifest["git_dirty"] is revision["dirty"]
+    assert manifest["git_commit"] != "66aa93c"
 
 
 def test_production_build_and_scoring_defaults_select_sparse_beta_i_bundle():

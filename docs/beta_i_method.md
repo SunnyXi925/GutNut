@@ -28,8 +28,8 @@ beta_i,k = (H(M_i + dose * P_k) - H(M_i)) / dose
 
 ```bash
 PYTHONPATH=code/src .venv/bin/python code/src/scripts/build_beta_i_weights.py \
-  --root /Users/fengxi.25/Desktop/GMNPS \
-  --output-dir /Users/fengxi.25/Desktop/GMNPS/data/project_data/predict_multi/L7_nutrient_bridge_beta_i
+  --root "$PWD" \
+  --output-dir "$PWD/data/project_data/predict_multi/L7_nutrient_bridge_beta_i"
 ```
 
 ## Claim Boundary

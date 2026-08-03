@@ -55,6 +55,31 @@ def package_versions() -> dict[str, str | None]:
     return versions
 
 
+def source_revision(root: Path) -> dict[str, str | bool]:
+    """Return the complete Git revision and source-tree state at build start."""
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if commit.returncode != 0 or not commit.stdout.strip():
+        raise RuntimeError(f"unable to determine source revision for beta_i build at {root}")
+
+    status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if status.returncode != 0:
+        raise RuntimeError(f"unable to determine source-tree state for beta_i build at {root}")
+
+    return {"sha": commit.stdout.strip(), "dirty": bool(status.stdout.strip())}
+
+
 def prepare_health_labels(
     metadata: pd.DataFrame,
     clr_index: pd.Index,
@@ -109,6 +134,7 @@ def prepare_health_labels(
 def run(args: argparse.Namespace) -> None:
     root = Path(args.root).resolve()
     out_dir = Path(args.output_dir).resolve()
+    revision = source_revision(root)
     out_dir.mkdir(parents=True, exist_ok=True)
     m_clr_path = root / "data/project_data/predict_multi/L5_gmnps_pipeline_v2/M_clr.parquet"
     metadata_path = root / "data/project_data/predict_multi/L1_microbiome/cmd_processed/layer_a_master.parquet"
@@ -156,13 +182,6 @@ def run(args: argparse.Namespace) -> None:
     exclusion_audit_path = out_dir / "excluded_health_label_samples.csv"
     exclusion_audit.to_csv(exclusion_audit_path, index=False)
 
-    git_commit = subprocess.run(
-        ["git", "rev-parse", "--short", "HEAD"],
-        cwd=root,
-        text=True,
-        capture_output=True,
-        check=False,
-    ).stdout.strip()
     files = [
         out_dir / "W_personalized.parquet",
         health_model_path,
@@ -210,7 +229,9 @@ def run(args: argparse.Namespace) -> None:
             "nutrient_index": sha256_file(nutrient_index_path),
         },
         "output_sha256": {path.name: sha256_file(path) for path in files},
-        "git_commit": git_commit,
+        "source_revision": revision,
+        "git_commit": revision["sha"],
+        "git_dirty": revision["dirty"],
         "python_version": sys.version.split()[0],
         "package_versions": package_versions(),
         "interpretation_boundary": "beta_i is an evidence-oriented calibration direction measuring health-index finite-difference response to nutrient-linked microbiome perturbations; it is not a causal nutrient effect.",

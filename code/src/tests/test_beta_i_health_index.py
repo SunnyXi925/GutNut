@@ -148,6 +148,18 @@ def test_fit_health_index_scores_healthy_samples_higher(tmp_path):
     assert np.allclose(scores.to_numpy(), loaded_scores.to_numpy())
 
 
+def test_load_health_index_rejects_model_checksum_mismatch(tmp_path):
+    clr = _toy_clr()
+    labels = pd.Series([1, 1, 1, 0, 0, 0], index=clr.index, name="health_label")
+    model = fit_health_index(clr, labels, HealthIndexConfig(c_value=10.0, max_iter=500, random_state=7))
+    path = tmp_path / "health_index.joblib"
+    save_health_index(model, path)
+    path.write_bytes(b"tampered model")
+
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        load_health_index(path)
+
+
 def test_integer_feature_columns_round_trip_score():
     clr = _toy_clr()
     clr.columns = [101, 202, 303]
