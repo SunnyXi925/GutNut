@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import numpy as np
 import pandas as pd
 
 from gmnps.beta_i.health_index import HealthIndexModel, score_health_index
@@ -23,12 +22,14 @@ def compute_beta_matrix(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     if config.dose <= 0:
         raise ValueError("dose must be positive")
+    if config.batch_size <= 0:
+        raise ValueError("batch_size must be positive")
     aligned_clr = clr.reindex(columns=model.genus_names).astype(float)
     aligned_clr = aligned_clr.fillna(model.mean_)
     aligned_perturb = perturbations.reindex(columns=model.genus_names).fillna(0.0).astype(float)
     baseline = score_health_index(model, aligned_clr)
     beta_blocks = []
-    nutrient_names = list(aligned_perturb.index.astype(str))
+    nutrient_names = list(aligned_perturb.index)
     for start in range(0, len(nutrient_names), config.batch_size):
         batch = nutrient_names[start : start + config.batch_size]
         cols = []
