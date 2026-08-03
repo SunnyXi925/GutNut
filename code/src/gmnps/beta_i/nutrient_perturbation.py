@@ -67,8 +67,9 @@ def build_nutrient_perturbations(
     nutrients = list(oriented.index)
     evidence_directions = _evidence_directions(nutrients, config)
     oriented = oriented.mul(evidence_directions, axis=0)
-    norms = np.sqrt((oriented**2).sum(axis=1)).replace(0.0, np.nan)
-    normalized = oriented.div(norms, axis=0).fillna(0.0)
+    centered = oriented.sub(oriented.mean(axis=1), axis=0)
+    norms = np.sqrt((centered**2).sum(axis=1)).replace(0.0, np.nan)
+    normalized = centered.div(norms, axis=0).fillna(0.0)
     weights = _channel_weights(nutrients, config)
     scaled = normalized.mul(weights, axis=0) * config.l2_norm
     scaled.index = scaled.index.astype(str)

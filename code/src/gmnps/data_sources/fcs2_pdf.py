@@ -265,7 +265,7 @@ def filter_primary_fcs2_foods(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFr
     missing_label_mask = data["Nutri_Score"].fillna("").eq("")
     exclude_mask = duplicate_mask | missing_label_mask
     reasons = []
-    for is_dup, is_missing in zip(duplicate_mask, missing_label_mask, strict=True):
+    for is_dup, is_missing in zip(duplicate_mask, missing_label_mask):
         row_reasons = []
         if is_dup:
             row_reasons.append("duplicate_foodcode")
@@ -273,7 +273,7 @@ def filter_primary_fcs2_foods(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFr
             row_reasons.append("missing_nutri_score")
         reasons.append(";".join(row_reasons))
     excluded = data.loc[exclude_mask].copy()
-    excluded["exclusion_reason"] = [r for r, keep in zip(reasons, exclude_mask, strict=True) if keep]
+    excluded["exclusion_reason"] = [r for r, keep in zip(reasons, exclude_mask) if keep]
     primary = data.loc[~exclude_mask].copy()
     summary = {
         "input_rows": int(len(data)),

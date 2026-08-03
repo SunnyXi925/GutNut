@@ -1,5 +1,6 @@
-import pytest
+import numpy as np
 import pandas as pd
+import pytest
 
 from gmnps.beta_i.beta_estimator import BetaEstimatorConfig, compute_beta_matrix
 from gmnps.beta_i.health_index import HealthIndexConfig, HealthIndexModel
@@ -53,8 +54,9 @@ def test_build_nutrient_perturbations_aligns_to_health_direction_and_masks():
     perturb = build_nutrient_perturbations(nutrient_genus, _model(), config)
     assert list(perturb.columns) == ["Akkermansia", "Escherichia"]
     assert perturb.loc["Fiber, total dietary (g)", "Akkermansia"] > 0
-    assert perturb.loc["Fiber, total dietary (g)", "Escherichia"] > 0
+    assert perturb.loc["Fiber, total dietary (g)", "Escherichia"] < 0
     assert perturb.loc["Fatty acids, total saturated (g)"].abs().sum() > 0
+    assert np.allclose(perturb.sum(axis=1), 0.0, atol=1e-7)
     expected_norms = {
         "Fiber, total dietary (g)": config.l2_norm * config.mac_channel_weight,
         "Fatty acids, total saturated (g)": config.l2_norm * config.lipid_channel_weight,
@@ -63,6 +65,57 @@ def test_build_nutrient_perturbations_aligns_to_health_direction_and_masks():
     for nutrient, expected_norm in expected_norms.items():
         norm = perturb.loc[nutrient].astype(float).pow(2).sum() ** 0.5
         assert norm == pytest.approx(expected_norm)
+
+
+def test_default_perturbations_stay_in_clr_space_with_channel_norms():
+    model = HealthIndexModel(
+        genus_names=("g1", "g2", "g3", "g4"),
+        mean_=pd.Series(0.0, index=["g1", "g2", "g3", "g4"]),
+        scale_=pd.Series(1.0, index=["g1", "g2", "g3", "g4"]),
+        coefficients=pd.Series({"g1": 2.0, "g2": -1.0, "g3": 0.5, "g4": -0.25}),
+        intercept=0.0,
+        config=HealthIndexConfig(),
+        training_summary={},
+    )
+    nutrient_genus = pd.DataFrame(
+        {
+            "g1": [0.8, 0.2, 0.4, 1.0],
+            "g2": [-0.3, 0.7, 0.1, -1.0],
+            "g3": [0.5, -0.4, 0.9, 2.0],
+            "g4": [0.1, 0.6, -0.2, -2.0],
+        },
+        index=[
+            "Fiber, total dietary (g)",
+            "Fatty acids, total saturated (g)",
+            "Water (g)",
+            "Protein (g)",
+        ],
+    )
+
+    perturb = build_nutrient_perturbations(
+        nutrient_genus,
+        model,
+        NutrientPerturbationConfig(),
+    )
+
+    assert np.allclose(perturb.sum(axis=1), 0.0, atol=1e-7)
+    norms = np.linalg.norm(perturb.to_numpy(dtype=float), axis=1)
+    assert norms == pytest.approx([1.0, 1.0, 0.25, 0.25])
+
+
+def test_constant_oriented_perturbation_becomes_zero_after_clr_centering():
+    nutrient_genus = pd.DataFrame(
+        {"Akkermansia": [1.0], "Escherichia": [-1.0]},
+        index=["Fiber, total dietary (g)"],
+    )
+
+    perturb = build_nutrient_perturbations(
+        nutrient_genus,
+        _model(),
+        NutrientPerturbationConfig(),
+    )
+
+    assert np.allclose(perturb.to_numpy(), 0.0)
 
 
 def test_mac_and_lipid_evidence_directions_produce_opposite_beta_signs():
@@ -97,7 +150,7 @@ def test_summarize_perturbations_reports_norm_and_channel():
     nutrient_genus = pd.DataFrame(
         {
             "Akkermansia": {"Fiber, total dietary (g)": 1.0},
-            "Escherichia": {"Fiber, total dietary (g)": -1.0},
+            "Escherichia": {"Fiber, total dietary (g)": -0.5},
         }
     )
     perturb = build_nutrient_perturbations(nutrient_genus, _model(), NutrientPerturbationConfig())
