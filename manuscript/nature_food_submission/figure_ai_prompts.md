@@ -33,4 +33,3 @@ organs. Indicate that anchored calibration is evaluated against known ground tru
 controls kept in grey. White background, blue for population prior, green for personalized residual
 signal, one muted red for unanchored comparator. No fabricated numerical values, no logos and no
 clinical claims.
-
