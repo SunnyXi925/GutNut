@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,12 +36,20 @@ def derive_binary_health_labels(metadata: pd.DataFrame) -> pd.Series:
         raise ValueError(f"metadata missing columns: {sorted(missing)}")
     frame = metadata[["sample_id", "phenotype_label", "disease"]].copy()
     frame["sample_id"] = frame["sample_id"].astype(str)
-    phenotype = frame["phenotype_label"].fillna("").astype(str).str.lower()
-    disease = frame["disease"].fillna("").astype(str).str.lower()
-    healthy = phenotype.eq("health") | disease.eq("healthy")
-    disease_named = phenotype.isin({"ibd", "crc", "cvd", "t2d"}) | disease.ne("healthy")
-    labels = pd.Series(np.where(healthy, 1, np.where(disease_named, 0, np.nan)), index=frame["sample_id"])
-    labels = labels.dropna().astype(int)
+    phenotype = frame["phenotype_label"].fillna("").astype(str).str.strip().str.lower()
+    disease = frame["disease"].fillna("").astype(str).str.strip().str.lower()
+    healthy_phenotype = phenotype.isin({"health", "healthy"})
+    healthy_disease = disease.eq("healthy")
+    known_disease = {"ibd", "crc", "cvd", "t2d"}
+    nonhealthy_phenotype = phenotype.isin(known_disease)
+    nonhealthy_disease = disease.isin(known_disease)
+    contradictory = (healthy_phenotype & nonhealthy_disease) | (nonhealthy_phenotype & healthy_disease)
+    if contradictory.any():
+        sample_ids = frame.loc[contradictory, "sample_id"].tolist()
+        raise ValueError(f"contradictory health metadata for sample(s): {sample_ids}")
+    classified = healthy_phenotype | healthy_disease | nonhealthy_phenotype | nonhealthy_disease
+    labels = pd.Series(np.where(healthy_phenotype | healthy_disease, 1, 0), index=frame["sample_id"])
+    labels = labels[classified.to_numpy()].astype(int)
     labels.name = "health_label"
     return labels[~labels.index.duplicated(keep="first")]
 
@@ -57,22 +67,28 @@ def _standardize_apply(clr: pd.DataFrame, model: HealthIndexModel) -> pd.DataFra
     return (x - model.mean_) / model.scale_
 
 
+def _soft_threshold(values: np.ndarray, threshold: float) -> np.ndarray:
+    return np.sign(values) * np.maximum(np.abs(values) - threshold, 0.0)
+
+
 def _numpy_logistic_fit(x: np.ndarray, y: np.ndarray, config: HealthIndexConfig) -> tuple[np.ndarray, float]:
-    """Fit a small deterministic L2-regularized logistic model without SciPy."""
+    """Fit deterministic L1-regularized logistic regression without SciPy."""
     weights = np.zeros(x.shape[1], dtype=float)
     intercept = 0.0
-    learning_rate = 0.5
     penalty = 1.0 / max(float(config.c_value), np.finfo(float).eps)
+    # The logistic loss gradient is Lipschitz-bounded by ||X||_2^2 / (4n).
+    lipschitz = float(np.linalg.norm(x, ord=2) ** 2 / (4.0 * len(y)))
+    learning_rate = 1.0 / max(lipschitz, 1e-12)
     for _ in range(config.max_iter):
         linear = np.clip(intercept + x @ weights, -40.0, 40.0)
         probabilities = 1.0 / (1.0 + np.exp(-linear))
         error = probabilities - y
         grad_intercept = float(error.mean())
-        grad_weights = (x.T @ error) / len(y) + penalty * weights / len(y)
-        step = np.concatenate(([grad_intercept], grad_weights))
+        grad_weights = (x.T @ error) / len(y)
+        old_weights = weights.copy()
         intercept -= learning_rate * grad_intercept
-        weights -= learning_rate * grad_weights
-        if np.max(np.abs(step)) < 1e-9:
+        weights = _soft_threshold(weights - learning_rate * grad_weights, learning_rate * penalty)
+        if max(abs(intercept - (intercept + learning_rate * grad_intercept)), np.max(np.abs(weights - old_weights))) < 1e-9:
             break
     return weights, intercept
 
@@ -139,6 +155,20 @@ def save_health_index(model: HealthIndexModel, path: Path) -> None:
             pickle.dump(model, handle, protocol=pickle.HIGHEST_PROTOCOL)
     else:
         joblib.dump(model, path)
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    manifest = {
+        "method": "l1_logistic_gmwi2_style",
+        "config": {
+            "c_value": model.config.c_value,
+            "max_iter": model.config.max_iter,
+            "random_state": model.config.random_state,
+            "min_abs_coefficient": model.config.min_abs_coefficient,
+        },
+        "training_summary": model.training_summary,
+        "model_sha256": digest,
+    }
+    manifest_path = Path(f"{path}.manifest.json")
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def load_health_index(path: Path) -> HealthIndexModel:

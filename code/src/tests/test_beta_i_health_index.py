@@ -1,5 +1,8 @@
 import numpy as np
 import pandas as pd
+import json
+import hashlib
+import pytest
 
 from gmnps.beta_i.health_index import (
     HealthIndexConfig,
@@ -8,6 +11,7 @@ from gmnps.beta_i.health_index import (
     load_health_index,
     save_health_index,
     score_health_index,
+    _numpy_logistic_fit,
 )
 
 
@@ -34,6 +38,25 @@ def test_derive_binary_health_labels_from_cmd_metadata():
     assert labels.to_dict() == {"s1": 1, "s2": 0, "s3": 0, "s4": 0}
 
 
+def test_unknown_metadata_is_excluded_and_contradictions_raise():
+    metadata = pd.DataFrame({
+        "sample_id": ["healthy", "ibd", "unknown", "empty", "conflict"],
+        "phenotype_label": ["Health", "IBD", "Other", "", "IBD"],
+        "disease": ["healthy", "IBD", "unknown", "", "healthy"],
+    })
+    with pytest.raises(ValueError, match="contradictory"):
+        derive_binary_health_labels(metadata)
+    labels = derive_binary_health_labels(metadata.drop(index=4))
+    assert labels.to_dict() == {"healthy": 1, "ibd": 0}
+
+
+def test_numpy_fallback_is_l1_sparse():
+    x = np.array([[2.0, 0.1, 0.0], [1.8, -0.1, 0.0], [-2.0, 0.1, 0.0], [-1.7, -0.1, 0.0]])
+    y = np.array([1, 1, 0, 0])
+    coefficients, _ = _numpy_logistic_fit(x, y, HealthIndexConfig(c_value=0.25, max_iter=1000))
+    assert np.count_nonzero(coefficients) < len(coefficients)
+
+
 def test_fit_health_index_scores_healthy_samples_higher(tmp_path):
     clr = _toy_clr()
     labels = pd.Series([1, 1, 1, 0, 0, 0], index=clr.index, name="health_label")
@@ -46,6 +69,12 @@ def test_fit_health_index_scores_healthy_samples_higher(tmp_path):
 
     path = tmp_path / "health_index.joblib"
     save_health_index(model, path)
+    manifest_path = path.with_name(f"{path.name}.manifest.json")
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["method"] == "l1_logistic_gmwi2_style"
+    assert manifest["config"]["c_value"] == 10.0
+    assert manifest["training_summary"] == model.training_summary
+    assert manifest["model_sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
     loaded = load_health_index(path)
     loaded_scores = score_health_index(loaded, clr)
     assert np.allclose(scores.to_numpy(), loaded_scores.to_numpy())
