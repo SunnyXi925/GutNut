@@ -1,0 +1,24 @@
+{
+  "food_composition_primary_source": "USDA FSRG/FoodData Central FNDDS 2021-2023 raw files are present locally with SHA256 checksums.",
+  "current_primary_scoring_matrix": "N_food_nutrient_imputed.parquet",
+  "fndds_2021_2023_n_foods": 5431,
+  "harmonised_releases": [
+    "2015-2016",
+    "2017-2018",
+    "2019-2020",
+    "2021-2023"
+  ],
+  "harmonised_exact_fcs2_coverage_pct": 83.06809570206777,
+  "imputed_fcs2_coverage_pct": 99.96752192270218,
+  "fcs2_rows": 9237,
+  "included_primary_run": 9234,
+  "missing_after_imputation": [
+    35001000,
+    35002000,
+    35003000
+  ],
+  "beta_profiles": 15492,
+  "beta_r2_median": 0.089685705,
+  "beta_sparsity_median": 0.4,
+  "boundary": "Food composition is real USDA FNDDS-derived data; imputed nutrient vectors and beta calibration weights require explicit Methods boundaries."
+}
