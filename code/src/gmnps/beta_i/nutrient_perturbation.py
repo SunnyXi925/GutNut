@@ -42,12 +42,12 @@ def build_nutrient_perturbations(
     bridge = nutrient_genus.reindex(columns=model.genus_names).fillna(0.0).astype(float)
     if config.min_abs_bridge > 0:
         bridge = bridge.where(bridge.abs() >= config.min_abs_bridge, 0.0)
-    health_weight = model.coefficients.reindex(model.genus_names).fillna(0.0).abs()
-    oriented = bridge.mul(health_weight, axis=1)
+    health_direction = np.sign(model.coefficients.reindex(model.genus_names).fillna(0.0))
+    oriented = bridge.mul(health_direction, axis=1)
     weights = _channel_weights(list(oriented.index.astype(str)), config)
     oriented = oriented.mul(weights, axis=0)
     norms = np.sqrt((oriented**2).sum(axis=1)).replace(0.0, np.nan)
-    scaled = oriented.div(norms, axis=0).fillna(0.0).mul(weights, axis=0) * config.l2_norm
+    scaled = oriented.div(norms, axis=0).fillna(0.0) * config.l2_norm
     scaled.index = scaled.index.astype(str)
     scaled.columns = scaled.columns.astype(str)
     return scaled.astype("float32")
