@@ -51,6 +51,18 @@ def test_unknown_metadata_is_excluded_and_contradictions_raise():
     assert labels.to_dict() == {"healthy": 1, "ibd": 0}
 
 
+def test_named_disease_policy_covers_noncanonical_diseases_and_placeholders():
+    metadata = pd.DataFrame({
+        "sample_id": ["cad", "crohns", "unknown", "placeholder", "unsupported_phenotype"],
+        "phenotype_label": ["Other", "Other", "Other", "Other", "Crohn's disease"],
+        "disease": ["CAD", "Crohn's disease", "N/A", "Other", ""],
+    })
+
+    labels = derive_binary_health_labels(metadata)
+
+    assert labels.to_dict() == {"cad": 0, "crohns": 0}
+
+
 def test_missing_sample_ids_are_excluded_and_duplicate_conflicts_raise():
     metadata = pd.DataFrame({
         "sample_id": [None, "", "  ", "s1", "s1"],

@@ -29,7 +29,34 @@ class HealthIndexModel:
     training_summary: dict[str, float | int]
 
 
+_HEALTHY_TERMS = {"health", "healthy"}
+_KNOWN_DISEASE_TERMS = {"ibd", "crc", "cvd", "t2d"}
+_UNKNOWN_TERMS = {
+    "",
+    "na",
+    "n/a",
+    "nan",
+    "none",
+    "null",
+    "missing",
+    "unknown",
+    "other",
+    "not available",
+    "not applicable",
+}
+
+
 def derive_binary_health_labels(metadata: pd.DataFrame) -> pd.Series:
+    """Derive binary health labels using the metadata label policy.
+
+    ``health`` and ``healthy`` phenotype or disease terms map to ``1``.
+    The approved disease terms (IBD, CRC, CVD, and T2D) map to ``0``.
+    Empty, unknown, and placeholder terms are excluded.  Any other
+    non-empty, non-healthy, non-placeholder ``disease`` value is treated as
+    a named disease and maps to ``0``.  Unsupported phenotype labels remain
+    unclassified unless ``disease`` supplies a named disease.  Contradictory
+    healthy and nonhealthy metadata raises ``ValueError``.
+    """
     required = {"sample_id", "phenotype_label", "disease"}
     missing = required.difference(metadata.columns)
     if missing:
@@ -41,11 +68,12 @@ def derive_binary_health_labels(metadata: pd.DataFrame) -> pd.Series:
     frame = frame.loc[valid_sample_id]
     phenotype = frame["phenotype_label"].fillna("").astype(str).str.strip().str.lower()
     disease = frame["disease"].fillna("").astype(str).str.strip().str.lower()
-    healthy_phenotype = phenotype.isin({"health", "healthy"})
-    healthy_disease = disease.eq("healthy")
-    known_disease = {"ibd", "crc", "cvd", "t2d"}
-    nonhealthy_phenotype = phenotype.isin(known_disease)
-    nonhealthy_disease = disease.isin(known_disease)
+    healthy_phenotype = phenotype.isin(_HEALTHY_TERMS)
+    healthy_disease = disease.isin(_HEALTHY_TERMS)
+    nonhealthy_phenotype = phenotype.isin(_KNOWN_DISEASE_TERMS)
+    nonhealthy_disease = disease.isin(_KNOWN_DISEASE_TERMS)
+    named_disease = disease.ne("") & ~disease.isin(_UNKNOWN_TERMS | _HEALTHY_TERMS)
+    nonhealthy_disease |= named_disease
     contradictory = (healthy_phenotype & nonhealthy_disease) | (nonhealthy_phenotype & healthy_disease)
     if contradictory.any():
         sample_ids = frame.loc[contradictory, "sample_id"].tolist()

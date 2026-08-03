@@ -73,3 +73,15 @@ Exact verification outputs:
 - `PYTHONPATH=code/src .venv/bin/python -m pytest code/src/tests/test_beta_i_health_index.py -q`: `8 passed in 0.62s`
 - `PYTHONPATH=code/src .venv/bin/python -m pytest code/src/tests/test_article_scoring.py -q`: `9 passed in 1.39s`
 - `git diff --check -- code/src/gmnps/beta_i/health_index.py code/src/tests/test_beta_i_health_index.py`: passed (no output)
+
+## Fifth Review Fixes
+
+- Documented the binary-label policy: healthy terms map to `1`; approved disease terms (IBD, CRC, CVD, and T2D) map to `0`; known empty, unknown, and placeholder terms are excluded; any other non-empty disease value is treated as a named disease and maps to `0`; unsupported phenotype labels remain unclassified unless disease supplies a named disease; contradictions still raise `ValueError`.
+- Added coverage for noncanonical named diseases (`CAD` and `Crohn's disease`) and for unknown or placeholder values remaining excluded.
+- Historical TDD deviation: the initial expected `ModuleNotFoundError` was not captured before implementation, so that historical output cannot be retroactively corrected. No passing or failing output is fabricated here.
+
+Exact verification outputs:
+
+- `PYTHONPATH=code/src .venv/bin/python -m pytest code/src/tests/test_beta_i_health_index.py -q`: `9 passed in 0.59s`
+- `PYTHONPATH=code/src .venv/bin/python -m pytest code/src/tests/test_article_scoring.py -q`: `9 passed in 1.36s`
+- `git diff --check -- code/src/gmnps/beta_i/health_index.py code/src/tests/test_beta_i_health_index.py`: passed (no output)
