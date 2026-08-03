@@ -160,6 +160,19 @@ def test_load_health_index_rejects_model_checksum_mismatch(tmp_path):
         load_health_index(path)
 
 
+def test_load_health_index_requires_checksum_manifest_before_unpickling(tmp_path, monkeypatch):
+    path = tmp_path / "health_index.joblib"
+    path.write_bytes(b"untrusted pickle")
+
+    def fail_if_unpickled(*args, **kwargs):
+        raise AssertionError("model must not be unpickled without a checksum manifest")
+
+    monkeypatch.setattr("gmnps.beta_i.health_index.pickle.load", fail_if_unpickled)
+
+    with pytest.raises(FileNotFoundError, match="checksum manifest is required"):
+        load_health_index(path)
+
+
 def test_integer_feature_columns_round_trip_score():
     clr = _toy_clr()
     clr.columns = [101, 202, 303]

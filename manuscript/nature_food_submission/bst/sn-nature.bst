@@ -760,8 +760,8 @@ FUNCTION {format.in.editors}
 { "" editor "editor" format.names duplicate$ empty$ 'skip$
     {     swap$ "(eds" *
           " " * swap$ *
-                swap$ " " * 
-		swap$ * ")" * 
+                swap$ " " *
+		swap$ * ")" *
 		}
   if$
 }
@@ -1049,15 +1049,15 @@ FUNCTION {format.booktitle}
 }
 FUNCTION {format.in.ed.booktitle}
 {  duplicate$ empty$ 'skip$
-    { 
+    {
 editor "editor" format.names.ed duplicate$ empty$ 'pop$
-        {  
+        {
 format.booktitle swap$
 "(" editor num.names$ #1 > 'bbl.in.editors 'bbl.editor if$  * swap$   ") " *
           * swap$
           * }
-      if$ 
-    }  
+      if$
+    }
   if$
 }
 FUNCTION {empty.misc.check}
@@ -1231,7 +1231,7 @@ FUNCTION {format.archive}
   archivePrefix empty$
       { "" }
       { archivePrefix ":" *}
-  if$           
+  if$
 }
 
 %%updated on 17th July 2024
@@ -1254,7 +1254,7 @@ FUNCTION {format.primaryClass}
   primaryClass empty$
       { "" }
       { " {[" primaryClass * "]}" *}
-  if$           
+  if$
 }
 
 FUNCTION {format.soft.eprint}
@@ -1278,7 +1278,7 @@ FUNCTION {format.softmisc.archive}
   archivePrefix empty$
       { "" }
       { "" }
-  if$           
+  if$
 }
 
 FUNCTION {format.softmisc.eprint}

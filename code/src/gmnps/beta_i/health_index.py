@@ -275,19 +275,21 @@ def save_health_index(model: HealthIndexModel, path: Path, serialization_backend
 def load_health_index(path: Path) -> HealthIndexModel:
     path = Path(path)
     manifest_path = Path(f"{path}.manifest.json")
-    serialization_backend = "pickle"
-    if manifest_path.is_file():
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        expected_digest = manifest.get("model_sha256")
-        if not isinstance(expected_digest, str):
-            raise ValueError(f"health-index manifest missing model_sha256: {manifest_path}")
-        actual_digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        if actual_digest != expected_digest:
-            raise ValueError(
-                f"health-index model checksum mismatch for {path}: "
-                f"expected {expected_digest}, found {actual_digest}"
-            )
-        serialization_backend = manifest.get("serialization_backend", "pickle")
+    if not manifest_path.is_file():
+        raise FileNotFoundError(
+            f"health-index checksum manifest is required before loading model: {manifest_path}"
+        )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    expected_digest = manifest.get("model_sha256")
+    if not isinstance(expected_digest, str):
+        raise ValueError(f"health-index manifest missing model_sha256: {manifest_path}")
+    actual_digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    if actual_digest != expected_digest:
+        raise ValueError(
+            f"health-index model checksum mismatch for {path}: "
+            f"expected {expected_digest}, found {actual_digest}"
+        )
+    serialization_backend = manifest.get("serialization_backend", "pickle")
     if serialization_backend == "pickle":
         with path.open("rb") as handle:
             loaded = pickle.load(handle)

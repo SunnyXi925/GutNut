@@ -293,4 +293,3 @@ clinical claims in the current manuscript package.
 - Microbiome-derived deviations are causal effects of microbes or foods.
 - ZOE public tables validate individual GMNPS predictions.
 - CRA013939 processed or reconstructed tables prove causal mechanisms.
-
