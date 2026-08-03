@@ -108,3 +108,16 @@ def test_fit_health_index_scores_healthy_samples_higher(tmp_path):
     loaded = load_health_index(path)
     loaded_scores = score_health_index(loaded, clr)
     assert np.allclose(scores.to_numpy(), loaded_scores.to_numpy())
+
+
+def test_integer_feature_columns_round_trip_score():
+    clr = _toy_clr()
+    clr.columns = [101, 202, 303]
+    labels = pd.Series([1, 1, 1, 0, 0, 0], index=clr.index, name="health_label")
+
+    model = fit_health_index(clr, labels, HealthIndexConfig(c_value=10.0, max_iter=500, random_state=7))
+    scores = score_health_index(model, clr)
+
+    assert model.genus_names == ("101", "202", "303")
+    assert scores.index.equals(clr.index)
+    assert scores.between(0.0, 1.0).all()

@@ -51,3 +51,14 @@ Exact verification outputs:
 - `PYTHONPATH=code/src .venv/bin/python -m pytest code/src/tests/test_beta_i_health_index.py -q`: `6 passed in 0.52s`
 - `PYTHONPATH=code/src .venv/bin/python -m pytest code/src/tests/test_article_scoring.py -q`: `9 passed in 1.59s`
 - `git diff --check -- code/src/gmnps/beta_i/__init__.py code/src/gmnps/beta_i/health_index.py code/src/tests/test_beta_i_health_index.py`: passed (no output)
+
+## Third Review Fixes
+
+- Normalized CLR feature column names to strings during both health-index fitting and scoring, keeping model statistics, coefficients, and feature alignment consistent for non-string columns.
+- Added an integer-feature-column regression test covering fit, score, canonical string genus names, score index preservation, and probability bounds.
+
+Exact verification outputs:
+
+- `PYTHONPATH=code/src .venv/bin/python -m pytest code/src/tests/test_beta_i_health_index.py -q`: `7 passed in 0.74s`
+- `PYTHONPATH=code/src .venv/bin/python -m pytest code/src/tests/test_article_scoring.py -q`: `9 passed in 2.20s`
+- `git diff --check -- code/src/gmnps/beta_i/health_index.py code/src/tests/test_beta_i_health_index.py`: passed (no output)

@@ -63,13 +63,16 @@ def derive_binary_health_labels(metadata: pd.DataFrame) -> pd.Series:
 
 def _standardize_fit(clr: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
     x = clr.astype(float).copy()
+    x.columns = x.columns.astype(str)
     mean = x.mean(axis=0)
     scale = x.std(axis=0, ddof=0).replace(0.0, 1.0)
     return (x - mean) / scale, mean, scale
 
 
 def _standardize_apply(clr: pd.DataFrame, model: HealthIndexModel) -> pd.DataFrame:
-    x = clr.reindex(columns=model.genus_names).astype(float)
+    x = clr.astype(float).copy()
+    x.columns = x.columns.astype(str)
+    x = x.reindex(columns=model.genus_names)
     x = x.fillna(model.mean_)
     return (x - model.mean_) / model.scale_
 
