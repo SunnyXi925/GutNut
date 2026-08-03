@@ -1,0 +1,62 @@
+{
+  "method": "GMWI2-style health-index finite-difference beta_i",
+  "formula": "beta_i,k = (H(M_i + dose * P_k) - H(M_i)) / dose",
+  "n_samples": 15492,
+  "n_nutrients": 65,
+  "n_genera": 115,
+  "health_model_training_summary": {
+    "n_samples": 15350,
+    "n_healthy": 11717,
+    "n_nonhealthy": 3633,
+    "n_genera": 115,
+    "n_nonzero_coefficients": 114,
+    "train_auc": 0.8473103922229026
+  },
+  "health_label_diagnostics": {
+    "health_label_contradiction_policy": "Exclude CLR-overlapping sample IDs with contradictory healthy and nonhealthy metadata evidence before deriving binary health labels or fitting the health index; do not adjudicate them to either class.",
+    "n_clr_overlapping_metadata_rows": 15492,
+    "n_excluded_contradictory_sample_ids": 142,
+    "n_derived_labeled_samples": 15350,
+    "n_healthy": 11717,
+    "n_nonhealthy": 3633
+  },
+  "health_index_config": {
+    "c_value": 0.25,
+    "max_iter": 2000,
+    "random_state": 20260803,
+    "min_abs_coefficient": 1e-12
+  },
+  "nutrient_perturbation_config": {
+    "mac_channel_weight": 1.0,
+    "lipid_channel_weight": 1.0,
+    "other_channel_weight": 0.25,
+    "min_abs_bridge": 0.0,
+    "l2_norm": 1.0
+  },
+  "beta_estimator_config": {
+    "dose": 0.1,
+    "clip_abs_beta": 12.0,
+    "batch_size": 16
+  },
+  "health_model_manifest": {
+    "path": "health_index.joblib.manifest.json",
+    "sha256": "36a04cd2fa2e229e6d9444449172f4578b1a383ea99474db71a85c76adc76495"
+  },
+  "input_files": {
+    "M_clr": "data/project_data/predict_multi/L5_gmnps_pipeline_v2/M_clr.parquet",
+    "metadata": "data/project_data/predict_multi/L1_microbiome/cmd_processed/layer_a_master.parquet",
+    "B_nutrient_genus": "data/project_data/predict_multi/L7_nutrient_bridge/B_nutrient_genus.parquet",
+    "nutrient_index": "data/project_data/predict_multi/L8_inference_bundle_v2/nutrient_index.json"
+  },
+  "output_sha256": {
+    "W_personalized.parquet": "8123e6f280b4078da3799ee45b3d27c9c1e7b7e154ba167bb97af287cbabea1d",
+    "health_index.joblib": "0688e97a0bfb39aba5a0256f76a71f54b1e73e2c01d934f1eeca59e94bac6eae",
+    "health_index.joblib.manifest.json": "36a04cd2fa2e229e6d9444449172f4578b1a383ea99474db71a85c76adc76495",
+    "nutrient_perturbations.parquet": "c97ff6dfc2ed0a143772d0b02200d65a6ea2f522a255d317013ad2bedd42e1e2",
+    "sample_beta_diagnostics.csv": "8ce610ed7d8053446b9c3220beb6bbc6bde049a1865a4d89b128e62de2ea2d6e",
+    "nutrient_perturbation_summary.csv": "f4e3fab1b376635189a533c2f2bd94fb87930a8445fc4f38021385e934a4917f"
+  },
+  "git_commit": "a94ad10",
+  "python_version": "3.14.5",
+  "interpretation_boundary": "beta_i estimates health-index finite-difference response to nutrient-linked microbiome perturbations; it is not a causal nutrient effect."
+}
