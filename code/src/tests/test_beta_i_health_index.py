@@ -87,6 +87,21 @@ def test_default_config_fallback_keeps_signal_and_scores_healthy_higher(monkeypa
     assert score_health_index(model, clr).iloc[:3].mean() > score_health_index(model, clr).iloc[3:].mean()
 
 
+def test_numpy_fallback_fits_prevalence_for_degenerate_features(monkeypatch):
+    clr = pd.DataFrame(
+        {"constant_a": [3.0] * 6, "constant_b": [0.0] * 6},
+        index=[f"s{i}" for i in range(6)],
+    )
+    labels = pd.Series([1, 1, 1, 1, 1, 0], index=clr.index)
+    monkeypatch.setitem(sys.modules, "sklearn", None)
+
+    model = fit_health_index(clr, labels, HealthIndexConfig())
+    scores = score_health_index(model, clr)
+
+    assert np.isfinite(model.intercept)
+    assert np.allclose(scores.to_numpy(), 5.0 / 6.0, atol=0.02)
+
+
 def test_fit_health_index_scores_healthy_samples_higher(tmp_path):
     clr = _toy_clr()
     labels = pd.Series([1, 1, 1, 0, 0, 0], index=clr.index, name="health_label")

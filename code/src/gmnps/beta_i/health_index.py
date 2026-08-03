@@ -86,8 +86,10 @@ def _numpy_logistic_fit(x: np.ndarray, y: np.ndarray, config: HealthIndexConfig)
     weights = np.zeros(x.shape[1], dtype=float)
     intercept = 0.0
     penalty = 1.0 / (max(float(config.c_value), np.finfo(float).eps) * len(y))
-    # The logistic loss gradient is Lipschitz-bounded by ||X||_2^2 / (4n).
-    lipschitz = float(np.linalg.norm(x, ord=2) ** 2 / (4.0 * len(y)))
+    # Include the unregularized intercept in the logistic-loss bound. Without
+    # it, an all-constant feature matrix produces an unbounded step size.
+    design = np.column_stack((np.ones(len(y), dtype=float), x))
+    lipschitz = float(np.linalg.norm(design, ord=2) ** 2 / (4.0 * len(y)))
     learning_rate = 1.0 / max(lipschitz, 1e-12)
     for _ in range(config.max_iter):
         linear = np.clip(intercept + x @ weights, -40.0, 40.0)

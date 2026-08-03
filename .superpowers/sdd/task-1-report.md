@@ -62,3 +62,14 @@ Exact verification outputs:
 - `PYTHONPATH=code/src .venv/bin/python -m pytest code/src/tests/test_beta_i_health_index.py -q`: `7 passed in 0.74s`
 - `PYTHONPATH=code/src .venv/bin/python -m pytest code/src/tests/test_article_scoring.py -q`: `9 passed in 2.20s`
 - `git diff --check -- code/src/gmnps/beta_i/health_index.py code/src/tests/test_beta_i_health_index.py`: passed (no output)
+
+## Fourth Review Fixes
+
+- Fixed the NumPy fallback Lipschitz bound to use the augmented design matrix, including the unregularized intercept column. This keeps the learning rate finite for constant or zero-valued standardized features.
+- Added a forced-fallback regression test with two degenerate feature columns and imbalanced labels `[1, 1, 1, 1, 1, 0]`, verifying the fitted probability is approximately the observed healthy prevalence (`5/6`).
+
+Exact verification outputs:
+
+- `PYTHONPATH=code/src .venv/bin/python -m pytest code/src/tests/test_beta_i_health_index.py -q`: `8 passed in 0.62s`
+- `PYTHONPATH=code/src .venv/bin/python -m pytest code/src/tests/test_article_scoring.py -q`: `9 passed in 1.39s`
+- `git diff --check -- code/src/gmnps/beta_i/health_index.py code/src/tests/test_beta_i_health_index.py`: passed (no output)
