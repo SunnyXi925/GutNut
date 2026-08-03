@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -28,17 +29,17 @@ def test_build_beta_i_weights_script_writes_expected_bundle(tmp_path):
         path.mkdir(parents=True)
     pd.DataFrame(
         {
-            "Akkermansia": [2.0, 1.8, 1.5, -1.0, -1.2, -1.4],
-            "Faecalibacterium": [1.5, 1.2, 1.0, -1.1, -0.9, -1.3],
-            "Escherichia": [-1.2, -1.0, -0.8, 1.4, 1.6, 1.2],
+            "Akkermansia": [2.0, 1.8, 1.5, 1.6, -1.0, -1.2, -1.4],
+            "Faecalibacterium": [1.5, 1.2, 1.0, 1.1, -1.1, -0.9, -1.3],
+            "Escherichia": [-1.2, -1.0, -0.8, -0.9, 1.4, 1.6, 1.2],
         },
-        index=["s1", "s2", "s3", "s4", "s5", "s6"],
+        index=["s1", "s2", "s3", "s7", "s4", "s5", "s6"],
     ).to_parquet(l5 / "M_clr.parquet")
     pd.DataFrame(
         {
-            "sample_id": ["s1", "s2", "s3", "s4", "s5", "s6"],
-            "phenotype_label": ["Health", "Health", "Health", "IBD", "CRC", "T2D"],
-            "disease": ["healthy", "healthy", "healthy", "IBD", "CRC", "T2D"],
+            "sample_id": ["s1", "s1", "s2", "s3", "s7", "s4", "s5", "s6", "not_in_clr"],
+            "phenotype_label": ["Health", "IBD", "Health", "Health", "Health", "IBD", "CRC", "T2D", "Health"],
+            "disease": ["healthy", "IBD", "healthy", "healthy", "healthy", "IBD", "CRC", "T2D", "healthy"],
         }
     ).to_parquet(l1 / "layer_a_master.parquet")
     pd.DataFrame(
@@ -54,12 +55,58 @@ def test_build_beta_i_weights_script_writes_expected_bundle(tmp_path):
     run(Args(root, out_dir))
 
     weights = pd.read_parquet(out_dir / "W_personalized.parquet")
-    assert weights.shape == (6, 2)
+    assert weights.shape == (7, 2)
     assert list(weights.columns) == ["Fiber, total dietary (g)", "Total Fat (g)"]
     assert (out_dir / "health_index.joblib").exists()
     assert (out_dir / "nutrient_perturbations.parquet").exists()
     assert (out_dir / "sample_beta_diagnostics.csv").exists()
+    assert (out_dir / "nutrient_perturbation_summary.csv").exists()
     manifest = json.loads((out_dir / "beta_i_manifest.json").read_text())
     assert manifest["method"] == "GMWI2-style health-index finite-difference beta_i"
-    assert manifest["n_samples"] == 6
+    assert manifest["n_samples"] == 7
     assert manifest["n_nutrients"] == 2
+    assert manifest["health_label_diagnostics"] == {
+        "health_label_contradiction_policy": (
+            "Exclude CLR-overlapping sample IDs with contradictory healthy and nonhealthy "
+            "metadata evidence before deriving binary health labels or fitting the health index; "
+            "do not adjudicate them to either class."
+        ),
+        "n_clr_overlapping_metadata_rows": 8,
+        "n_excluded_contradictory_sample_ids": 1,
+        "n_derived_labeled_samples": 6,
+        "n_healthy": 3,
+        "n_nonhealthy": 3,
+    }
+    assert manifest["health_index_config"] == {
+        "c_value": 10.0,
+        "max_iter": 500,
+        "random_state": 11,
+        "min_abs_coefficient": 1e-12,
+    }
+    assert manifest["nutrient_perturbation_config"] == {
+        "mac_channel_weight": 1.0,
+        "lipid_channel_weight": 1.0,
+        "other_channel_weight": 0.25,
+        "min_abs_bridge": 0.0,
+        "l2_norm": 1.0,
+    }
+    assert manifest["beta_estimator_config"] == {
+        "dose": 0.1,
+        "clip_abs_beta": 12.0,
+        "batch_size": 2,
+    }
+    assert manifest["health_model_manifest"] == {
+        "path": "health_index.joblib.manifest.json",
+        "sha256": manifest["output_sha256"]["health_index.joblib.manifest.json"],
+    }
+    assert set(manifest["output_sha256"]) == {
+        "W_personalized.parquet",
+        "health_index.joblib",
+        "health_index.joblib.manifest.json",
+        "nutrient_perturbations.parquet",
+        "sample_beta_diagnostics.csv",
+        "nutrient_perturbation_summary.csv",
+    }
+    for filename, digest in manifest["output_sha256"].items():
+        assert hashlib.sha256((out_dir / filename).read_bytes()).hexdigest() == digest
+    assert "not a causal nutrient effect" in manifest["interpretation_boundary"]

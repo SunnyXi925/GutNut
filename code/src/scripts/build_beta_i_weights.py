@@ -6,6 +6,7 @@ import hashlib
 import json
 import subprocess
 import sys
+from dataclasses import asdict
 from pathlib import Path
 
 import pandas as pd
@@ -23,6 +24,13 @@ from gmnps.beta_i.nutrient_perturbation import (
 )
 
 
+HEALTH_LABEL_CONTRADICTION_POLICY = (
+    "Exclude CLR-overlapping sample IDs with contradictory healthy and nonhealthy "
+    "metadata evidence before deriving binary health labels or fitting the health index; "
+    "do not adjudicate them to either class."
+)
+
+
 def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -33,6 +41,42 @@ def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
 
 def write_json(path: Path, payload: dict[str, object]) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def prepare_health_labels(metadata: pd.DataFrame, clr_index: pd.Index) -> tuple[pd.Series, dict[str, object]]:
+    """Audit CLR-overlapping metadata and exclude contradictory sample IDs."""
+    required = {"sample_id", "phenotype_label", "disease"}
+    missing = required.difference(metadata.columns)
+    if missing:
+        raise ValueError(f"metadata missing columns: {sorted(missing)}")
+
+    frame = metadata.loc[:, ["sample_id", "phenotype_label", "disease"]].copy()
+    sample_ids = frame["sample_id"].where(frame["sample_id"].notna(), "").astype(str).str.strip()
+    clr_sample_ids = pd.Index(clr_index.astype(str))
+    overlapping = frame.loc[sample_ids.isin(clr_sample_ids)].copy()
+    overlapping["sample_id"] = sample_ids.loc[overlapping.index]
+
+    excluded_sample_ids: list[str] = []
+    for sample_id, group in overlapping.groupby("sample_id", sort=False):
+        try:
+            derive_binary_health_labels(group)
+        except ValueError as error:
+            if "contradictory health metadata" not in str(error) and "conflicting health labels" not in str(error):
+                raise
+            excluded_sample_ids.append(str(sample_id))
+
+    labels = derive_binary_health_labels(
+        overlapping.loc[~overlapping["sample_id"].isin(excluded_sample_ids)]
+    )
+    diagnostics: dict[str, object] = {
+        "health_label_contradiction_policy": HEALTH_LABEL_CONTRADICTION_POLICY,
+        "n_clr_overlapping_metadata_rows": int(len(overlapping)),
+        "n_excluded_contradictory_sample_ids": int(len(excluded_sample_ids)),
+        "n_derived_labeled_samples": int(len(labels)),
+        "n_healthy": int(labels.sum()),
+        "n_nonhealthy": int((1 - labels).sum()),
+    }
+    return labels, diagnostics
 
 
 def run(args: argparse.Namespace) -> None:
@@ -47,20 +91,28 @@ def run(args: argparse.Namespace) -> None:
     clr = pd.read_parquet(m_clr_path)
     clr.index = clr.index.astype(str)
     metadata = pd.read_parquet(metadata_path, columns=["sample_id", "phenotype_label", "disease"])
-    labels = derive_binary_health_labels(metadata)
+    labels, label_diagnostics = prepare_health_labels(metadata, clr.index)
     health_config = HealthIndexConfig(c_value=args.c_value, max_iter=args.max_iter, random_state=args.random_state)
     model = fit_health_index(clr, labels, health_config)
-    save_health_index(model, out_dir / "health_index.joblib")
+    health_model_path = out_dir / "health_index.joblib"
+    save_health_index(model, health_model_path)
+    health_model_manifest_path = Path(f"{health_model_path}.manifest.json")
 
     nutrient_order = json.loads(nutrient_index_path.read_text(encoding="utf-8"))
     bridge = pd.read_parquet(bridge_path).reindex(index=nutrient_order).fillna(0.0)
-    perturb = build_nutrient_perturbations(bridge, model, NutrientPerturbationConfig())
+    perturbation_config = NutrientPerturbationConfig()
+    perturb = build_nutrient_perturbations(bridge, model, perturbation_config)
     perturb = perturb.reindex(index=nutrient_order).fillna(0.0)
+    beta_config = BetaEstimatorConfig(
+        dose=args.dose,
+        clip_abs_beta=args.clip_abs_beta,
+        batch_size=args.batch_size,
+    )
     beta, diagnostics = compute_beta_matrix(
         clr,
         perturb,
         model,
-        BetaEstimatorConfig(dose=args.dose, clip_abs_beta=args.clip_abs_beta, batch_size=args.batch_size),
+        beta_config,
     )
     beta = beta.reindex(columns=nutrient_order)
     beta.to_parquet(out_dir / "W_personalized.parquet")
@@ -77,7 +129,8 @@ def run(args: argparse.Namespace) -> None:
     ).stdout.strip()
     files = [
         out_dir / "W_personalized.parquet",
-        out_dir / "health_index.joblib",
+        health_model_path,
+        health_model_manifest_path,
         out_dir / "nutrient_perturbations.parquet",
         out_dir / "sample_beta_diagnostics.csv",
         out_dir / "nutrient_perturbation_summary.csv",
@@ -89,8 +142,14 @@ def run(args: argparse.Namespace) -> None:
         "n_nutrients": int(beta.shape[1]),
         "n_genera": int(clr.shape[1]),
         "health_model_training_summary": model.training_summary,
-        "dose": float(args.dose),
-        "clip_abs_beta": float(args.clip_abs_beta),
+        "health_label_diagnostics": label_diagnostics,
+        "health_index_config": asdict(health_config),
+        "nutrient_perturbation_config": asdict(perturbation_config),
+        "beta_estimator_config": asdict(beta_config),
+        "health_model_manifest": {
+            "path": health_model_manifest_path.name,
+            "sha256": sha256_file(health_model_manifest_path),
+        },
         "input_files": {
             "M_clr": str(m_clr_path.relative_to(root)),
             "metadata": str(metadata_path.relative_to(root)),
