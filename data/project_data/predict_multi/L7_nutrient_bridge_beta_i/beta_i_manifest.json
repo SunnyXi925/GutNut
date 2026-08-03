@@ -9,27 +9,37 @@
     "n_healthy": 11717,
     "n_nonhealthy": 3633,
     "n_genera": 115,
-    "n_nonzero_coefficients": 114,
-    "train_auc": 0.8473103922229026
+    "n_nonzero_coefficients": 36,
+    "train_auc": 0.8195456661540969,
+    "unthresholded_train_auc": 0.8195456661540969,
+    "training_backend": "numpy",
+    "training_solver": "proximal_gradient",
+    "converged": true,
+    "n_iterations": 1791
   },
   "health_label_diagnostics": {
-    "health_label_contradiction_policy": "Exclude CLR-overlapping sample IDs with contradictory healthy and nonhealthy metadata evidence before deriving binary health labels or fitting the health index; do not adjudicate them to either class.",
+    "health_label_contradiction_policy": "Exclude CLR-overlapping sample IDs with contradictory healthy and nonhealthy metadata evidence before deriving binary health labels or fitting the health index; do not adjudicate them to either class. Excluded IDs are omitted only from health-index training labels and remain in the beta_i scoring output.",
     "n_clr_overlapping_metadata_rows": 15492,
     "n_excluded_contradictory_sample_ids": 142,
     "n_derived_labeled_samples": 15350,
     "n_healthy": 11717,
-    "n_nonhealthy": 3633
+    "n_nonhealthy": 3633,
+    "exclusion_scope": "Excluded sample IDs are omitted from health-index training labels but remain in W_personalized.parquet beta_i scoring output."
   },
   "health_index_config": {
-    "c_value": 0.25,
+    "c_value": 0.005,
     "max_iter": 2000,
     "random_state": 20260803,
-    "min_abs_coefficient": 1e-12
+    "min_abs_coefficient": 1e-12,
+    "training_backend": "numpy"
   },
   "nutrient_perturbation_config": {
     "mac_channel_weight": 1.0,
     "lipid_channel_weight": 1.0,
     "other_channel_weight": 0.25,
+    "mac_evidence_direction": 1.0,
+    "lipid_evidence_direction": -1.0,
+    "other_evidence_direction": 1.0,
     "min_abs_bridge": 0.0,
     "l2_norm": 1.0
   },
@@ -40,7 +50,15 @@
   },
   "health_model_manifest": {
     "path": "health_index.joblib.manifest.json",
-    "sha256": "36a04cd2fa2e229e6d9444449172f4578b1a383ea99474db71a85c76adc76495"
+    "sha256": "a3bf0c514ba0a70dc5974f43d1db935294f217747ff83e7b87e2b00ed3660013"
+  },
+  "health_training_backend": "numpy",
+  "health_training_solver": "proximal_gradient",
+  "health_model_serialization_backend": "pickle",
+  "excluded_health_label_samples": {
+    "path": "excluded_health_label_samples.csv",
+    "sha256": "cda754979584a23edf7fb26cea7338e90b77afc25590ca9c4590f13300a0b306",
+    "scope": "Omitted from health-index training labels only; retained in beta_i scoring output."
   },
   "input_files": {
     "M_clr": "data/project_data/predict_multi/L5_gmnps_pipeline_v2/M_clr.parquet",
@@ -48,15 +66,30 @@
     "B_nutrient_genus": "data/project_data/predict_multi/L7_nutrient_bridge/B_nutrient_genus.parquet",
     "nutrient_index": "data/project_data/predict_multi/L8_inference_bundle_v2/nutrient_index.json"
   },
-  "output_sha256": {
-    "W_personalized.parquet": "8123e6f280b4078da3799ee45b3d27c9c1e7b7e154ba167bb97af287cbabea1d",
-    "health_index.joblib": "0688e97a0bfb39aba5a0256f76a71f54b1e73e2c01d934f1eeca59e94bac6eae",
-    "health_index.joblib.manifest.json": "36a04cd2fa2e229e6d9444449172f4578b1a383ea99474db71a85c76adc76495",
-    "nutrient_perturbations.parquet": "c97ff6dfc2ed0a143772d0b02200d65a6ea2f522a255d317013ad2bedd42e1e2",
-    "sample_beta_diagnostics.csv": "8ce610ed7d8053446b9c3220beb6bbc6bde049a1865a4d89b128e62de2ea2d6e",
-    "nutrient_perturbation_summary.csv": "f4e3fab1b376635189a533c2f2bd94fb87930a8445fc4f38021385e934a4917f"
+  "input_sha256": {
+    "M_clr": "e949f9ab3510d8b1dfe6afeeb083d6533f0feb79b5ad3b0b034919b8632628ca",
+    "metadata": "46d66a76e1c13ee03af3c86f22d5fd9612b5f2bda3f771e35e8c60186063e550",
+    "B_nutrient_genus": "766dc7054551b66e88eb95c0905e11af166eba0f0bc69a77c03470539670de61",
+    "nutrient_index": "821bcd82cb352e6797b23f8c276d5055f5bd5f88253494e65a84e660927885af"
   },
-  "git_commit": "a94ad10",
+  "output_sha256": {
+    "W_personalized.parquet": "17f4834c49a8c9cefeabfdf2158c9130bf33aa276bf4e0f406f7762f487b2a6d",
+    "health_index.joblib": "666538e697889b8e19459a6ab1d4bd7757a8e36b966510fd7696efbdb90e6444",
+    "health_index.joblib.manifest.json": "a3bf0c514ba0a70dc5974f43d1db935294f217747ff83e7b87e2b00ed3660013",
+    "nutrient_perturbations.parquet": "d3ac61927e7627d134537e9938aeb0ef056469721d6ddcc7f2ab5f4fda0c87f3",
+    "sample_beta_diagnostics.csv": "a780671476a7be241c4075a485c4bfdd5a67b15d00b1da335dd7ad2c303ee623",
+    "nutrient_perturbation_summary.csv": "e871142720dce15b2eaf7cfcd7be54e57f196030964762e8f5e019bcb945c697",
+    "excluded_health_label_samples.csv": "cda754979584a23edf7fb26cea7338e90b77afc25590ca9c4590f13300a0b306"
+  },
+  "git_commit": "66aa93c",
   "python_version": "3.14.5",
-  "interpretation_boundary": "beta_i estimates health-index finite-difference response to nutrient-linked microbiome perturbations; it is not a causal nutrient effect."
+  "package_versions": {
+    "python": "3.14.5",
+    "numpy": "2.5.1",
+    "pandas": "3.0.5",
+    "pyarrow": "25.0.0",
+    "scikit-learn": null,
+    "joblib": null
+  },
+  "interpretation_boundary": "beta_i is an evidence-oriented calibration direction measuring health-index finite-difference response to nutrient-linked microbiome perturbations; it is not a causal nutrient effect."
 }

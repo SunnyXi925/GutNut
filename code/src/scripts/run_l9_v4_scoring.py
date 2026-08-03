@@ -384,7 +384,10 @@ def run(args: argparse.Namespace) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run L9 expert-revised v4 GMNPS matrix scoring")
     root = Path(__file__).resolve().parents[3]
-    parser.add_argument("--weights", default=str(root / "data/project_data/predict_multi/L7_nutrient_bridge/W_personalized.parquet"))
+    parser.add_argument(
+        "--weights",
+        default=str(root / "data/project_data/predict_multi/L7_nutrient_bridge_beta_i/W_personalized.parquet"),
+    )
     parser.add_argument("--nutrients", default=str(root / "data/project_data/predict_multi/L6_layer_c_fndds/processed/N_food_nutrient_imputed.parquet"))
     parser.add_argument("--fcs-scores", default=str(root / "data/project_data/predict_multi/L9_food_compass/food_compass_scores.csv"))
     parser.add_argument("--v3-summary", default=str(root / "data/project_data/predict_multi/L9_food_compass/S_food_summary_v3.csv"))

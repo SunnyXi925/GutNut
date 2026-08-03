@@ -44,6 +44,15 @@ To extract the Food Compass 2.0 Table S5 baseline prior from the uploaded
 supplementary PDF text, see `docs/fcs2_table_s5_extraction.md`. Raw PDFs,
 scratch extraction files and generated outputs stay outside Git.
 
+### Versioned beta_i method artifacts
+
+As a narrow reproducibility exception, the compact
+`data/project_data/predict_multi/L7_nutrient_bridge_beta_i` bundle and
+`outputs/provenance_audit` tables are intentionally versioned as reviewable
+method artifacts. The beta_i implementation remains reproducible from the
+documented source inputs; larger generated datasets and routine outputs remain
+outside Git.
+
 For retrospective/public data scoring, provide:
 
 - `weights.csv`: `individual_id` plus nutrient beta columns.

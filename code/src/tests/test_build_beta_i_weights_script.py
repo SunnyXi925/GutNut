@@ -4,7 +4,9 @@ from pathlib import Path
 
 import pandas as pd
 
+from scripts.build_beta_i_weights import build_parser as build_beta_i_parser
 from scripts.build_beta_i_weights import run
+from scripts.run_l9_v4_scoring import build_parser as build_scoring_parser
 
 
 class Args:
@@ -14,6 +16,8 @@ class Args:
         self.c_value = 10.0
         self.max_iter = 500
         self.random_state = 11
+        self.health_backend = "numpy"
+        self.serialization_backend = "pickle"
         self.dose = 0.1
         self.clip_abs_beta = 12.0
         self.batch_size = 2
@@ -61,6 +65,10 @@ def test_build_beta_i_weights_script_writes_expected_bundle(tmp_path):
     assert (out_dir / "nutrient_perturbations.parquet").exists()
     assert (out_dir / "sample_beta_diagnostics.csv").exists()
     assert (out_dir / "nutrient_perturbation_summary.csv").exists()
+    exclusion_audit = pd.read_csv(out_dir / "excluded_health_label_samples.csv")
+    assert exclusion_audit.to_dict("records") == [
+        {"sample_id": "s1", "reason": "conflicting_duplicate_health_labels"}
+    ]
     manifest = json.loads((out_dir / "beta_i_manifest.json").read_text())
     assert manifest["method"] == "GMWI2-style health-index finite-difference beta_i"
     assert manifest["n_samples"] == 7
@@ -69,24 +77,33 @@ def test_build_beta_i_weights_script_writes_expected_bundle(tmp_path):
         "health_label_contradiction_policy": (
             "Exclude CLR-overlapping sample IDs with contradictory healthy and nonhealthy "
             "metadata evidence before deriving binary health labels or fitting the health index; "
-            "do not adjudicate them to either class."
+            "do not adjudicate them to either class. Excluded IDs are omitted only from health-index "
+            "training labels and remain in the beta_i scoring output."
         ),
         "n_clr_overlapping_metadata_rows": 8,
         "n_excluded_contradictory_sample_ids": 1,
         "n_derived_labeled_samples": 6,
         "n_healthy": 3,
         "n_nonhealthy": 3,
+        "exclusion_scope": (
+            "Excluded sample IDs are omitted from health-index training labels but remain "
+            "in W_personalized.parquet beta_i scoring output."
+        ),
     }
     assert manifest["health_index_config"] == {
         "c_value": 10.0,
         "max_iter": 500,
         "random_state": 11,
         "min_abs_coefficient": 1e-12,
+        "training_backend": "numpy",
     }
     assert manifest["nutrient_perturbation_config"] == {
         "mac_channel_weight": 1.0,
         "lipid_channel_weight": 1.0,
         "other_channel_weight": 0.25,
+        "mac_evidence_direction": 1.0,
+        "lipid_evidence_direction": -1.0,
+        "other_evidence_direction": 1.0,
         "min_abs_bridge": 0.0,
         "l2_norm": 1.0,
     }
@@ -99,6 +116,28 @@ def test_build_beta_i_weights_script_writes_expected_bundle(tmp_path):
         "path": "health_index.joblib.manifest.json",
         "sha256": manifest["output_sha256"]["health_index.joblib.manifest.json"],
     }
+    assert manifest["health_training_backend"] == "numpy"
+    assert manifest["health_training_solver"] == "proximal_gradient"
+    assert manifest["health_model_serialization_backend"] == "pickle"
+    assert manifest["excluded_health_label_samples"]["sha256"] == manifest["output_sha256"][
+        "excluded_health_label_samples.csv"
+    ]
+    assert set(manifest["input_sha256"]) == {
+        "M_clr",
+        "metadata",
+        "B_nutrient_genus",
+        "nutrient_index",
+    }
+    for key, relative_path in manifest["input_files"].items():
+        assert hashlib.sha256((root / relative_path).read_bytes()).hexdigest() == manifest["input_sha256"][key]
+    assert set(manifest["package_versions"]) == {
+        "python",
+        "numpy",
+        "pandas",
+        "pyarrow",
+        "scikit-learn",
+        "joblib",
+    }
     assert set(manifest["output_sha256"]) == {
         "W_personalized.parquet",
         "health_index.joblib",
@@ -106,7 +145,20 @@ def test_build_beta_i_weights_script_writes_expected_bundle(tmp_path):
         "nutrient_perturbations.parquet",
         "sample_beta_diagnostics.csv",
         "nutrient_perturbation_summary.csv",
+        "excluded_health_label_samples.csv",
     }
     for filename, digest in manifest["output_sha256"].items():
         assert hashlib.sha256((out_dir / filename).read_bytes()).hexdigest() == digest
     assert "not a causal nutrient effect" in manifest["interpretation_boundary"]
+
+
+def test_production_build_and_scoring_defaults_select_sparse_beta_i_bundle():
+    beta_args = build_beta_i_parser().parse_args([])
+    scoring_args = build_scoring_parser().parse_args([])
+
+    assert beta_args.c_value == 0.005
+    assert beta_args.health_backend == "numpy"
+    assert beta_args.serialization_backend == "pickle"
+    assert scoring_args.weights.endswith(
+        "data/project_data/predict_multi/L7_nutrient_bridge_beta_i/W_personalized.parquet"
+    )

@@ -8,7 +8,7 @@ For individual `i` and nutrient `k`, `beta_i,k` is the finite-difference change 
 beta_i,k = (H(M_i + dose * P_k) - H(M_i)) / dose
 ```
 
-`M_i` is the individual's CLR-transformed genus vector. `H` is a GMWI2-style sparse gut microbiome health index trained to distinguish cMD healthy versus non-healthy samples. `P_k` is the nutrient-to-genus perturbation vector for nutrient `k`, derived from the L7 nutrient-genus bridge and constrained by the expert-reviewed MAC/LIPID channel design.
+`M_i` is the individual's CLR-transformed genus vector. `H` is a GMWI2-style sparse gut microbiome health index trained to distinguish cMD healthy versus non-healthy samples. `P_k` is the nutrient-to-genus perturbation vector for nutrient `k`, derived from the L7 nutrient-genus bridge and constrained by the expert-reviewed MAC/LIPID channel design. Its direction combines bridge evidence, the fitted health-coefficient sign, and nutrient-level evidence direction (`+1` for MAC, `-1` for LIPID, and a configurable conservative direction for OTHER); the vector is normalized before its channel weight is applied.
 
 ## Source Inspirations
 

@@ -1,18 +1,27 @@
 {
   "config": {
-    "c_value": 0.25,
+    "c_value": 0.005,
     "max_iter": 2000,
     "min_abs_coefficient": 1e-12,
-    "random_state": 20260803
+    "random_state": 20260803,
+    "training_backend": "numpy"
   },
   "method": "l1_logistic_gmwi2_style",
-  "model_sha256": "0688e97a0bfb39aba5a0256f76a71f54b1e73e2c01d934f1eeca59e94bac6eae",
+  "model_sha256": "666538e697889b8e19459a6ab1d4bd7757a8e36b966510fd7696efbdb90e6444",
+  "serialization_backend": "pickle",
+  "training_backend": "numpy",
+  "training_solver": "proximal_gradient",
   "training_summary": {
+    "converged": true,
     "n_genera": 115,
     "n_healthy": 11717,
+    "n_iterations": 1791,
     "n_nonhealthy": 3633,
-    "n_nonzero_coefficients": 114,
+    "n_nonzero_coefficients": 36,
     "n_samples": 15350,
-    "train_auc": 0.8473103922229026
+    "train_auc": 0.8195456661540969,
+    "training_backend": "numpy",
+    "training_solver": "proximal_gradient",
+    "unthresholded_train_auc": 0.8195456661540969
   }
 }

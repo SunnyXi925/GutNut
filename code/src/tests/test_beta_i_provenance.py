@@ -39,6 +39,8 @@ def test_provenance_prefers_reproducible_beta_i_bundle(tmp_path):
     provenance = build_input_data_provenance(root, out)
     row = provenance.set_index("dataset_id").loc["W_personalized_beta_i"]
     assert row["source"] == "GMWI2-style health-index finite-difference beta_i"
+    assert "finite-difference change" in row["notes"]
+    assert "improvement" not in row["notes"]
 
 
 def test_summary_report_names_beta_i_method_and_boundary(tmp_path):

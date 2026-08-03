@@ -13,6 +13,7 @@ from gmnps.beta_i.health_index import (
     save_health_index,
     score_health_index,
     _numpy_logistic_fit,
+    _roc_auc,
 )
 
 
@@ -96,6 +97,10 @@ def test_default_config_fallback_keeps_signal_and_scores_healthy_higher(monkeypa
     monkeypatch.setitem(sys.modules, "sklearn", None)
     model = fit_health_index(clr, pd.Series(labels, index=clr.index), HealthIndexConfig())
     assert model.training_summary["n_nonzero_coefficients"] > 0
+    assert model.training_summary["training_backend"] == "numpy"
+    assert model.training_summary["training_solver"] == "proximal_gradient"
+    assert model.training_summary["n_iterations"] > 0
+    assert isinstance(model.training_summary["converged"], bool)
     assert score_health_index(model, clr).iloc[:3].mean() > score_health_index(model, clr).iloc[3:].mean()
 
 
@@ -111,6 +116,9 @@ def test_numpy_fallback_fits_prevalence_for_degenerate_features(monkeypatch):
     scores = score_health_index(model, clr)
 
     assert np.isfinite(model.intercept)
+    assert model.training_summary["train_auc"] == pytest.approx(
+        _roc_auc(labels.to_numpy(), scores.to_numpy())
+    )
     assert np.allclose(scores.to_numpy(), 5.0 / 6.0, atol=0.02)
 
 
@@ -131,6 +139,9 @@ def test_fit_health_index_scores_healthy_samples_higher(tmp_path):
     assert manifest["method"] == "l1_logistic_gmwi2_style"
     assert manifest["config"]["c_value"] == 10.0
     assert manifest["training_summary"] == model.training_summary
+    assert manifest["training_backend"] == "numpy"
+    assert manifest["training_solver"] == "proximal_gradient"
+    assert manifest["serialization_backend"] == "pickle"
     assert manifest["model_sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
     loaded = load_health_index(path)
     loaded_scores = score_health_index(loaded, clr)

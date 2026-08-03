@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.metadata
 import json
 import subprocess
 import sys
@@ -27,7 +28,8 @@ from gmnps.beta_i.nutrient_perturbation import (
 HEALTH_LABEL_CONTRADICTION_POLICY = (
     "Exclude CLR-overlapping sample IDs with contradictory healthy and nonhealthy "
     "metadata evidence before deriving binary health labels or fitting the health index; "
-    "do not adjudicate them to either class."
+    "do not adjudicate them to either class. Excluded IDs are omitted only from health-index "
+    "training labels and remain in the beta_i scoring output."
 )
 
 
@@ -43,7 +45,20 @@ def write_json(path: Path, payload: dict[str, object]) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def prepare_health_labels(metadata: pd.DataFrame, clr_index: pd.Index) -> tuple[pd.Series, dict[str, object]]:
+def package_versions() -> dict[str, str | None]:
+    versions: dict[str, str | None] = {"python": sys.version.split()[0]}
+    for package in ("numpy", "pandas", "pyarrow", "scikit-learn", "joblib"):
+        try:
+            versions[package] = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            versions[package] = None
+    return versions
+
+
+def prepare_health_labels(
+    metadata: pd.DataFrame,
+    clr_index: pd.Index,
+) -> tuple[pd.Series, dict[str, object], pd.DataFrame]:
     """Audit CLR-overlapping metadata and exclude contradictory sample IDs."""
     required = {"sample_id", "phenotype_label", "disease"}
     missing = required.difference(metadata.columns)
@@ -56,14 +71,22 @@ def prepare_health_labels(metadata: pd.DataFrame, clr_index: pd.Index) -> tuple[
     overlapping = frame.loc[sample_ids.isin(clr_sample_ids)].copy()
     overlapping["sample_id"] = sample_ids.loc[overlapping.index]
 
-    excluded_sample_ids: list[str] = []
+    exclusions: list[dict[str, str]] = []
     for sample_id, group in overlapping.groupby("sample_id", sort=False):
         try:
             derive_binary_health_labels(group)
         except ValueError as error:
             if "contradictory health metadata" not in str(error) and "conflicting health labels" not in str(error):
                 raise
-            excluded_sample_ids.append(str(sample_id))
+            reason = (
+                "contradictory_health_metadata"
+                if "contradictory health metadata" in str(error)
+                else "conflicting_duplicate_health_labels"
+            )
+            exclusions.append({"sample_id": str(sample_id), "reason": reason})
+
+    exclusion_audit = pd.DataFrame(exclusions, columns=["sample_id", "reason"])
+    excluded_sample_ids = exclusion_audit["sample_id"]
 
     labels = derive_binary_health_labels(
         overlapping.loc[~overlapping["sample_id"].isin(excluded_sample_ids)]
@@ -75,8 +98,12 @@ def prepare_health_labels(metadata: pd.DataFrame, clr_index: pd.Index) -> tuple[
         "n_derived_labeled_samples": int(len(labels)),
         "n_healthy": int(labels.sum()),
         "n_nonhealthy": int((1 - labels).sum()),
+        "exclusion_scope": (
+            "Excluded sample IDs are omitted from health-index training labels but remain "
+            "in W_personalized.parquet beta_i scoring output."
+        ),
     }
-    return labels, diagnostics
+    return labels, diagnostics, exclusion_audit
 
 
 def run(args: argparse.Namespace) -> None:
@@ -91,11 +118,16 @@ def run(args: argparse.Namespace) -> None:
     clr = pd.read_parquet(m_clr_path)
     clr.index = clr.index.astype(str)
     metadata = pd.read_parquet(metadata_path, columns=["sample_id", "phenotype_label", "disease"])
-    labels, label_diagnostics = prepare_health_labels(metadata, clr.index)
-    health_config = HealthIndexConfig(c_value=args.c_value, max_iter=args.max_iter, random_state=args.random_state)
+    labels, label_diagnostics, exclusion_audit = prepare_health_labels(metadata, clr.index)
+    health_config = HealthIndexConfig(
+        c_value=args.c_value,
+        max_iter=args.max_iter,
+        random_state=args.random_state,
+        training_backend=args.health_backend,
+    )
     model = fit_health_index(clr, labels, health_config)
     health_model_path = out_dir / "health_index.joblib"
-    save_health_index(model, health_model_path)
+    save_health_index(model, health_model_path, serialization_backend=args.serialization_backend)
     health_model_manifest_path = Path(f"{health_model_path}.manifest.json")
 
     nutrient_order = json.loads(nutrient_index_path.read_text(encoding="utf-8"))
@@ -118,7 +150,11 @@ def run(args: argparse.Namespace) -> None:
     beta.to_parquet(out_dir / "W_personalized.parquet")
     perturb.to_parquet(out_dir / "nutrient_perturbations.parquet")
     diagnostics.to_csv(out_dir / "sample_beta_diagnostics.csv", index=False)
-    summarize_perturbations(perturb).to_csv(out_dir / "nutrient_perturbation_summary.csv", index=False)
+    summarize_perturbations(perturb, perturbation_config).to_csv(
+        out_dir / "nutrient_perturbation_summary.csv", index=False
+    )
+    exclusion_audit_path = out_dir / "excluded_health_label_samples.csv"
+    exclusion_audit.to_csv(exclusion_audit_path, index=False)
 
     git_commit = subprocess.run(
         ["git", "rev-parse", "--short", "HEAD"],
@@ -134,6 +170,7 @@ def run(args: argparse.Namespace) -> None:
         out_dir / "nutrient_perturbations.parquet",
         out_dir / "sample_beta_diagnostics.csv",
         out_dir / "nutrient_perturbation_summary.csv",
+        exclusion_audit_path,
     ]
     manifest = {
         "method": "GMWI2-style health-index finite-difference beta_i",
@@ -150,16 +187,33 @@ def run(args: argparse.Namespace) -> None:
             "path": health_model_manifest_path.name,
             "sha256": sha256_file(health_model_manifest_path),
         },
+        "health_training_backend": model.training_summary["training_backend"],
+        "health_training_solver": model.training_summary["training_solver"],
+        "health_model_serialization_backend": args.serialization_backend,
+        "excluded_health_label_samples": {
+            "path": exclusion_audit_path.name,
+            "sha256": sha256_file(exclusion_audit_path),
+            "scope": (
+                "Omitted from health-index training labels only; retained in beta_i scoring output."
+            ),
+        },
         "input_files": {
             "M_clr": str(m_clr_path.relative_to(root)),
             "metadata": str(metadata_path.relative_to(root)),
             "B_nutrient_genus": str(bridge_path.relative_to(root)),
             "nutrient_index": str(nutrient_index_path.relative_to(root)),
         },
+        "input_sha256": {
+            "M_clr": sha256_file(m_clr_path),
+            "metadata": sha256_file(metadata_path),
+            "B_nutrient_genus": sha256_file(bridge_path),
+            "nutrient_index": sha256_file(nutrient_index_path),
+        },
         "output_sha256": {path.name: sha256_file(path) for path in files},
         "git_commit": git_commit,
         "python_version": sys.version.split()[0],
-        "interpretation_boundary": "beta_i estimates health-index finite-difference response to nutrient-linked microbiome perturbations; it is not a causal nutrient effect.",
+        "package_versions": package_versions(),
+        "interpretation_boundary": "beta_i is an evidence-oriented calibration direction measuring health-index finite-difference response to nutrient-linked microbiome perturbations; it is not a causal nutrient effect.",
     }
     write_json(out_dir / "beta_i_manifest.json", manifest)
 
@@ -169,9 +223,11 @@ def build_parser() -> argparse.ArgumentParser:
     root = Path(__file__).resolve().parents[3]
     parser.add_argument("--root", default=str(root))
     parser.add_argument("--output-dir", default=str(root / "data/project_data/predict_multi/L7_nutrient_bridge_beta_i"))
-    parser.add_argument("--c-value", type=float, default=0.25)
+    parser.add_argument("--c-value", type=float, default=0.005)
     parser.add_argument("--max-iter", type=int, default=2000)
     parser.add_argument("--random-state", type=int, default=20260803)
+    parser.add_argument("--health-backend", choices=("numpy", "sklearn"), default="numpy")
+    parser.add_argument("--serialization-backend", choices=("pickle", "joblib"), default="pickle")
     parser.add_argument("--dose", type=float, default=0.1)
     parser.add_argument("--clip-abs-beta", type=float, default=12.0)
     parser.add_argument("--batch-size", type=int, default=16)

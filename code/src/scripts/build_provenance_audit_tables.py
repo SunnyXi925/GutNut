@@ -120,7 +120,7 @@ def build_input_data_provenance(root: Path, out_dir: Path) -> pd.DataFrame:
             root / "data/project_data/predict_multi/L7_nutrient_bridge_beta_i/W_personalized.parquet",
             "GMWI2-style health-index finite-difference beta_i",
             "local reproducible beta_i output",
-            "beta_i,k = finite-difference improvement in fitted gut microbiome health index after nutrient-linked perturbation.",
+            "beta_i,k = finite-difference change in fitted gut microbiome health index after nutrient-linked perturbation.",
         ),
     ]
     result = pd.DataFrame(rows)
