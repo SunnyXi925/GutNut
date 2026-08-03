@@ -102,3 +102,55 @@ Exit status: `0`
 - The audit identifies the Task 5 reproducible bundle; it does not change historical L7-derived audit calculations or use the old `W_personalized.parquet` as a beta_i training target.
 - Generated provenance files were rebuilt from the real repository bundle. `outputs/` is ignored by the repository-wide `.gitignore`, so the requested generated audit files must be force-added intentionally.
 - No unrelated dirty files were changed, staged, or included in the task commit.
+
+## Fixes After Review
+
+- Updated `provenance_audit_report.json` to read the Task 5 `beta_i_manifest.json` when present.
+- Added explicit `beta_i_method`, `beta_i_formula`, `beta_i_profiles`, `beta_i_nutrients`, `beta_i_health_training_summary`, `beta_i_health_label_diagnostics`, `beta_i_interpretation_boundary`, and `beta_i_manifest_path` fields.
+- Renamed historical beta audit metrics to `historical_bridge_reconstruction_*` so they are not confused with the GMWI2-style health-index finite-difference beta_i method.
+- Extended the focused test with a minimal summary-report fixture covering the method, bounded interpretation, manifest path, and historical metric naming.
+
+### Verification commands and exact outputs
+
+Focused provenance test:
+
+```text
+Command: PYTHONPATH=code/src .venv/bin/python -m pytest code/src/tests/test_beta_i_provenance.py -q
+..                                                                       [100%]
+2 passed in 0.51s
+```
+
+beta_i regression tests:
+
+```text
+Command: PYTHONPATH=code/src .venv/bin/python -m pytest code/src/tests/test_build_beta_i_weights_script.py code/src/tests/test_beta_i_health_index.py code/src/tests/test_beta_i_perturbation.py code/src/tests/test_beta_i_estimator.py -q
+................                                                         [100%]
+16 passed in 0.42s
+```
+
+Rebuild:
+
+```text
+Command: PYTHONPATH=code/src .venv/bin/python code/src/scripts/build_provenance_audit_tables.py --root /Users/fengxi.25/Desktop/GMNPS --output-dir /Users/fengxi.25/Desktop/GMNPS/outputs/provenance_audit
+Output: (empty)
+Exit status: 0
+```
+
+Generated report fields include:
+
+```text
+beta_i_method: GMWI2-style health-index finite-difference beta_i
+beta_i_formula: beta_i,k = (H(M_i + dose * P_k) - H(M_i)) / dose
+beta_i_profiles: 15492
+beta_i_nutrients: 65
+beta_i_interpretation_boundary: beta_i estimates health-index finite-difference response to nutrient-linked microbiome perturbations; it is not a causal nutrient effect.
+beta_i_manifest_path: data/project_data/predict_multi/L7_nutrient_bridge_beta_i/beta_i_manifest.json
+```
+
+Whitespace check:
+
+```text
+Command: git diff --check -- code/src/scripts/build_provenance_audit_tables.py code/src/tests/test_beta_i_provenance.py outputs/provenance_audit
+Output: (empty)
+Exit status: 0
+```

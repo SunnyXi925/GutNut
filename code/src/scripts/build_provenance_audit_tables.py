@@ -265,6 +265,8 @@ def build_summary_report(root: Path, out_dir: Path, food_audit: pd.DataFrame, be
     l6_manifest = read_json(root / "data/project_data/predict_multi/L6_layer_c_fndds/processed/layer_c_manifest.json")
     full_manifest = read_json(root / "data/project_data/predict_multi/L6_layer_c_fndds/processed/layer_c_full_manifest.json")
     impute_manifest = read_json(root / "data/project_data/predict_multi/L6_layer_c_fndds/processed/imputation_manifest.json")
+    beta_i_manifest_path = root / "data/project_data/predict_multi/L7_nutrient_bridge_beta_i/beta_i_manifest.json"
+    beta_i_manifest = read_json(beta_i_manifest_path) if beta_i_manifest_path.is_file() else {}
     report = {
         "food_composition_primary_source": "USDA FSRG/FoodData Central FNDDS 2021-2023 raw files are present locally with SHA256 checksums.",
         "current_primary_scoring_matrix": "N_food_nutrient_imputed.parquet",
@@ -275,9 +277,17 @@ def build_summary_report(root: Path, out_dir: Path, food_audit: pd.DataFrame, be
         "fcs2_rows": int(len(food_audit)),
         "included_primary_run": int(food_audit["included_primary_run"].sum()),
         "missing_after_imputation": impute_manifest["fcs_audit_after_imputation"]["still_missing"],
-        "beta_profiles": int(len(beta_audit)),
-        "beta_r2_median": float(beta_audit["reconstruction_r2"].median()),
-        "beta_sparsity_median": float(beta_audit["sparsity"].median()),
+        "historical_bridge_reconstruction_profiles": int(len(beta_audit)),
+        "historical_bridge_reconstruction_r2_median": float(beta_audit["reconstruction_r2"].median()),
+        "historical_bridge_reconstruction_sparsity_median": float(beta_audit["sparsity"].median()),
+        "beta_i_method": beta_i_manifest.get("method"),
+        "beta_i_formula": beta_i_manifest.get("formula"),
+        "beta_i_profiles": beta_i_manifest.get("n_samples"),
+        "beta_i_nutrients": beta_i_manifest.get("n_nutrients"),
+        "beta_i_health_training_summary": beta_i_manifest.get("health_model_training_summary"),
+        "beta_i_health_label_diagnostics": beta_i_manifest.get("health_label_diagnostics"),
+        "beta_i_interpretation_boundary": beta_i_manifest.get("interpretation_boundary"),
+        "beta_i_manifest_path": str(beta_i_manifest_path.relative_to(root)),
         "boundary": "Food composition is real USDA FNDDS-derived data; imputed nutrient vectors and beta calibration weights require explicit Methods boundaries.",
     }
     Path(out_dir / "provenance_audit_report.json").write_text(

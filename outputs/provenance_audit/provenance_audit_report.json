@@ -17,8 +17,30 @@
     35002000,
     35003000
   ],
-  "beta_profiles": 15492,
-  "beta_r2_median": 0.089685705,
-  "beta_sparsity_median": 0.4,
+  "historical_bridge_reconstruction_profiles": 15492,
+  "historical_bridge_reconstruction_r2_median": 0.089685705,
+  "historical_bridge_reconstruction_sparsity_median": 0.4,
+  "beta_i_method": "GMWI2-style health-index finite-difference beta_i",
+  "beta_i_formula": "beta_i,k = (H(M_i + dose * P_k) - H(M_i)) / dose",
+  "beta_i_profiles": 15492,
+  "beta_i_nutrients": 65,
+  "beta_i_health_training_summary": {
+    "n_samples": 15350,
+    "n_healthy": 11717,
+    "n_nonhealthy": 3633,
+    "n_genera": 115,
+    "n_nonzero_coefficients": 114,
+    "train_auc": 0.8473103922229026
+  },
+  "beta_i_health_label_diagnostics": {
+    "health_label_contradiction_policy": "Exclude CLR-overlapping sample IDs with contradictory healthy and nonhealthy metadata evidence before deriving binary health labels or fitting the health index; do not adjudicate them to either class.",
+    "n_clr_overlapping_metadata_rows": 15492,
+    "n_excluded_contradictory_sample_ids": 142,
+    "n_derived_labeled_samples": 15350,
+    "n_healthy": 11717,
+    "n_nonhealthy": 3633
+  },
+  "beta_i_interpretation_boundary": "beta_i estimates health-index finite-difference response to nutrient-linked microbiome perturbations; it is not a causal nutrient effect.",
+  "beta_i_manifest_path": "data/project_data/predict_multi/L7_nutrient_bridge_beta_i/beta_i_manifest.json",
   "boundary": "Food composition is real USDA FNDDS-derived data; imputed nutrient vectors and beta calibration weights require explicit Methods boundaries."
 }
