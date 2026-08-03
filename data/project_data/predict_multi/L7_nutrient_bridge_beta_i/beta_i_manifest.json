@@ -73,19 +73,19 @@
     "nutrient_index": "821bcd82cb352e6797b23f8c276d5055f5bd5f88253494e65a84e660927885af"
   },
   "output_sha256": {
-    "W_personalized.parquet": "17f4834c49a8c9cefeabfdf2158c9130bf33aa276bf4e0f406f7762f487b2a6d",
+    "W_personalized.parquet": "6552d061524da99e544c55c3d7cfeafd7c2eef999222b755d4c336bc40cec1b1",
     "health_index.joblib": "666538e697889b8e19459a6ab1d4bd7757a8e36b966510fd7696efbdb90e6444",
     "health_index.joblib.manifest.json": "a3bf0c514ba0a70dc5974f43d1db935294f217747ff83e7b87e2b00ed3660013",
-    "nutrient_perturbations.parquet": "d3ac61927e7627d134537e9938aeb0ef056469721d6ddcc7f2ab5f4fda0c87f3",
-    "sample_beta_diagnostics.csv": "a780671476a7be241c4075a485c4bfdd5a67b15d00b1da335dd7ad2c303ee623",
-    "nutrient_perturbation_summary.csv": "e871142720dce15b2eaf7cfcd7be54e57f196030964762e8f5e019bcb945c697",
+    "nutrient_perturbations.parquet": "6cb438899aa5d96d8135aaa45d71bd2814c1f8af305dcf9e3b68f1e29d6ac51b",
+    "sample_beta_diagnostics.csv": "fd16a66eb9954a0bfb800da09f7fa2d989cf953930124dd6becd5ffac27f78b2",
+    "nutrient_perturbation_summary.csv": "a17b1966769dbd8f6faf94b670c3631e8cfc78fc60b7afd2e35185d953023a0f",
     "excluded_health_label_samples.csv": "cda754979584a23edf7fb26cea7338e90b77afc25590ca9c4590f13300a0b306"
   },
   "source_revision": {
-    "sha": "2e32b1d7cd408b75b2ff71e6cc824dc8c2e5b414",
+    "sha": "c8f13ef7ba07beb8f09f724307ffc007b2de2bcd",
     "dirty": true
   },
-  "git_commit": "2e32b1d7cd408b75b2ff71e6cc824dc8c2e5b414",
+  "git_commit": "c8f13ef7ba07beb8f09f724307ffc007b2de2bcd",
   "git_dirty": true,
   "python_version": "3.14.5",
   "package_versions": {

@@ -156,7 +156,7 @@ Barrera-Suarez et al. 2026 的主要价值不是重复说明 microbiome 重要�
 
 ### P0.5 Category shift detail table
 
-目标：主动解释 79 个 category shifts 都是阈值附近相邻移动。
+目标：主动解释 63 个 category shifts 都是阈值附近相邻移动。
 
 输出 `figure2_category_shift_detail.csv`。
 
@@ -329,7 +329,7 @@ Barrera-Suarez et al. 2026 的主要价值不是重复说明 microbiome 重要�
 - Fig. 1d evidence status 修正。
 - Mask-sensitive simulation 已完成，或完全删除 expert mask performance 优势暗示。
 - Channel attribution 至少对 selected food groups 有 bootstrap/stress-test 支持。
-- Category shifts 79 个有补表。
+- Category shifts 63 个有补表。
 - GMrepo 弱/负结果和 CAD small-n caveat 被透明呈现。
 - Source data manifest 有 checksum、生成命令和软件版本。
 - 标题、摘要、Results、Discussion 全部不越过 computational proof-of-concept 边界。
@@ -373,7 +373,7 @@ Barrera-Suarez et al. 2026 的主要价值不是重复说明 microbiome 重要�
 
 - 食物成分数据链路：本地存在 USDA/FDC FNDDS 2021-2023 原始文件；当前 v4 primary scoring 使用 `N_food_nutrient_imputed.parquet`，来源为 2015-2016 至 2021-2023 FNDDS harmonised/imputed matrix，而不是单纯 2021-2023 原始矩阵。
 - FCS2 对齐：9,237 个 FCS2 rows；v4 primary run 纳入 9,234 个；imputation 后缺失 `35001000`, `35002000`, `35003000`。
-- 人群一致性：post-hoc report 记录 79 个 category shifts，0 个 non-adjacent shifts。
+- 人群一致性：post-hoc report 记录 63 个 category shifts，0 个 non-adjacent shifts。
 - beta 权重边界：15,492 个 microbiome-derived calibration profiles；median reconstruction R2 约 0.0897，median sparsity 0.40。必须写成 regularized calibration features，不可写成 validated nutrient-response effects。
 - PREDICT1-derived added-value stress test：本地 `glucose_iAUC_2h`, `tg_6h_rise`, `c_peptide_iAUC_2h` 在 provenance 中标注为 statistically anchored synthetic fields。该分析只能作为 design/provenance stress test，不可作为真实外部验证。
 

@@ -64,9 +64,9 @@ Key results:
 | Metric | Value |
 | --- | ---: |
 | Foods scored | 9,234 |
-| Spearman correlation, baseline NPS vs population-mean GMNPS | 0.9998387709 |
-| Category shifts at population mean | 79 |
-| Category shift fraction | 0.008555339 |
+| Spearman correlation, baseline NPS vs population-mean GMNPS | 0.9998387312 |
+| Category shifts at population mean | 63 |
+| Category shift fraction | 0.006822612 |
 | Preservation criterion, rho >= 0.90 | Pass |
 
 Category transition counts:
@@ -74,8 +74,8 @@ Category transition counts:
 | Baseline category | GMNPS minimize | GMNPS moderate | GMNPS encourage |
 | --- | ---: | ---: | ---: |
 | Minimize | 2,887 | 0 | 0 |
-| Moderate | 38 | 4,178 | 0 |
-| Encourage | 0 | 41 | 2,090 |
+| Moderate | 29 | 4,187 | 0 |
+| Encourage | 0 | 34 | 2,097 |
 
 Interpretation for Results:
 
@@ -99,10 +99,10 @@ Key comparison:
 
 | Metric | Old v3 mask | Expert-revised v4 |
 | --- | ---: | ---: |
-| Spearman with baseline NPS mean | 0.8087356097 | 0.9998387709 |
-| Mean total or delta variance | 417.3822078455 | 26.2671070099 |
-| Mean MAC variance | 639.0527803223 | 3.0726783276 |
-| Mean LIPID variance | 781.1337425710 | 5.1514563560 |
+| Spearman with baseline NPS mean | 0.8087356097 | 0.9998387312 |
+| Mean total or delta variance | 417.3822078455 | 17.4279499054 |
+| Mean MAC variance | 639.0527803223 | 0.5899364948 |
+| Mean LIPID variance | 781.1337425710 | 1.0902254581 |
 
 Interpretation for Results:
 
@@ -126,25 +126,26 @@ Key food-group pattern:
 
 | Food group | n foods | FCS2 mean | GMNPS mean | Mean delta variance | MAC variance mean | LIPID variance mean | Dominant channel |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Beverages | 406 | 32.342 | 32.989 | 27.139 | 2.864 | 2.229 | MAC |
-| Grains | 995 | 35.771 | 35.848 | 26.330 | 1.283 | 5.661 | LIPID |
-| Fruit | 242 | 70.537 | 70.156 | 26.602 | 4.654 | 2.421 | MAC |
-| Vegetables | 1,464 | 76.149 | 75.636 | 26.219 | 5.057 | 4.455 | MAC |
-| Legumes/nuts | 312 | 80.843 | 80.632 | 26.357 | 1.572 | 4.425 | LIPID |
-| Meat/poultry/eggs | 724 | 44.186 | 44.278 | 25.539 | 0.884 | 3.378 | LIPID |
-| Seafood | 241 | 80.320 | 80.015 | 25.992 | 0.284 | 2.306 | LIPID |
-| Dairy | 474 | 44.604 | 44.743 | 26.864 | 0.333 | 7.456 | LIPID |
-| Fats/oils | 309 | 25.054 | 25.244 | 26.683 | 1.029 | 6.495 | LIPID |
-| Mixed dishes | 2,365 | 44.078 | 44.487 | 26.453 | 5.058 | 5.557 | LIPID |
-| Sauces/condiments | 888 | 46.941 | 47.488 | 26.472 | 3.834 | 4.823 | LIPID |
-| Savory/sweet | 814 | 18.494 | 18.540 | 26.510 | 1.686 | 8.126 | LIPID |
+| Beverages | 406 | 32.342 | 32.883 | 17.455 | 0.632 | 0.556 | MAC |
+| Grains | 995 | 35.771 | 35.825 | 17.422 | 0.492 | 0.818 | LIPID |
+| Fruit | 242 | 70.537 | 70.225 | 17.754 | 0.398 | 0.967 | LIPID |
+| Vegetables | 1,464 | 76.149 | 75.723 | 17.427 | 1.050 | 0.785 | MAC |
+| Legumes/nuts | 312 | 80.843 | 80.685 | 17.445 | 1.225 | 0.464 | MAC |
+| Meat/poultry/eggs | 1,068 | 44.054 | 44.180 | 17.330 | 0.188 | 1.222 | LIPID |
+| Seafood | 330 | 80.536 | 80.379 | 17.821 | 0.159 | 1.234 | LIPID |
+| Dairy | 319 | 44.567 | 44.586 | 17.398 | 0.435 | 1.537 | LIPID |
+| Fats/oils | 178 | 24.888 | 25.218 | 17.352 | 0.519 | 1.458 | LIPID |
+| Mixed dishes | 2,537 | 44.071 | 44.075 | 17.398 | 0.624 | 1.195 | LIPID |
+| Sauces/condiments | 193 | 46.886 | 46.928 | 17.347 | 0.615 | 1.380 | LIPID |
+| Savory/sweet | 1,190 | 18.376 | 18.797 | 17.429 | 0.421 | 1.462 | LIPID |
 
 Interpretation for Results:
 
 GMNPS expressed non-zero individual variability for each food while preserving
 the population mean. The food-group summary showed channel-attributed
-differences: fruit and vegetables were MAC-dominant, whereas dairy, fats/oils,
-savory/sweet foods and several animal or mixed groups were LIPID-dominant.
+differences: vegetables and legumes/nuts were MAC-dominant, whereas fruit,
+dairy, fats/oils, savory/sweet foods and several animal or mixed groups were
+LIPID-dominant.
 
 Writing boundary:
 

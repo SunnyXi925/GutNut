@@ -1,8 +1,8 @@
 {
   "n_foods": 9234,
-  "spearman_fcs2_gmnps_mean": 0.9998387709231454,
+  "spearman_fcs2_gmnps_mean": 0.9998387312192516,
   "kendall_fcs2_gmnps_mean": null,
   "passes_min_rho_0_90": true,
-  "category_shift_count": 79,
-  "category_shift_fraction": 0.00855533896469569
+  "category_shift_count": 63,
+  "category_shift_fraction": 0.00682261208576998
 }
