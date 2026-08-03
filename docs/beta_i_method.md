@@ -14,6 +14,7 @@ beta_i,k = (H(M_i + dose * P_k) - H(M_i)) / dose
 
 - GMWI2: sparse microbiome health-index construction from taxonomic profiles.
 - DI-GM: literature/evidence-oriented beneficial versus unfavorable gut microbiota directionality, adapted here from diet-level components to nutrient-level perturbations.
+- GMMAD/L7 nutrient-genus bridge: curated microbe-metabolite-disease associations are used as bridge evidence for nutrient-linked genus perturbations.
 - GMNPS expert masks: MAC and LIPID channel membership defines which nutrients receive primary channel weight.
 
 ## Reproducible Inputs
