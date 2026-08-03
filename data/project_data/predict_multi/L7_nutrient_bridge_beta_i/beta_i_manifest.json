@@ -81,7 +81,12 @@
     "nutrient_perturbation_summary.csv": "e871142720dce15b2eaf7cfcd7be54e57f196030964762e8f5e019bcb945c697",
     "excluded_health_label_samples.csv": "cda754979584a23edf7fb26cea7338e90b77afc25590ca9c4590f13300a0b306"
   },
-  "git_commit": "66aa93c",
+  "source_revision": {
+    "sha": "2e32b1d7cd408b75b2ff71e6cc824dc8c2e5b414",
+    "dirty": true
+  },
+  "git_commit": "2e32b1d7cd408b75b2ff71e6cc824dc8c2e5b414",
+  "git_dirty": true,
   "python_version": "3.14.5",
   "package_versions": {
     "python": "3.14.5",
