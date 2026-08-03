@@ -35,7 +35,10 @@ def derive_binary_health_labels(metadata: pd.DataFrame) -> pd.Series:
     if missing:
         raise ValueError(f"metadata missing columns: {sorted(missing)}")
     frame = metadata[["sample_id", "phenotype_label", "disease"]].copy()
-    frame["sample_id"] = frame["sample_id"].astype(str)
+    valid_sample_id = frame["sample_id"].notna()
+    frame["sample_id"] = frame["sample_id"].astype(str).str.strip()
+    valid_sample_id &= frame["sample_id"].ne("") & frame["sample_id"].ne("nan")
+    frame = frame.loc[valid_sample_id]
     phenotype = frame["phenotype_label"].fillna("").astype(str).str.strip().str.lower()
     disease = frame["disease"].fillna("").astype(str).str.strip().str.lower()
     healthy_phenotype = phenotype.isin({"health", "healthy"})
@@ -51,6 +54,10 @@ def derive_binary_health_labels(metadata: pd.DataFrame) -> pd.Series:
     labels = pd.Series(np.where(healthy_phenotype | healthy_disease, 1, 0), index=frame["sample_id"])
     labels = labels[classified.to_numpy()].astype(int)
     labels.name = "health_label"
+    conflicting = labels.groupby(level=0).nunique()
+    if (conflicting > 1).any():
+        sample_ids = conflicting.index[conflicting > 1].tolist()
+        raise ValueError(f"conflicting health labels for duplicate sample(s): {sample_ids}")
     return labels[~labels.index.duplicated(keep="first")]
 
 
@@ -75,7 +82,7 @@ def _numpy_logistic_fit(x: np.ndarray, y: np.ndarray, config: HealthIndexConfig)
     """Fit deterministic L1-regularized logistic regression without SciPy."""
     weights = np.zeros(x.shape[1], dtype=float)
     intercept = 0.0
-    penalty = 1.0 / max(float(config.c_value), np.finfo(float).eps)
+    penalty = 1.0 / (max(float(config.c_value), np.finfo(float).eps) * len(y))
     # The logistic loss gradient is Lipschitz-bounded by ||X||_2^2 / (4n).
     lipschitz = float(np.linalg.norm(x, ord=2) ** 2 / (4.0 * len(y)))
     learning_rate = 1.0 / max(lipschitz, 1e-12)

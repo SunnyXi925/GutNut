@@ -3,6 +3,7 @@ import pandas as pd
 import json
 import hashlib
 import pytest
+import sys
 
 from gmnps.beta_i.health_index import (
     HealthIndexConfig,
@@ -50,11 +51,40 @@ def test_unknown_metadata_is_excluded_and_contradictions_raise():
     assert labels.to_dict() == {"healthy": 1, "ibd": 0}
 
 
+def test_missing_sample_ids_are_excluded_and_duplicate_conflicts_raise():
+    metadata = pd.DataFrame({
+        "sample_id": [None, "", "  ", "s1", "s1"],
+        "phenotype_label": ["Health", "Health", "Health", "Health", "IBD"],
+        "disease": ["healthy", "healthy", "healthy", "healthy", "IBD"],
+    })
+    with pytest.raises(ValueError, match="conflicting health labels"):
+        derive_binary_health_labels(metadata)
+
+    labels = derive_binary_health_labels(metadata.iloc[:3])
+    assert labels.empty
+
+
 def test_numpy_fallback_is_l1_sparse():
     x = np.array([[2.0, 0.1, 0.0], [1.8, -0.1, 0.0], [-2.0, 0.1, 0.0], [-1.7, -0.1, 0.0]])
     y = np.array([1, 1, 0, 0])
     coefficients, _ = _numpy_logistic_fit(x, y, HealthIndexConfig(c_value=0.25, max_iter=1000))
     assert np.count_nonzero(coefficients) < len(coefficients)
+
+
+def test_default_config_fallback_keeps_signal_and_scores_healthy_higher(monkeypatch):
+    base = _toy_clr()
+    clr = pd.concat([base.iloc[:3], base.iloc[:3], base.iloc[3:], base.iloc[3:]], ignore_index=True)
+    clr.index = [f"s{i}" for i in range(len(clr))]
+    labels = np.array([1] * 6 + [0] * 6)
+    coefficients, intercept = _numpy_logistic_fit(clr.to_numpy(), labels, HealthIndexConfig())
+    assert np.count_nonzero(coefficients) > 0
+    scores = 1.0 / (1.0 + np.exp(-(intercept + clr.to_numpy() @ coefficients)))
+    assert scores[:3].mean() > scores[3:].mean()
+
+    monkeypatch.setitem(sys.modules, "sklearn", None)
+    model = fit_health_index(clr, pd.Series(labels, index=clr.index), HealthIndexConfig())
+    assert model.training_summary["n_nonzero_coefficients"] > 0
+    assert score_health_index(model, clr).iloc[:3].mean() > score_health_index(model, clr).iloc[3:].mean()
 
 
 def test_fit_health_index_scores_healthy_samples_higher(tmp_path):

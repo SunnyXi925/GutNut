@@ -38,3 +38,16 @@ Exact verification outputs:
 - `PYTHONPATH=code/src .venv/bin/python -m pytest code/src/tests/test_beta_i_health_index.py -q`: `4 passed in 0.28s`
 - `PYTHONPATH=code/src .venv/bin/python -m pytest code/src/tests/test_article_scoring.py -q`: `9 passed in 1.39s`
 - `git diff --check -- code/src/gmnps/beta_i/__init__.py code/src/gmnps/beta_i/health_index.py code/src/tests/test_beta_i_health_index.py`: passed (no output)
+
+## Second Review Fixes
+
+- Corrected the NumPy fallback L1 penalty to `1 / (C * n_samples)` for the mean logistic-loss objective.
+- Added pre-deduplication validation for conflicting labels on duplicate `sample_id` records.
+- Excluded null, blank, and literal `nan` sample IDs instead of converting them into usable labels.
+- Added default-config fallback coverage for nonzero coefficients and higher healthy-sample scores.
+
+Exact verification outputs:
+
+- `PYTHONPATH=code/src .venv/bin/python -m pytest code/src/tests/test_beta_i_health_index.py -q`: `6 passed in 0.52s`
+- `PYTHONPATH=code/src .venv/bin/python -m pytest code/src/tests/test_article_scoring.py -q`: `9 passed in 1.59s`
+- `git diff --check -- code/src/gmnps/beta_i/__init__.py code/src/gmnps/beta_i/health_index.py code/src/tests/test_beta_i_health_index.py`: passed (no output)
