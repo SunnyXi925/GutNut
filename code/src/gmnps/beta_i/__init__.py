@@ -9,13 +9,21 @@ from gmnps.beta_i.health_index import (
     save_health_index,
     score_health_index,
 )
+from gmnps.beta_i.nutrient_perturbation import (
+    NutrientPerturbationConfig,
+    build_nutrient_perturbations,
+    summarize_perturbations,
+)
 
 __all__ = [
     "HealthIndexConfig",
     "HealthIndexModel",
+    "NutrientPerturbationConfig",
+    "build_nutrient_perturbations",
     "derive_binary_health_labels",
     "fit_health_index",
     "load_health_index",
     "save_health_index",
     "score_health_index",
+    "summarize_perturbations",
 ]
