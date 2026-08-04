@@ -1,0 +1,22 @@
+data/project_data/predict_multi/L7_nutrient_bridge_beta_i/beta_i_manifest.json
+  h_f3d5b5bc65ef89 76,79-81,85,88
+manuscript/nature_food_submission/source_data/figure2_v3_vs_v4_summary.json
+  h_f3d5b5bc65ef89 4,6,8,10
+manuscript/nature_food_submission/source_data/figure2_nps_preservation_metrics.json
+  h_f3d5b5bc65ef89 3,6-7
+docs/GMNPS_Nature_Food_Optimization_Agent_Plan_ZH.md
+  h_f3d5b5bc65ef89 159,332,376
+manuscript/results_experiment_outputs_v4.md
+  h_f3d5b5bc65ef89 67-69,77-78,102-105,129-140,146-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "3df0ab03d6213268f4a820d54a16679e68f77709",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  }
+}
