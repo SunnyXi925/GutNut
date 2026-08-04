@@ -1,0 +1,22 @@
+.superpowers/sdd/task-6-report.md
+  h_f3d5b5bc65ef89 1-15
+code/src/gmnps/supplement/__init__.py
+  h_f3d5b5bc65ef89 1-13
+code/src/tests/test_fcs_style_supplement.py
+  h_f3d5b5bc65ef89 1-20
+code/src/scripts/run_personalized_calibration_experiments.py
+  h_f3d5b5bc65ef89 32,1183-1195,1197-1213,1225-1227,1235-1238
+code/src/gmnps/supplement/fcs_style.py
+  h_f3d5b5bc65ef89 1-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "6ff311d15a1298a1ca0e623029a84af1e95c5fbc",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  }
+}
