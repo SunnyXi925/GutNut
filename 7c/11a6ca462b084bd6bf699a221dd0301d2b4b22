@@ -1,0 +1,20 @@
+code/src/gmnps/knowledge_graph/adjudicator_eval.py
+  h_f3d5b5bc65ef89 1-35
+code/src/tests/test_signed_paths.py
+  h_f3d5b5bc65ef89 1-27
+code/src/gmnps/knowledge_graph/signed_paths.py
+  h_f3d5b5bc65ef89 1-110
+code/src/tests/test_adjudicator_eval.py
+  h_f3d5b5bc65ef89 1-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "7c11a6ca462b084bd6bf699a221dd0301d2b4b22",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  }
+}
