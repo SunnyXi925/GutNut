@@ -44,6 +44,14 @@ def test_load_official_gmwi2_scores_preserves_explicit_official_label(tmp_path):
     assert scores.attrs["mode"] == "official_gmwi2"
 
 
+def test_load_official_gmwi2_scores_rejects_generic_score_column(tmp_path):
+    path = tmp_path / "generic_score.csv"
+    pd.DataFrame({"sample_id": ["s1"], "score": [0.4]}).to_csv(path, index=False)
+
+    with pytest.raises(ValueError, match="one of: official_gmwi2_score, gmwi2_score, gmwi2"):
+        load_official_gmwi2_scores(path)
+
+
 def test_runner_rejects_official_mode_without_score_file(tmp_path):
     from scripts.run_personalized_calibration_experiments import build_parser, run
 

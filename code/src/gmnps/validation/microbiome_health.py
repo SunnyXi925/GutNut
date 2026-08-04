@@ -16,7 +16,7 @@ class MicrobiomeHealthMode(str, Enum):
 
 
 _SAMPLE_ID_COLUMNS = ("sample_id", "subject_id")
-_OFFICIAL_SCORE_COLUMNS = ("official_gmwi2_score", "gmwi2_score", "gmwi2", "score")
+_OFFICIAL_SCORE_COLUMNS = ("official_gmwi2_score", "gmwi2_score", "gmwi2")
 _HEALTH_ASSOCIATED_GENERA = ("Akkermansia", "Bifidobacterium", "Faecalibacterium", "Roseburia")
 _DISEASE_ASSOCIATED_GENERA = ("Escherichia", "Klebsiella", "Enterococcus", "Bilophila")
 
