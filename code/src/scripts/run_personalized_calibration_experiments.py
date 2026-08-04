@@ -160,6 +160,17 @@ SECTION1_FOOD_SUMMARY_COLUMNS = [
     "expected_subgroup_direction",
     "GMNPS_delta_mean",
 ]
+TABLE_S2_PREVIEW_COLUMNS = [
+    "resource",
+    "source_path",
+    "source_exists",
+    "bytes",
+    "sha256",
+    "provenance",
+    "version",
+    "access_date",
+    "licence",
+]
 
 
 def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
@@ -1477,7 +1488,7 @@ def write_supplement(out_dir: Path, manifest: dict[str, object]) -> None:
                 blocks.append(
                     simple_latex_table(
                         preview,
-                        list(preview.columns[:6]),
+                        TABLE_S2_PREVIEW_COLUMNS if row.name.startswith("Table S2.") else list(preview.columns[:6]),
                         f"Preview of {row.name}",
                         f"supplement-preview-{len(table_text) + 1}",
                         max_rows=12,

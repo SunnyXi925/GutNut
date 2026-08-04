@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from gmnps.supplement.fcs_style import (
     build_supplement_manifest,
@@ -52,7 +53,17 @@ def test_table_s2_requires_provenance_schema_not_just_an_existing_file(tmp_path)
     assert table["status"] == "invalid_schema"
 
 
-def test_table_s2_accepts_version_access_date_and_licence_provenance(tmp_path):
+@pytest.mark.parametrize("provenance_field", ["version", "access_date", "licence"])
+@pytest.mark.parametrize("placeholder", ["not_recorded", "", "nan", "None", None])
+def test_table_s2_rejects_placeholder_required_provenance_values(
+    tmp_path, provenance_field, placeholder
+):
+    provenance = {
+        "version": "FNDDS 2021-2022",
+        "access_date": "2026-08-04",
+        "licence": "CC-BY-4.0",
+    }
+    provenance[provenance_field] = placeholder
     pd.DataFrame(
         {
             "resource": ["food"],
@@ -61,9 +72,28 @@ def test_table_s2_accepts_version_access_date_and_licence_provenance(tmp_path):
             "bytes": [42],
             "sha256": ["abc123"],
             "provenance": ["runner_input_registry"],
-            "version": ["not_recorded"],
-            "access_date": ["not_recorded"],
-            "licence": ["not_recorded"],
+            **{key: [value] for key, value in provenance.items()},
+        }
+    ).to_csv(tmp_path / "data_resource_audit.csv", index=False)
+
+    manifest = build_supplement_manifest(tmp_path)
+    table = manifest.loc[manifest["name"].str.startswith("Table S2.")].iloc[0]
+
+    assert table["status"] == "invalid_schema"
+
+
+def test_table_s2_accepts_curated_required_provenance_values(tmp_path):
+    pd.DataFrame(
+        {
+            "resource": ["food"],
+            "source_path": ["data/food.csv"],
+            "source_exists": [True],
+            "bytes": [42],
+            "sha256": ["abc123"],
+            "provenance": ["curated_resource_registry"],
+            "version": ["FNDDS 2021-2022"],
+            "access_date": ["2026-08-04"],
+            "licence": ["CC-BY-4.0"],
         }
     ).to_csv(tmp_path / "data_resource_audit.csv", index=False)
 
@@ -95,3 +125,25 @@ def test_supplement_renderer_writes_required_outputs_and_available_s7_preview(tm
     latex = (supplement_dir / "supplementary_material.tex").read_text(encoding="utf-8")
     assert r"\n" not in latex
     assert "Vegetables" in latex
+
+
+def test_supplement_renderer_includes_table_s2_provenance_headers_when_available(tmp_path):
+    pd.DataFrame(
+        {
+            "resource": ["food"],
+            "source_path": ["data/food.csv"],
+            "source_exists": [True],
+            "bytes": [42],
+            "sha256": ["abc123"],
+            "provenance": ["curated_resource_registry"],
+            "version": ["FNDDS 2021-2022"],
+            "access_date": ["2026-08-04"],
+            "licence": ["CC-BY-4.0"],
+        }
+    ).to_csv(tmp_path / "data_resource_audit.csv", index=False)
+
+    write_supplement(tmp_path, {"sections": {}})
+
+    latex = (tmp_path / "supplement" / "supplementary_material.tex").read_text(encoding="utf-8")
+    for header in ["version", "access\\_date", "licence", "sha256", "source\\_path"]:
+        assert header in latex

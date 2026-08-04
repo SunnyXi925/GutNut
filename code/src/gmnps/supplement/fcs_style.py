@@ -46,6 +46,22 @@ _TABLE_S2_REQUIRED_COLUMNS = frozenset(
     }
 )
 
+_TABLE_S2_REQUIRED_PROVENANCE_VALUES = ("version", "access_date", "licence")
+_TABLE_S2_PLACEHOLDER_VALUES = frozenset(
+    {
+        "",
+        "nan",
+        "none",
+        "null",
+        "na",
+        "n/a",
+        "not_recorded",
+        "not recorded",
+        "unavailable",
+        "unknown",
+    }
+)
+
 _TABLE_SOURCES = {
     "Table S1. Personalized calibration algorithm updates and rationales": "experiment_manifest.json",
     "Table S2. Data resources, versions, access dates, checksums and licences": "data_resource_audit.csv",
@@ -75,6 +91,21 @@ def required_supplement_tables() -> list[str]:
     return list(_TABLE_SOURCES)
 
 
+def _table_s2_has_complete_provenance(audit: pd.DataFrame) -> bool:
+    """Return whether every Table S2 row has curated required provenance."""
+
+    if audit.empty:
+        return False
+    for column in _TABLE_S2_REQUIRED_PROVENANCE_VALUES:
+        values = audit[column]
+        if values.isna().any():
+            return False
+        normalized = values.astype(str).str.strip().str.casefold()
+        if normalized.isin(_TABLE_S2_PLACEHOLDER_VALUES).any():
+            return False
+    return True
+
+
 def build_supplement_manifest(output_dir: Path) -> pd.DataFrame:
     """Build a complete supplement manifest for structured experiment outputs."""
     output_dir = Path(output_dir)
@@ -95,10 +126,12 @@ def build_supplement_manifest(output_dir: Path) -> pd.DataFrame:
         status = "available" if source_exists else "missing_source"
         if source_exists and name.startswith("Table S2."):
             try:
-                columns = set(pd.read_csv(source, nrows=0).columns)
+                audit = pd.read_csv(source)
             except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError):
-                columns = set()
-            if not _TABLE_S2_REQUIRED_COLUMNS.issubset(columns):
+                audit = pd.DataFrame()
+            if not _TABLE_S2_REQUIRED_COLUMNS.issubset(audit.columns) or not _table_s2_has_complete_provenance(
+                audit
+            ):
                 status = "invalid_schema"
         rows.append(
             {
