@@ -1,0 +1,18 @@
+code/src/scripts/run_personalized_calibration_experiments.py
+  h_f3d5b5bc65ef89 1182-1196,1213,1221-1238
+code/src/tests/test_fcs_style_supplement.py
+  h_f3d5b5bc65ef89 1-2,8,33-51
+code/src/gmnps/supplement/fcs_style.py
+  h_f3d5b5bc65ef89 41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "14367282bff687e824e648e4817a3d3af3755047",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  }
+}
