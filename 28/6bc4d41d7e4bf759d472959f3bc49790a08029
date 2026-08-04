@@ -1,0 +1,16 @@
+code/src/scripts/run_personalized_calibration_experiments.py
+  h_f3d5b5bc65ef89 33,189-271
+code/src/tests/test_personalized_calibration_runner.py
+  h_f3d5b5bc65ef89 12,20-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "286bc4d41d7e4bf759d472959f3bc49790a08029",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  }
+}
