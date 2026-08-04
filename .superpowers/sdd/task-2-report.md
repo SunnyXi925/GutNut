@@ -17,3 +17,22 @@ Test output:
 .......                                                                  [100%]
 7 passed in 0.50s
 ```
+
+## Re-review Fix
+
+- Accepted food-group labels as either a Series or a DataFrame with required
+  `food_group` and optional `food_subgroup`; group and subgroup direction
+  checks now contribute independently to the objective.
+- Added `mean_individual_rank_shift` to reward genuine per-person reranking,
+  preventing near-zero offsets from being preferred when population consensus
+  is preserved.
+- Added strict missing-column and finite-score validation for raw offsets and
+  personalized scores, with regression coverage for subgroup cancellation and
+  near-zero offsets.
+
+Test output:
+
+```text
+............                                                             [100%]
+12 passed in 0.44s
+```
