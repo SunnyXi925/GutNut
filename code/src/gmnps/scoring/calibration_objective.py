@@ -21,6 +21,36 @@ class CalibrationParams:
     allow_legacy_name_direction_policy: bool = False
 
 
+def _validate_params(params: CalibrationParams) -> None:
+    numeric_parameters = {
+        "delta_cap": params.delta_cap,
+        "temperature": params.temperature,
+        "group_penalty": params.group_penalty,
+        "min_group_pass_fraction": params.min_group_pass_fraction,
+        "min_subgroup_pass_fraction": params.min_subgroup_pass_fraction,
+        "consensus_failure_penalty": params.consensus_failure_penalty,
+    }
+    for name, value in numeric_parameters.items():
+        try:
+            finite = bool(np.isfinite(value))
+        except TypeError as error:
+            raise ValueError(f"{name} must be finite") from error
+        if not finite:
+            raise ValueError(f"{name} must be finite")
+    if params.delta_cap <= 0:
+        raise ValueError("delta_cap must be positive")
+    if params.temperature <= 0:
+        raise ValueError("temperature must be positive")
+    if params.group_penalty < 0:
+        raise ValueError("group_penalty must be non-negative")
+    if not 0.0 <= params.min_group_pass_fraction <= 1.0:
+        raise ValueError("min_group_pass_fraction must be between 0 and 1")
+    if not 0.0 <= params.min_subgroup_pass_fraction <= 1.0:
+        raise ValueError("min_subgroup_pass_fraction must be between 0 and 1")
+    if params.consensus_failure_penalty < 0:
+        raise ValueError("consensus_failure_penalty must be non-negative")
+
+
 def _rank_spearman(left: pd.Series, right: pd.Series) -> float:
     pair = pd.concat([left.astype(float), right.astype(float)], axis=1).dropna()
     if len(pair) < 2 or pair.iloc[:, 0].nunique() < 2 or pair.iloc[:, 1].nunique() < 2:
@@ -43,10 +73,7 @@ def apply_personalized_offset(
     raw_offset: pd.DataFrame,
     params: CalibrationParams,
 ) -> pd.DataFrame:
-    if params.delta_cap <= 0:
-        raise ValueError("delta_cap must be positive")
-    if params.temperature <= 0:
-        raise ValueError("temperature must be positive")
+    _validate_params(params)
     if raw_offset.shape[0] == 0:
         raise ValueError("raw_offset must contain at least one row")
     if raw_offset.shape[1] == 0:
@@ -204,14 +231,7 @@ def calibration_objective(
     come from metadata; the legacy label-name policy is available only through
     ``allow_legacy_name_direction_policy`` and is versioned as ``v1``.
     """
-    if params.group_penalty < 0:
-        raise ValueError("group_penalty must be non-negative")
-    if not 0.0 <= params.min_group_pass_fraction <= 1.0:
-        raise ValueError("min_group_pass_fraction must be between 0 and 1")
-    if not 0.0 <= params.min_subgroup_pass_fraction <= 1.0:
-        raise ValueError("min_subgroup_pass_fraction must be between 0 and 1")
-    if params.consensus_failure_penalty < 0:
-        raise ValueError("consensus_failure_penalty must be non-negative")
+    _validate_params(params)
     scores = apply_personalized_offset(fcs, raw_offset, params)
     mean_scores = scores.mean(axis=0).reindex(fcs.index)
     population_spearman = _rank_spearman(fcs, mean_scores)

@@ -23,32 +23,11 @@ SRC_ROOT = Path(__file__).resolve().parents[1]
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from gmnps.knowledge_graph import (  # noqa: E402
-    adjudicate_labels_rule_ai,
-    build_adjudication_prompt_table,
-    label_metrics,
-    score_nutrient_disease_paths,
-)
 from gmnps.scoring.masks import build_channel_vectors  # noqa: E402
 from gmnps.scoring.calibration_objective import (  # noqa: E402
     CalibrationParams,
     apply_personalized_offset,
     calibration_objective,
-)
-from gmnps.validation.clinical_correlation import (  # noqa: E402
-    ClinicalVariableSpec,
-    audit_clinical_completeness,
-    choose_clinical_cohort,
-    evaluate_gmwi2_retention,
-    spearman_clinical_correlations,
-)
-from gmnps.validation.rank_shift import RankShiftThresholds, evaluate_rank_shift_thresholds  # noqa: E402
-from gmnps.validation.response_prediction import (  # noqa: E402
-    fit_ridge_predict,
-    group_folds,
-    paired_bootstrap_delta,
-    regression_metrics,
-    required_ablation_models,
 )
 
 
@@ -269,7 +248,24 @@ def matrix_rank_metrics(
     return pd.DataFrame(rows)
 
 
+def calibration_candidate_status(diagnostics: dict[str, object]) -> str:
+    """Classify calibration candidates before emitting score-derived outputs."""
+    objective_value = diagnostics.get("objective_value", float("nan"))
+    try:
+        finite_objective = bool(np.isfinite(float(objective_value)))
+    except (TypeError, ValueError):
+        finite_objective = False
+    if not finite_objective or diagnostics.get("consensus_gates_passed") is not True:
+        return "rejected_consensus_gate"
+    return "eligible"
+
+
 def run_section1(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace) -> dict[str, object]:
+    from gmnps.validation.rank_shift import (  # noqa: PLC0415
+        RankShiftThresholds,
+        evaluate_rank_shift_thresholds,
+    )
+
     food = fcs_food_table(paths["fcs2_food_table"])
     food.index = food.index.astype(str)
     policy_metadata = fcs2_consensus_direction_policy_v1(food)
@@ -320,6 +316,20 @@ def run_section1(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
             group_penalty=args.group_penalty,
         )
         diagnostics = calibration_objective(fcs, raw_offset, policy_metadata, params)
+        status = calibration_candidate_status(diagnostics)
+        diagnostic_row = {
+            "amplification": amplification,
+            "n_individuals": int(raw_offset.shape[0]),
+            "n_foods": int(raw_offset.shape[1]),
+            "score_source": score_source,
+            "direction_policy_version": FCS2_CONSENSUS_DIRECTION_POLICY_VERSION,
+            "status": status,
+            **diagnostics,
+        }
+        if status != "eligible":
+            summary_rows.append(diagnostic_row)
+            continue
+
         calibrated = apply_personalized_offset(fcs, raw_offset, params)
         mean_scores = calibrated.mean(axis=0)
         sd_scores = calibrated.std(axis=0)
@@ -343,15 +353,10 @@ def run_section1(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
         food_rows.append(food_summary)
         summary_rows.append(
             {
-                "amplification": amplification,
-                "n_individuals": int(raw_offset.shape[0]),
-                "n_foods": int(raw_offset.shape[1]),
+                **diagnostic_row,
                 "spearman_fcs2_gmnps_mean": _rank_spearman(fcs, mean_scores),
                 "mean_absolute_population_shift": float((mean_scores - fcs).abs().mean()),
                 "median_food_sd": float(sd_scores.median()),
-                "score_source": score_source,
-                "direction_policy_version": FCS2_CONSENSUS_DIRECTION_POLICY_VERSION,
-                **diagnostics,
             }
         )
 
@@ -361,21 +366,23 @@ def run_section1(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
         threshold["amplification"] = amplification
         threshold_frames.append(threshold)
 
-    food_all = pd.concat(food_rows, ignore_index=True)
-    rank_all = pd.concat(rank_frames, ignore_index=True)
-    threshold_all = pd.concat(threshold_frames, ignore_index=True)
+    food_all = pd.concat(food_rows, ignore_index=True) if food_rows else pd.DataFrame()
+    rank_all = pd.concat(rank_frames, ignore_index=True) if rank_frames else pd.DataFrame()
+    threshold_all = pd.concat(threshold_frames, ignore_index=True) if threshold_frames else pd.DataFrame()
     population = pd.DataFrame(summary_rows)
-    group_summary = (
-        food_all.groupby(["amplification", "food_group"], sort=False)
-        .agg(
-            n_foods=("foodcode", "nunique"),
-            mean_fcs2=("FCS2", "mean"),
-            mean_gmnps=("GMNPS_mean", "mean"),
-            median_within_food_sd=("GMNPS_sd", "median"),
-            between_food_sd=("GMNPS_mean", "std"),
+    group_summary = pd.DataFrame()
+    if not food_all.empty:
+        group_summary = (
+            food_all.groupby(["amplification", "food_group"], sort=False)
+            .agg(
+                n_foods=("foodcode", "nunique"),
+                mean_fcs2=("FCS2", "mean"),
+                mean_gmnps=("GMNPS_mean", "mean"),
+                median_within_food_sd=("GMNPS_sd", "median"),
+                between_food_sd=("GMNPS_mean", "std"),
+            )
+            .reset_index()
         )
-        .reset_index()
-    )
 
     section_dir = out_dir / "section1_population_consensus"
     section_dir.mkdir(parents=True, exist_ok=True)
@@ -432,6 +439,14 @@ def normalized_clinical_metadata(host: pd.DataFrame) -> pd.DataFrame:
 
 
 def run_section2(paths: dict[str, Path], out_dir: Path) -> dict[str, object]:
+    from gmnps.validation.clinical_correlation import (  # noqa: PLC0415
+        ClinicalVariableSpec,
+        audit_clinical_completeness,
+        choose_clinical_cohort,
+        evaluate_gmwi2_retention,
+        spearman_clinical_correlations,
+    )
+
     spec = ClinicalVariableSpec(min_n=50)
     gmrepo = pd.read_parquet(paths["gmrepo_metadata"]).rename(columns=CLINICAL_RENAME)
     gmrepo["sample_id"] = gmrepo["run_id"].astype(str)
@@ -535,6 +550,13 @@ def build_direct_kg_edges(nutrient_metabolite: pd.DataFrame, disease_metabolite:
 
 
 def run_section3(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace) -> dict[str, object]:
+    from gmnps.knowledge_graph import (  # noqa: PLC0415
+        adjudicate_labels_rule_ai,
+        build_adjudication_prompt_table,
+        label_metrics,
+        score_nutrient_disease_paths,
+    )
+
     beta = pd.read_parquet(paths["beta_i"])
     beta.index = beta.index.astype(str)
     beta.columns = beta.columns.astype(str)
@@ -622,6 +644,8 @@ def kg_binary_adjudication(
     n_folds: int,
 ) -> tuple[pd.DataFrame, dict[str, float | int]]:
     """Cross-validated KG adjudication of Health versus disease status."""
+    from gmnps.validation.response_prediction import group_folds  # noqa: PLC0415
+
     pivot = path_scores.pivot_table(
         index="sample_id",
         columns="disease",
@@ -690,6 +714,11 @@ def design_matrix(data: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
 
 
 def run_cv_models(data: pd.DataFrame, outcome: str, feature_sets: dict[str, list[str]], folds: int, alpha: float) -> pd.DataFrame:
+    from gmnps.validation.response_prediction import (  # noqa: PLC0415
+        fit_ridge_predict,
+        group_folds,
+    )
+
     subset = data.dropna(subset=[outcome, "subject_id"]).copy()
     fold_indices = group_folds(subset["subject_id"], min(folds, subset["subject_id"].nunique()), 20260804)
     rows = []
@@ -740,6 +769,12 @@ def select_metabolite_outcomes(metabolites: pd.DataFrame, beta_axis: pd.Series, 
 
 
 def run_section4(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace) -> dict[str, object]:
+    from gmnps.validation.response_prediction import (  # noqa: PLC0415
+        paired_bootstrap_delta,
+        regression_metrics,
+        required_ablation_models,
+    )
+
     host = normalized_clinical_metadata(pd.read_parquet(paths["cra_host"]))
     food = pd.read_parquet(paths["cra_food_intake"])
     abundance = pd.read_parquet(paths["cra_abundance"])

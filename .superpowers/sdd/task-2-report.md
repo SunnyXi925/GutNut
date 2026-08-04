@@ -90,3 +90,25 @@ Test output:
 .....................                                                    [100%]
 21 passed in 0.49s
 ```
+
+## Integration Self-Containment Fix
+
+- Moved non-Task-2 runner dependencies to the sections and helpers that use
+  them, so the runner module can be imported with Task 2's committed modules
+  alone.
+- Rejected non-finite calibration parameters before score computation.
+- Marked non-finite or consensus-gate-failing Section 1 candidates as
+  `rejected_consensus_gate` and omitted their score, rank, and food outputs.
+
+Test output:
+
+```text
+...........................................                              [100%]
+43 passed in 0.59s
+```
+
+Top-level runner import output:
+
+```text
+ok
+```

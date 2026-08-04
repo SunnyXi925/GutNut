@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -158,6 +160,30 @@ def test_apply_personalized_offset_rejects_nonfinite_personalized_scores():
 
     with pytest.raises(ValueError, match="personalized scores must contain only finite values"):
         apply_personalized_offset(fcs, raw, CalibrationParams())
+
+
+@pytest.mark.parametrize(
+    "parameter",
+    [
+        "delta_cap",
+        "temperature",
+        "group_penalty",
+        "min_group_pass_fraction",
+        "min_subgroup_pass_fraction",
+        "consensus_failure_penalty",
+    ],
+)
+@pytest.mark.parametrize("nonfinite", [np.nan, np.inf, -np.inf])
+def test_calibration_objective_rejects_nonfinite_numeric_parameters(parameter, nonfinite):
+    fcs = pd.Series({"veg": 60.0})
+    raw = pd.DataFrame({"veg": [0.1]})
+    labels = pd.DataFrame(
+        {"food_group": ["Vegetables"], "expected_group_direction": ["stable_or_up"]},
+        index=fcs.index,
+    )
+
+    with pytest.raises(ValueError, match=rf"{parameter} must be finite"):
+        calibration_objective(fcs, raw, labels, replace(CalibrationParams(), **{parameter: nonfinite}))
 
 
 @pytest.mark.parametrize(
