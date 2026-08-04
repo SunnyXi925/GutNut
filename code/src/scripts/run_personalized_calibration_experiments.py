@@ -863,23 +863,48 @@ def run_cv_models(data: pd.DataFrame, outcome: str, feature_sets: dict[str, list
     return pd.DataFrame(rows)
 
 
-def select_metabolite_outcomes(metabolites: pd.DataFrame, beta_axis: pd.Series, n_outcomes: int) -> list[str]:
+def eligible_metabolite_outcomes(metabolites: pd.DataFrame, n_outcomes: int) -> list[str]:
+    """Choose deterministic metabolite candidates without inspecting GMNPS features."""
+
     meta = metabolites.set_index("subject_id", drop=False)
     numeric = meta.drop(columns=["subject_id"], errors="ignore").apply(pd.to_numeric, errors="coerce")
-    aligned_beta = beta_axis.reindex(numeric.index).astype(float)
-    rows = []
+    candidates = []
     for column in numeric.columns:
-        pair = pd.concat([numeric[column], aligned_beta], axis=1).dropna()
-        if len(pair) < 100 or pair.iloc[:, 0].nunique() < 5:
+        values = numeric[column].dropna()
+        if len(values) < 100 or values.nunique() < 5:
             continue
-        rho = pair.iloc[:, 0].rank(method="average").corr(pair.iloc[:, 1].rank(method="average"))
-        if pd.notna(rho):
-            rows.append((column, abs(float(rho))))
-    rows.sort(key=lambda item: item[1], reverse=True)
-    return [name for name, _ in rows[:n_outcomes]]
+        candidates.append(str(column))
+    return sorted(candidates)[:n_outcomes]
+
+
+def read_response_outcome_list(path: Path) -> list[str]:
+    """Read one pre-registered response outcome per non-comment line."""
+
+    outcomes = []
+    for line in path.read_text().splitlines():
+        outcome = line.split("#", maxsplit=1)[0].strip()
+        if outcome:
+            outcomes.append(outcome)
+    return list(dict.fromkeys(outcomes))
+
+
+def bootstrap_ci_p_value(estimate: float, ci_low: float, ci_high: float) -> float:
+    """Approximate a two-sided p-value from a 95% bootstrap confidence interval."""
+
+    if not all(np.isfinite([estimate, ci_low, ci_high])):
+        return math.nan
+    standard_error = (ci_high - ci_low) / (2 * 1.96)
+    if standard_error <= 0:
+        return 0.0 if estimate != 0 else 1.0
+    return float(math.erfc(abs(estimate / standard_error) / math.sqrt(2.0)))
 
 
 def run_section4(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace) -> dict[str, object]:
+    from gmnps.validation.response_benchmark import (  # noqa: PLC0415
+        fdr_bh,
+        split_outcome_discovery_validation,
+        summarize_added_value,
+    )
     from gmnps.validation.response_prediction import (  # noqa: PLC0415
         paired_bootstrap_delta,
         regression_metrics,
@@ -916,13 +941,29 @@ def run_section4(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
     data["high_compression_beta"] = 0.2 * data["beta_personalized_axis"].fillna(0.0)
     data["kg_evidence_axis"] = zscore(data["beta_personalized_axis"].fillna(0.0)) + 0.1 * zscore(data["micro_pc_1"])
     selected_metabolites: list[str] = []
+    metabolite_split: dict[str, str] = {}
+    metabolite_source = "not_available"
+    requested_outcomes = (
+        read_response_outcome_list(args.response_outcome_list)
+        if args.response_outcome_list is not None
+        else None
+    )
     if metabolites is not None:
         metab = metabolites.set_index("subject_id", drop=False)
-        selected_metabolites = select_metabolite_outcomes(
-            metab,
-            data["beta_personalized_axis"],
-            args.metabolite_outcomes,
-        )
+        if requested_outcomes is not None:
+            selected_metabolites = [outcome for outcome in requested_outcomes if outcome in metab.columns]
+            metabolite_split = {outcome: "validation" for outcome in selected_metabolites}
+            metabolite_source = "prespecified_list"
+        else:
+            candidates = eligible_metabolite_outcomes(metab, args.metabolite_outcomes)
+            split = split_outcome_discovery_validation(candidates, args.response_outcome_split_seed)
+            selected_metabolites = [*split["discovery"], *split["validation"]]
+            metabolite_split = {
+                outcome: split_name
+                for split_name, outcomes in split.items()
+                for outcome in outcomes
+            }
+            metabolite_source = "deterministic_discovery_validation_split"
         if selected_metabolites:
             data = data.join(metab[selected_metabolites], how="left")
 
@@ -946,13 +987,43 @@ def run_section4(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
     if missing:
         raise RuntimeError(f"missing required ablation models: {sorted(missing)}")
 
+    if requested_outcomes is not None:
+        outcome_sources = {
+            outcome: ("prespecified_list", "validation")
+            for outcome in requested_outcomes
+            if outcome in data.columns
+        }
+        if not outcome_sources:
+            raise ValueError("--response-outcome-list contains no outcomes available in the response data")
+    else:
+        outcome_sources = {
+            outcome: ("prespecified_primary", "validation")
+            for outcome in PRIMARY_OUTCOMES
+            if outcome in data.columns
+        }
+        outcome_sources.update(
+            {
+                outcome: (metabolite_source, metabolite_split[outcome])
+                for outcome in selected_metabolites
+                if outcome in data.columns
+            }
+        )
     predictions = []
-    for outcome in [c for c in [*PRIMARY_OUTCOMES, *selected_metabolites] if c in data.columns]:
+    for outcome in outcome_sources:
         predictions.append(run_cv_models(data, outcome, feature_sets, args.response_folds, args.ridge_alpha))
     pred = pd.concat(predictions, ignore_index=True)
     metrics_rows = []
     for (outcome, model), frame in pred.groupby(["outcome", "model"], sort=False):
-        metrics_rows.append({"outcome": outcome, "model": model, "n": int(len(frame)), **regression_metrics(frame["y_true"].to_numpy(), frame["y_pred"].to_numpy())})
+        metrics_rows.append(
+            {
+                "outcome": outcome,
+                "outcome_source": outcome_sources[outcome][0],
+                "split": outcome_sources[outcome][1],
+                "model": model,
+                "n": int(len(frame)),
+                **regression_metrics(frame["y_true"].to_numpy(), frame["y_pred"].to_numpy()),
+            }
+        )
     metrics = pd.DataFrame(metrics_rows)
     comparison_rows = []
     for outcome in sorted(pred["outcome"].unique()):
@@ -971,12 +1042,15 @@ def run_section4(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
                 comparison_rows.append(
                     {
                         "outcome": outcome,
+                        "outcome_source": outcome_sources[outcome][0],
+                        "split": outcome_sources[outcome][1],
                         "model": model,
                         "baseline": baseline,
                         "metric": f"delta_{metric}",
                         "estimate_model_minus_baseline": est,
                         "ci_low": lo,
                         "ci_high": hi,
+                        "p_value": bootstrap_ci_p_value(est, lo, hi),
                     }
                 )
     comparisons = pd.DataFrame(comparison_rows)
@@ -984,11 +1058,17 @@ def run_section4(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
         comparisons.loc[
             comparisons["baseline"].eq("food_plus_microbiome")
             & comparisons["metric"].eq("delta_spearman")
+            & comparisons["split"].eq("validation")
         ]
         .sort_values("estimate_model_minus_baseline", ascending=False, kind="mergesort")
         .reset_index(drop=True)
     )
-    added_value["improved_over_food_plus_microbiome"] = added_value["estimate_model_minus_baseline"] > 0
+    added_value["fdr_q_value"] = fdr_bh(added_value["p_value"])
+    added_value["improved_over_food_plus_microbiome"] = (
+        added_value["estimate_model_minus_baseline"].gt(0)
+        & added_value["fdr_q_value"].le(0.05)
+    )
+    added_value_summary = summarize_added_value(added_value)
 
     section_dir = out_dir / "section4_response_prediction"
     section_dir.mkdir(parents=True, exist_ok=True)
@@ -996,14 +1076,22 @@ def run_section4(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
     metrics.to_csv(section_dir / "model_metrics.csv", index=False)
     comparisons.to_csv(section_dir / "model_comparisons.csv", index=False)
     added_value.to_csv(section_dir / "gmnps_added_value_summary.csv", index=False)
+    added_value_summary.to_csv(section_dir / "gmnps_added_value_overall_summary.csv", index=False)
     data.reset_index(drop=True).loc[:, ["subject_id", *base_cols, "beta_personalized_axis", "kg_evidence_axis"]].to_csv(
         section_dir / "response_feature_summary.csv",
         index=False,
     )
-    pd.DataFrame({"selected_metabolite_outcome": selected_metabolites}).to_csv(
-        section_dir / "selected_metabolite_outcomes.csv",
-        index=False,
-    )
+    pd.DataFrame(
+        [
+            {
+                "outcome": outcome,
+                "outcome_source": source,
+                "split": split_name,
+                "contributes_to_final_added_value_summary": split_name == "validation",
+            }
+            for outcome, (source, split_name) in outcome_sources.items()
+        ]
+    ).to_csv(section_dir / "response_outcome_diagnostics.csv", index=False)
 
     full = metrics.loc[metrics["model"].eq("GMNPS_full")]
     metabolite_added = added_value.loc[added_value["outcome"].isin(selected_metabolites)]
@@ -1014,6 +1102,8 @@ def run_section4(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
         "n_metabolite_outcomes_with_positive_spearman_gain": int(
             metabolite_added["improved_over_food_plus_microbiome"].sum()
         ),
+        "metabolite_outcome_source": metabolite_source,
+        "final_added_value_summary_split": "validation_only",
         "best_full_spearman": float(full["spearman"].max()),
         "median_full_r2": float(full["r2"].median()),
         "section_dir": str(section_dir),
@@ -1245,6 +1335,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ridge-alpha", type=float, default=10.0)
     parser.add_argument("--bootstrap", type=int, default=200)
     parser.add_argument("--metabolite-outcomes", type=int, default=12)
+    parser.add_argument(
+        "--response-outcome-list",
+        type=Path,
+        help="Path to a pre-registered, one-outcome-per-line response outcome list.",
+    )
+    parser.add_argument("--response-outcome-split-seed", type=int, default=20260805)
     parser.add_argument("--official-gmwi2-scores", type=Path)
     parser.add_argument(
         "--microbiome-health-mode",
