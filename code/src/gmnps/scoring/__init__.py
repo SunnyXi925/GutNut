@@ -23,6 +23,11 @@ from gmnps.scoring.masks import (
     build_channel_vectors,
     get_mask_definition,
 )
+from gmnps.scoring.calibration_objective import (
+    CalibrationParams,
+    apply_personalized_offset,
+    food_group_direction_pass_fraction,
+)
 
 __all__ = [
     "AnchoredScoringConfig",
@@ -44,4 +49,7 @@ __all__ = [
     "audit_primary_mask",
     "build_channel_vectors",
     "get_mask_definition",
+    "CalibrationParams",
+    "apply_personalized_offset",
+    "food_group_direction_pass_fraction",
 ]
