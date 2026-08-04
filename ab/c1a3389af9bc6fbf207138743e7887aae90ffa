@@ -1,0 +1,18 @@
+code/src/gmnps/validation/reference_targets.py
+  h_f3d5b5bc65ef89 32
+code/src/tests/test_reference_targets.py
+  h_f3d5b5bc65ef89 1-4,21-46
+.superpowers/sdd/task-1-report.md
+  h_f3d5b5bc65ef89 1-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "abc1a3389af9bc6fbf207138743e7887aae90ffa",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  }
+}
