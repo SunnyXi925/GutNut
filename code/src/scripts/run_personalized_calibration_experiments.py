@@ -30,6 +30,7 @@ from gmnps.scoring.calibration_objective import (  # noqa: E402
     calibration_objective,
 )
 from gmnps.supplement.fcs_style import build_supplement_manifest  # noqa: E402
+from gmnps.validation.reference_targets import evaluate_target  # noqa: E402
 
 
 DEFAULT_PATHS = {
@@ -183,6 +184,95 @@ def write_json(path: Path, payload: dict[str, object]) -> None:
         return value
 
     path.write_text(json.dumps(clean(payload), indent=2, ensure_ascii=True), encoding="utf-8")
+
+
+def _finite_observed(value: object) -> float:
+    """Return a finite metric value, or NaN when the runner did not compute one."""
+
+    try:
+        observed = float(value)
+    except (TypeError, ValueError):
+        return float("nan")
+    return observed if math.isfinite(observed) else float("nan")
+
+
+def _primary_section1_row(section1: dict[str, object]) -> dict[str, object]:
+    """Select the pre-specified primary calibration run without optimizing over runs."""
+
+    rows = section1.get("population_consensus", [])
+    if not isinstance(rows, list):
+        return {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if row.get("amplification") == 1.0 and row.get("calibration_status") == "eligible":
+            return row
+    return {}
+
+
+def build_submission_readiness_report(
+    section1: dict[str, object],
+    section2: dict[str, object],
+    section3: dict[str, object],
+    section4: dict[str, object],
+) -> dict[str, object]:
+    """Evaluate blocking reference targets from metrics actually produced by sections 1-4."""
+
+    primary_section1 = _primary_section1_row(section1)
+    observations = [
+        (
+            "fcs2_population_spearman",
+            primary_section1.get("spearman_fcs2_gmnps_mean"),
+            "section1.population_consensus[amplification=1.0].spearman_fcs2_gmnps_mean",
+        ),
+        (
+            "food_group_direction_pass_fraction",
+            primary_section1.get("food_group_direction_pass_fraction"),
+            "section1.population_consensus[amplification=1.0].food_group_direction_pass_fraction",
+        ),
+        # Section 2 assesses clinical correlations/retention, not the official external
+        # GMWI2 health-versus-disease classification benchmark required by this target.
+        (
+            "gmwi2_external_balanced_accuracy",
+            None,
+            "not computed: section2 has no official GMWI2 external classification evaluation",
+        ),
+        (
+            "kg_binary_balanced_accuracy",
+            section3.get("binary_balanced_accuracy"),
+            "section3.binary_balanced_accuracy",
+        ),
+        (
+            "response_delta_spearman_fdr_pass_fraction",
+            section4.get("response_delta_spearman_fdr_pass_fraction"),
+            "section4.response_delta_spearman_fdr_pass_fraction",
+        ),
+    ]
+    rows = []
+    for name, value, source in observations:
+        observed = _finite_observed(value)
+        row = evaluate_target(name, observed)
+        row["blocking"] = True
+        row["observed_source"] = source
+        row["status"] = "evaluated" if math.isfinite(observed) else "missing"
+        rows.append(row)
+
+    return {
+        "ready_for_submission": bool(all(row["passes"] for row in rows)),
+        "n_blocking_targets": len(rows),
+        "n_blocking_targets_passing": int(sum(bool(row["passes"]) for row in rows)),
+        "blocking_targets": rows,
+    }
+
+
+def write_submission_readiness_report(out_dir: Path, report: dict[str, object]) -> None:
+    """Write both machine-readable readiness artifacts at the experiment-output root."""
+
+    rows = report["blocking_targets"]
+    if not isinstance(rows, list):
+        raise ValueError("submission readiness report requires blocking target rows")
+    pd.DataFrame(rows).to_csv(out_dir / "submission_readiness_report.csv", index=False)
+    write_json(out_dir / "submission_readiness_report.json", report)
 
 
 def source_revision(root: Path) -> dict[str, object]:
@@ -1096,6 +1186,9 @@ def run_section4(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
 
     full = metrics.loc[metrics["model"].eq("GMNPS_full")]
     metabolite_added = added_value.loc[added_value["outcome"].isin(selected_metabolites)]
+    response_fdr_pass_fraction = (
+        float(added_value["improved_over_food_plus_microbiome"].mean()) if len(added_value) else float("nan")
+    )
     return {
         "n_subjects": int(data["subject_id"].nunique()),
         "n_outcomes": int(metrics["outcome"].nunique()),
@@ -1107,6 +1200,7 @@ def run_section4(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
         "final_added_value_summary_split": "validation_only",
         "best_full_spearman": float(full["spearman"].max()),
         "median_full_r2": float(full["r2"].median()),
+        "response_delta_spearman_fdr_pass_fraction": response_fdr_pass_fraction,
         "section_dir": str(section_dir),
     }
 
@@ -1281,6 +1375,8 @@ def run(args: argparse.Namespace) -> None:
     section2 = run_section2(paths, out_dir, args)
     section3 = run_section3(paths, out_dir, args)
     section4 = run_section4(paths, out_dir, args)
+    readiness = build_submission_readiness_report(section1, section2, section3, section4)
+    write_submission_readiness_report(out_dir, readiness)
 
     manifest = {
         "analysis": "personalized_calibration_experiments",
@@ -1293,6 +1389,7 @@ def run(args: argparse.Namespace) -> None:
             "kg_label_adjudication": section3,
             "response_prediction": section4,
         },
+        "submission_readiness": readiness,
         "interpretation_boundary": "Results are computational validation analyses from available local resources; beta_i and GMNPS offsets are microbiome-derived calibration signals, not causal treatment effects.",
     }
     write_json(out_dir / "experiment_manifest.json", manifest)

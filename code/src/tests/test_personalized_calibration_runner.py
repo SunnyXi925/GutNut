@@ -9,11 +9,43 @@ from scripts.run_personalized_calibration_experiments import (
     SECTION1_POPULATION_COLUMNS,
     SECTION1_RANK_THRESHOLD_COLUMNS,
     calibration_candidate_status,
+    build_submission_readiness_report,
     fcs2_consensus_direction_policy_v1,
     section1_output_frame,
     write_section1_outputs,
     write_supplement,
 )
+
+
+def test_submission_readiness_uses_section_metrics_and_fails_missing_official_gmwi2_target():
+    report = build_submission_readiness_report(
+        {
+            "population_consensus": [
+                {
+                    "amplification": 1.0,
+                    "calibration_status": "eligible",
+                    "spearman_fcs2_gmnps_mean": 0.97,
+                    "food_group_direction_pass_fraction": 0.95,
+                },
+                {
+                    "amplification": 2.0,
+                    "calibration_status": "eligible",
+                    "spearman_fcs2_gmnps_mean": 1.0,
+                    "food_group_direction_pass_fraction": 1.0,
+                },
+            ]
+        },
+        {"microbiome_health_mode": "official_gmwi2"},
+        {"binary_balanced_accuracy": 0.70},
+        {"response_delta_spearman_fdr_pass_fraction": 0.60},
+    )
+
+    rows = {row["name"]: row for row in report["blocking_targets"]}
+    assert rows["fcs2_population_spearman"]["observed"] == 0.97
+    assert rows["gmwi2_external_balanced_accuracy"]["status"] == "missing"
+    assert rows["gmwi2_external_balanced_accuracy"]["passes"] is False
+    assert report["n_blocking_targets_passing"] == 4
+    assert report["ready_for_submission"] is False
 
 
 def test_fcs2_direction_policy_builds_explicit_objective_metadata():
