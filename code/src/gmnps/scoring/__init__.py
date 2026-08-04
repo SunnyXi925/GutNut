@@ -26,6 +26,7 @@ from gmnps.scoring.masks import (
 from gmnps.scoring.calibration_objective import (
     CalibrationParams,
     apply_personalized_offset,
+    calibration_objective,
     food_group_direction_pass_fraction,
 )
 
@@ -51,5 +52,6 @@ __all__ = [
     "get_mask_definition",
     "CalibrationParams",
     "apply_personalized_offset",
+    "calibration_objective",
     "food_group_direction_pass_fraction",
 ]
