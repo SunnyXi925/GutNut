@@ -1,0 +1,46 @@
+code/src/tests/test_adjudicator_eval.py
+  h_f3d5b5bc65ef89 3-6,27-37
+code/src/tests/test_signed_paths.py
+  h_f3d5b5bc65ef89 3-7,51-68
+code/src/gmnps/validation/__init__.py
+  h_f3d5b5bc65ef89 13-32,40-41,43-46,48-49,51,53-56,59
+code/src/tests/test_response_prediction.py
+  h_f3d5b5bc65ef89 1-71
+code/src/gmnps/validation/response_prediction.py
+  h_f3d5b5bc65ef89 1-192
+code/src/gmnps/validation/clinical_correlation.py
+  h_f3d5b5bc65ef89 1-151
+code/src/gmnps/knowledge_graph/signed_paths.py
+  h_f3d5b5bc65ef89 74-136
+code/src/gmnps/supplement/fcs_style.py
+  h_f3d5b5bc65ef89 32-36,84-92,99
+code/src/gmnps/knowledge_graph/adjudicator_eval.py
+  h_f3d5b5bc65ef89 6-34
+code/src/tests/test_fcs_style_supplement.py
+  h_f3d5b5bc65ef89 17,36-43
+code/src/gmnps/scoring/calibration_objective.py
+  h_f3d5b5bc65ef89 20-21,33,53-54,270-279,287,290-296,312-317
+code/src/tests/test_clinical_correlation.py
+  h_f3d5b5bc65ef89 1-59
+code/src/gmnps/validation/rank_shift.py
+  h_f3d5b5bc65ef89 1-118
+code/src/tests/test_calibration_objective.py
+  h_f3d5b5bc65ef89 46-51,60-63,181,276-279,315-319,325-358
+code/src/tests/test_personalized_calibration_runner.py
+  h_f3d5b5bc65ef89 20,43-48,62-81,149,151-162,165-166,170-180
+code/src/scripts/run_personalized_calibration_experiments.py
+  h_f3d5b5bc65ef89 108-109,111-113,238-253,274-275,447,449-452,536-537,649,785-786,790-802,806-813,832-836,847,864-865,868-869,901,944,946-956,959-966,969,982-987,1034-1046,1081-1087,1090,1100-1103,1115-1122,1137-1138,1141-1146,1184-1193,1314
+code/src/tests/test_rank_shift_metrics.py
+  h_f3d5b5bc65ef89 1-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "4551c13b5e197a6366d182f39c605db27f92dd2f",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  }
+}
