@@ -1,0 +1,18 @@
+code/src/tests/test_signed_paths.py
+  h_f3d5b5bc65ef89 34-42
+.superpowers/sdd/task-4-report.md
+  h_f3d5b5bc65ef89 1-15
+code/src/gmnps/knowledge_graph/signed_paths.py
+  h_f3d5b5bc65ef89 55,74-75,77-78,85-86,90,92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "61c999bcfc508b7080e0de31abfd1459313bc3fc",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  }
+}
