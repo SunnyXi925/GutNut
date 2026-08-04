@@ -17,6 +17,7 @@ from scripts.run_personalized_calibration_experiments import (
     write_submission_readiness_report,
     write_section1_outputs,
     write_supplement,
+    validate_registered_outcomes,
 )
 
 
@@ -39,7 +40,12 @@ def test_submission_readiness_uses_section_metrics_and_fails_missing_official_gm
             ]
         },
         {"microbiome_health_mode": "official_gmwi2"},
-        {"binary_balanced_accuracy": 0.70},
+        {
+            "binary_balanced_accuracy": 0.70,
+            "binary_single_class_collapse": False,
+            "binary_metrics_kind": "class_balanced",
+            "signed_edges_validated": True,
+        },
         {"response_delta_spearman_fdr_pass_fraction": 0.60},
     )
 
@@ -51,6 +57,26 @@ def test_submission_readiness_uses_section_metrics_and_fails_missing_official_gm
     assert rows["response_delta_spearman_fdr_pass_fraction"]["passes"] is False
     assert report["n_blocking_targets_passing"] == 3
     assert report["ready_for_submission"] is False
+
+
+def test_submission_readiness_rejects_collapsed_signed_kg_predictions():
+    report = build_submission_readiness_report(
+        {"population_consensus": []},
+        {},
+        {
+            "binary_balanced_accuracy": 1.0,
+            "binary_single_class_collapse": True,
+            "binary_metrics_kind": "class_balanced",
+            "signed_edges_validated": True,
+        },
+        {},
+    )
+
+    rows = {row["name"]: row for row in report["blocking_targets"]}
+    kg = rows["kg_binary_balanced_accuracy"]
+    assert kg["status"] == "missing"
+    assert kg["passes"] is False
+    assert "collapsed" in kg["observed_source"]
 
 
 def test_write_submission_readiness_report_writes_csv_and_json(tmp_path):
@@ -120,19 +146,43 @@ def test_fcs2_direction_policy_builds_explicit_objective_metadata():
 
 
 @pytest.mark.parametrize(
-    "diagnostics",
+    ("diagnostics", "expected"),
     [
-        {"objective_value": float("inf"), "consensus_gates_passed": False},
-        {"objective_value": float("nan"), "consensus_gates_passed": True},
-        {"objective_value": 0.25, "consensus_gates_passed": False},
+        ({"objective_value": float("inf"), "consensus_gates_passed": False}, "rejected_consensus_gate"),
+        ({"objective_value": float("nan"), "consensus_gates_passed": True}, "rejected_rank_shift_gate"),
+        ({"objective_value": 0.25, "consensus_gates_passed": False}, "rejected_consensus_gate"),
+        (
+            {
+                "objective_value": float("inf"),
+                "consensus_gates_passed": True,
+                "individual_rank_shift_gate_passed": False,
+                "calibration_eligible": False,
+            },
+            "rejected_rank_shift_gate",
+        ),
     ],
 )
-def test_calibration_candidate_status_rejects_ineligible_candidates(diagnostics):
-    assert calibration_candidate_status(diagnostics) == "rejected_consensus_gate"
+def test_calibration_candidate_status_rejects_ineligible_candidates(diagnostics, expected):
+    assert calibration_candidate_status(diagnostics) == expected
 
 
 def test_calibration_candidate_status_accepts_finite_consensus_passing_candidate():
-    assert calibration_candidate_status({"objective_value": 0.25, "consensus_gates_passed": True}) == "eligible"
+    assert calibration_candidate_status(
+        {
+            "objective_value": 0.25,
+            "consensus_gates_passed": True,
+            "individual_rank_shift_gate_passed": True,
+            "calibration_eligible": True,
+        }
+    ) == "eligible"
+
+
+def test_response_registry_rejects_partially_unavailable_outcomes():
+    with pytest.raises(ValueError, match="unavailable outcomes: missing_target"):
+        validate_registered_outcomes(
+            ["glucose", "missing_target"],
+            ["subject_id", "glucose"],
+        )
 
 
 def test_all_rejected_section1_writes_headers_and_supplement(tmp_path):

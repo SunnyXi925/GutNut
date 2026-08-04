@@ -17,6 +17,8 @@ class CalibrationParams:
     group_penalty: float = 0.0
     min_group_pass_fraction: float = 0.90
     min_subgroup_pass_fraction: float = 0.90
+    min_individual_rank_shift: float = 0.01
+    require_subgroup_consensus: bool = False
     consensus_failure_penalty: float = 100.0
     allow_legacy_name_direction_policy: bool = False
 
@@ -28,6 +30,7 @@ def _validate_params(params: CalibrationParams) -> None:
         "group_penalty": params.group_penalty,
         "min_group_pass_fraction": params.min_group_pass_fraction,
         "min_subgroup_pass_fraction": params.min_subgroup_pass_fraction,
+        "min_individual_rank_shift": params.min_individual_rank_shift,
         "consensus_failure_penalty": params.consensus_failure_penalty,
     }
     for name, value in numeric_parameters.items():
@@ -47,6 +50,8 @@ def _validate_params(params: CalibrationParams) -> None:
         raise ValueError("min_group_pass_fraction must be between 0 and 1")
     if not 0.0 <= params.min_subgroup_pass_fraction <= 1.0:
         raise ValueError("min_subgroup_pass_fraction must be between 0 and 1")
+    if not 0.0 <= params.min_individual_rank_shift <= 1.0:
+        raise ValueError("min_individual_rank_shift must be between 0 and 1")
     if params.consensus_failure_penalty < 0:
         raise ValueError("consensus_failure_penalty must be non-negative")
 
@@ -262,9 +267,16 @@ def calibration_objective(
             )
         )
     group_consensus_gate_passed = group_pass_fraction >= params.min_group_pass_fraction
-    subgroup_consensus_gate_passed = (
-        np.isnan(subgroup_pass_fraction)
-        or subgroup_pass_fraction >= params.min_subgroup_pass_fraction
+    subgroup_metadata_available = not np.isnan(subgroup_pass_fraction)
+    subgroup_consensus_gate_passed = bool(
+        subgroup_metadata_available
+        and subgroup_pass_fraction >= params.min_subgroup_pass_fraction
+    )
+    subgroup_gate_required_and_passed = bool(
+        subgroup_consensus_gate_passed or not params.require_subgroup_consensus
+    )
+    individual_rank_shift_gate_passed = bool(
+        mean_individual_rank_shift >= params.min_individual_rank_shift
     )
     subgroup_failure = 0.0 if np.isnan(subgroup_pass_fraction) else 1.0 - subgroup_pass_fraction
     group_penalty = float(params.group_penalty * ((1.0 - group_pass_fraction) + subgroup_failure))
@@ -272,12 +284,16 @@ def calibration_objective(
         params.consensus_failure_penalty
         * (
             int(not group_consensus_gate_passed)
-            + int(not subgroup_consensus_gate_passed)
+            + int(params.require_subgroup_consensus and not subgroup_consensus_gate_passed)
         )
     )
-    objective_value = float("inf") if not (
-        group_consensus_gate_passed and subgroup_consensus_gate_passed
-    ) else float(
+    consensus_gates_passed = bool(
+        group_consensus_gate_passed and subgroup_gate_required_and_passed
+    )
+    calibration_eligible = bool(
+        consensus_gates_passed and individual_rank_shift_gate_passed
+    )
+    objective_value = float("inf") if not calibration_eligible else float(
         (1.0 - population_spearman)
         + (mean_absolute_population_shift / 100.0)
         + group_penalty
@@ -293,9 +309,12 @@ def calibration_objective(
         "group_penalty": group_penalty,
         "group_consensus_gate_passed": bool(group_consensus_gate_passed),
         "subgroup_consensus_gate_passed": bool(subgroup_consensus_gate_passed),
-        "consensus_gates_passed": bool(
-            group_consensus_gate_passed and subgroup_consensus_gate_passed
-        ),
+        "subgroup_metadata_available": bool(subgroup_metadata_available),
+        "subgroup_consensus_required": bool(params.require_subgroup_consensus),
+        "consensus_gates_passed": consensus_gates_passed,
+        "min_individual_rank_shift": float(params.min_individual_rank_shift),
+        "individual_rank_shift_gate_passed": individual_rank_shift_gate_passed,
+        "calibration_eligible": calibration_eligible,
         "consensus_gate_penalty": consensus_gate_penalty,
         "objective_value": objective_value,
     }

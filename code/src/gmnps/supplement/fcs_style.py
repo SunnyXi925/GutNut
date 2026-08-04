@@ -29,6 +29,11 @@ _SECTIONS = (
     SupplementSection("Data availability", "Data access, licensing and repository boundaries."),
     SupplementSection("Code availability", "Code, configuration and reproducibility information."),
     SupplementSection("Reporting Summary", "Study reporting checklist and analysis summary."),
+    SupplementSection("Source-data index", "Index of source tables and their provenance records."),
+)
+
+_TABLE_S2_REQUIRED_COLUMNS = frozenset(
+    {"resource", "source_path", "source_exists", "bytes", "sha256", "provenance"}
 )
 
 _TABLE_SOURCES = {
@@ -76,14 +81,23 @@ def build_supplement_manifest(output_dir: Path) -> pd.DataFrame:
     ]
     for name, relative_source in _TABLE_SOURCES.items():
         source = output_dir / relative_source
+        source_exists = source.is_file()
+        status = "available" if source_exists else "missing_source"
+        if source_exists and name.startswith("Table S2."):
+            try:
+                columns = set(pd.read_csv(source, nrows=0).columns)
+            except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError):
+                columns = set()
+            if not _TABLE_S2_REQUIRED_COLUMNS.issubset(columns):
+                status = "invalid_schema"
         rows.append(
             {
                 "kind": "table",
                 "name": name,
                 "purpose": "",
                 "source_path": relative_source,
-                "source_exists": source.exists(),
-                "status": "available" if source.exists() else "missing_source",
+                "source_exists": source_exists,
+                "status": status,
             }
         )
     return pd.DataFrame(rows, columns=["kind", "name", "purpose", "source_path", "source_exists", "status"])

@@ -14,6 +14,7 @@ def test_fcs_style_supplement_sections_are_complete():
     assert "Supplementary Methods 1: Data resources and provenance" in sections
     assert "Supplementary Methods 4: KEGG/GMMAD2 knowledge graph and adjudication" in sections
     assert "Reporting Summary" in sections
+    assert "Source-data index" in sections
 
 
 def test_fcs_style_supplement_tables_include_algorithm_and_full_score_tables():
@@ -30,6 +31,18 @@ def test_manifest_marks_absent_table_source_without_omitting_required_table(tmp_
     table = manifest.loc[manifest["name"] == "Table S16. Dietary-response model comparisons and ablations"].iloc[0]
     assert table["status"] == "missing_source"
     assert table["source_path"] == "section4_response_prediction/model_comparisons.csv"
+
+
+def test_table_s2_requires_provenance_schema_not_just_an_existing_file(tmp_path):
+    pd.DataFrame({"resource": ["food"], "path": ["data/food.csv"]}).to_csv(
+        tmp_path / "data_resource_audit.csv", index=False
+    )
+
+    manifest = build_supplement_manifest(tmp_path)
+    table = manifest.loc[manifest["name"].str.startswith("Table S2.")].iloc[0]
+
+    assert bool(table["source_exists"])
+    assert table["status"] == "invalid_schema"
 
 
 def test_supplement_renderer_writes_required_outputs_and_available_s7_preview(tmp_path):

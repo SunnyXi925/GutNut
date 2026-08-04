@@ -43,7 +43,12 @@ def test_calibration_objective_uses_food_groups():
         fcs,
         raw,
         groups,
-        CalibrationParams(delta_cap=20.0, temperature=1.0, group_penalty=2.0),
+        CalibrationParams(
+            delta_cap=20.0,
+            temperature=1.0,
+            group_penalty=2.0,
+            min_individual_rank_shift=0.0,
+        ),
     )
     assert result["food_group_direction_pass_fraction"] == 1.0
     assert result["group_penalty"] == 0.0
@@ -52,7 +57,10 @@ def test_calibration_objective_uses_food_groups():
         expected_direction=["stable_or_down", "stable_or_up"]
     )
     reversed_result = calibration_objective(
-        fcs, raw, opposed_expectations, CalibrationParams(group_penalty=2.0)
+        fcs,
+        raw,
+        opposed_expectations,
+        CalibrationParams(group_penalty=2.0, min_individual_rank_shift=0.0),
     )
     assert reversed_result["food_group_direction_pass_fraction"] == 0.0
     assert reversed_result["objective_value"] > result["objective_value"]
@@ -170,6 +178,7 @@ def test_apply_personalized_offset_rejects_nonfinite_personalized_scores():
         "group_penalty",
         "min_group_pass_fraction",
         "min_subgroup_pass_fraction",
+        "min_individual_rank_shift",
         "consensus_failure_penalty",
     ],
 )
@@ -264,7 +273,10 @@ def test_consensus_gate_penalty_outweighs_larger_rank_shift():
         fcs, higher_shift_with_failed_consensus, labels, CalibrationParams()
     )
     passed = calibration_objective(
-        fcs, lower_shift_with_consensus, labels, CalibrationParams()
+        fcs,
+        lower_shift_with_consensus,
+        labels,
+        CalibrationParams(min_individual_rank_shift=0.0),
     )
 
     assert failed["mean_individual_rank_shift"] > passed["mean_individual_rank_shift"]
@@ -300,9 +312,55 @@ def test_failed_consensus_gate_is_infinite_with_zero_penalties(failed_gate):
         fcs,
         raw,
         labels,
-        CalibrationParams(consensus_failure_penalty=0.0, group_penalty=0.0),
+        CalibrationParams(
+            consensus_failure_penalty=0.0,
+            group_penalty=0.0,
+            require_subgroup_consensus=failed_gate == "subgroup",
+        ),
     )
 
     assert not result[f"{failed_gate}_consensus_gate_passed"]
     assert not result["consensus_gates_passed"]
     assert np.isinf(result["objective_value"])
+
+
+def test_near_zero_reranking_is_ineligible_even_when_consensus_passes():
+    fcs = pd.Series({"a": 80.0, "b": 60.0, "c": 40.0, "d": 20.0})
+    raw = pd.DataFrame({column: [1e-9, -1e-9] for column in fcs.index})
+    labels = pd.DataFrame(
+        {
+            "food_group": ["A", "B", "C", "D"],
+            "expected_group_direction": ["stable"] * 4,
+        },
+        index=fcs.index,
+    )
+
+    result = calibration_objective(fcs, raw, labels, CalibrationParams())
+
+    assert result["consensus_gates_passed"] is True
+    assert result["individual_rank_shift_gate_passed"] is False
+    assert result["calibration_eligible"] is False
+    assert np.isinf(result["objective_value"])
+
+
+def test_required_subgroup_consensus_marks_missing_metadata_as_failure():
+    fcs = pd.Series({"a": 60.0, "b": 40.0})
+    raw = pd.DataFrame({"a": [-1.0], "b": [1.0]})
+    labels = pd.DataFrame(
+        {
+            "food_group": ["A", "B"],
+            "expected_group_direction": ["stable", "stable"],
+        },
+        index=fcs.index,
+    )
+
+    result = calibration_objective(
+        fcs,
+        raw,
+        labels,
+        CalibrationParams(require_subgroup_consensus=True),
+    )
+
+    assert result["subgroup_metadata_available"] is False
+    assert result["subgroup_consensus_gate_passed"] is False
+    assert result["consensus_gates_passed"] is False

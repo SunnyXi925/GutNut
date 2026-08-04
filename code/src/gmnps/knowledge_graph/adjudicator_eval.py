@@ -3,6 +3,38 @@ from __future__ import annotations
 import pandas as pd
 
 
+def adjudicate_signed_evidence_labels(
+    path_scores: pd.DataFrame,
+    label_space: list[str],
+) -> pd.DataFrame:
+    """Choose the label with the strongest deterministic signed KG evidence."""
+
+    required = {"sample_id", "disease", "evidence_score"}
+    missing = required.difference(path_scores.columns)
+    if missing:
+        raise ValueError(f"path_scores missing required columns: {sorted(missing)}")
+    if not label_space:
+        raise ValueError("label_space must contain at least one label")
+    order = {label: index for index, label in enumerate(label_space)}
+    frame = path_scores.loc[path_scores["disease"].isin(label_space)].copy()
+    if frame.empty:
+        return pd.DataFrame(columns=["sample_id", "predicted_label", "decision_score", "adjudicator"])
+    frame["_label_order"] = frame["disease"].map(order)
+    frame = frame.sort_values(
+        ["sample_id", "evidence_score", "_label_order"],
+        ascending=[True, False, True],
+        kind="mergesort",
+    )
+    predictions = (
+        frame.groupby("sample_id", as_index=False, group_keys=False)
+        .head(1)
+        .loc[:, ["sample_id", "disease", "evidence_score"]]
+        .rename(columns={"disease": "predicted_label", "evidence_score": "decision_score"})
+    )
+    predictions["adjudicator"] = "deterministic_signed_kg_evidence"
+    return predictions.reset_index(drop=True)
+
+
 def class_balanced_metrics(predictions: pd.DataFrame, truth: pd.DataFrame) -> dict[str, float | int | bool]:
     """Evaluate predictions with equal weight for each observed true class."""
     _require_columns(predictions, {"sample_id", "predicted_label"}, "predictions")

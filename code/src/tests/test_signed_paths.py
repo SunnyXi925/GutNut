@@ -1,6 +1,10 @@
 import pandas as pd
 
-from gmnps.knowledge_graph.signed_paths import enumerate_signed_paths, validate_signed_edges
+from gmnps.knowledge_graph.signed_paths import (
+    enumerate_signed_paths,
+    score_signed_paths,
+    validate_signed_edges,
+)
 
 
 def test_enumerate_signed_paths_preserves_negative_risk_direction():
@@ -44,3 +48,25 @@ def test_enumerate_signed_paths_does_not_traverse_same_id_across_node_types():
     paths = enumerate_signed_paths(edges, 10)
 
     assert paths.empty
+
+
+def test_score_signed_paths_applies_path_sign_to_evidence():
+    paths = pd.DataFrame(
+        [
+            {
+                "nutrient": "Fiber",
+                "disease": "IBD",
+                "path": "Fiber->IBD",
+                "path_sign": -1,
+                "path_weight": 0.5,
+            }
+        ]
+    )
+
+    scores, detail = score_signed_paths(
+        pd.DataFrame({"Fiber": [2.0]}, index=["sample"]),
+        paths,
+    )
+
+    assert detail.iloc[0]["path_score"] == -1.0
+    assert scores.iloc[0]["evidence_score"] == -1.0

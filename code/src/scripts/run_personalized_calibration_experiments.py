@@ -105,7 +105,12 @@ SECTION1_POPULATION_COLUMNS = [
     "group_penalty",
     "group_consensus_gate_passed",
     "subgroup_consensus_gate_passed",
+    "subgroup_metadata_available",
+    "subgroup_consensus_required",
     "consensus_gates_passed",
+    "min_individual_rank_shift",
+    "individual_rank_shift_gate_passed",
+    "calibration_eligible",
     "consensus_gate_penalty",
     "objective_value",
     "spearman_fcs2_gmnps_mean",
@@ -230,6 +235,22 @@ def build_submission_readiness_report(
         if response_outcomes_pre_registered
         else "not computed: section4 has no explicit pre-registered response outcome list"
     )
+    signed_kg_metrics_available = bool(
+        section3.get("signed_edges_validated") is True
+        and section3.get("binary_metrics_kind") == "class_balanced"
+    )
+    kg_collapsed = section3.get("binary_single_class_collapse") is True
+    kg_observed = (
+        section3.get("binary_balanced_accuracy")
+        if signed_kg_metrics_available and not kg_collapsed
+        else None
+    )
+    if kg_collapsed:
+        kg_source = "not evaluated: section3 signed KG binary predictions collapsed to one class"
+    elif not signed_kg_metrics_available:
+        kg_source = "not computed: section3 lacks validated signed, class-balanced KG metrics"
+    else:
+        kg_source = "section3.signed_class_balanced.binary_balanced_accuracy"
     observations = [
         (
             "fcs2_population_spearman",
@@ -250,8 +271,8 @@ def build_submission_readiness_report(
         ),
         (
             "kg_binary_balanced_accuracy",
-            section3.get("binary_balanced_accuracy"),
-            "section3.binary_balanced_accuracy",
+            kg_observed,
+            kg_source,
         ),
         (
             "response_delta_spearman_fdr_pass_fraction",
@@ -423,8 +444,12 @@ def calibration_candidate_status(diagnostics: dict[str, object]) -> str:
         finite_objective = bool(np.isfinite(float(objective_value)))
     except (TypeError, ValueError):
         finite_objective = False
-    if not finite_objective or diagnostics.get("consensus_gates_passed") is not True:
+    if diagnostics.get("consensus_gates_passed") is not True:
         return "rejected_consensus_gate"
+    if diagnostics.get("individual_rank_shift_gate_passed") is not True:
+        return "rejected_rank_shift_gate"
+    if not finite_objective or diagnostics.get("calibration_eligible") is not True:
+        return "rejected_eligibility_gate"
     return "eligible"
 
 
@@ -508,6 +533,8 @@ def run_section1(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
             delta_cap=args.delta_cap * amplification,
             temperature=args.calibration_temperature,
             group_penalty=args.group_penalty,
+            min_individual_rank_shift=args.min_individual_rank_shift,
+            require_subgroup_consensus=True,
         )
         diagnostics = calibration_objective(fcs, raw_offset, policy_metadata, params)
         status = calibration_candidate_status(diagnostics)
@@ -619,7 +646,7 @@ def cra_beta_proxy(abundance: pd.DataFrame, bridge: pd.DataFrame) -> pd.DataFram
     masks = build_channel_vectors(nutrient_cols)
     beta_frame["beta_mac_mean"] = beta_frame.loc[:, np.asarray(nutrient_cols)[masks["mac"]]].mean(axis=1) if masks["mac"].any() else 0.0
     beta_frame["beta_lipid_mean"] = beta_frame.loc[:, np.asarray(nutrient_cols)[masks["lipid"]]].mean(axis=1) if masks["lipid"].any() else 0.0
-    beta_frame["beta_personalized_axis"] = zscore(beta_frame["beta_mac_mean"] - beta_frame["beta_lipid_mean"])
+    beta_frame["beta_personalized_axis"] = beta_frame["beta_mac_mean"] - beta_frame["beta_lipid_mean"]
     beta_frame.index.name = "sample_id"
     return beta_frame
 
@@ -755,19 +782,35 @@ def build_direct_kg_edges(nutrient_metabolite: pd.DataFrame, disease_metabolite:
                     "source_type": "nutrient",
                     "target_type": "disease",
                     "relation": "nutrient_metabolite_disease_projection",
-                    "weight": weight,
+                    "sign": 1 if weight > 0 else -1,
+                    "weight": abs(weight),
                     "evidence_source": "KEGG;GMMAD2",
                 }
             )
-    return pd.DataFrame(rows)
+    return pd.DataFrame(
+        rows,
+        columns=[
+            "source",
+            "target",
+            "source_type",
+            "target_type",
+            "relation",
+            "sign",
+            "weight",
+            "evidence_source",
+        ],
+    )
 
 
 def run_section3(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace) -> dict[str, object]:
-    from gmnps.knowledge_graph import (  # noqa: PLC0415
-        adjudicate_labels_rule_ai,
-        build_adjudication_prompt_table,
-        label_metrics,
-        score_nutrient_disease_paths,
+    from gmnps.knowledge_graph.adjudicator_eval import (  # noqa: PLC0415
+        adjudicate_signed_evidence_labels,
+        class_balanced_metrics,
+    )
+    from gmnps.knowledge_graph.signed_paths import (  # noqa: PLC0415
+        enumerate_signed_paths,
+        score_signed_paths,
+        validate_signed_edges,
     )
 
     beta = pd.read_parquet(paths["beta_i"])
@@ -786,14 +829,11 @@ def run_section3(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
 
     nutrient_metabolite = pd.read_parquet(paths["nutrient_metabolite"])
     disease_metabolite = pd.read_parquet(paths["gmmad2_disease_metabolite"])
-    edges = build_direct_kg_edges(nutrient_metabolite, disease_metabolite)
-    path_scores, paths_all = score_nutrient_disease_paths(beta_subset, edges, top_n=10)
-    prompt = build_adjudication_prompt_table(
-        path_scores,
-        leakage_columns=["true_label", "phenotype_label", "diagnosis", "cohort_label", "study_id"],
-    )
-    predictions = adjudicate_labels_rule_ai(prompt, list(DISEASE_KEYWORDS.keys()))
-    metrics = label_metrics(predictions, truth)
+    edges = validate_signed_edges(build_direct_kg_edges(nutrient_metabolite, disease_metabolite))
+    signed_paths = enumerate_signed_paths(edges, max_paths_per_nutrient=50)
+    path_scores, paths_all = score_signed_paths(beta_subset, signed_paths, top_n=10)
+    predictions = adjudicate_signed_evidence_labels(path_scores, list(DISEASE_KEYWORDS.keys()))
+    metrics = class_balanced_metrics(predictions, truth)
     binary_predictions, binary_metrics = kg_binary_adjudication(
         path_scores,
         truth,
@@ -804,6 +844,7 @@ def run_section3(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
     section_dir = out_dir / "section3_kg_label_adjudication"
     section_dir.mkdir(parents=True, exist_ok=True)
     edges.to_csv(section_dir / "kg_direct_nutrient_disease_edges.csv", index=False)
+    signed_paths.to_csv(section_dir / "kg_signed_paths.csv", index=False)
     path_scores.to_csv(section_dir / "kg_path_scores.csv", index=False)
     paths_all.sort_values("path_score", key=lambda s: s.abs(), ascending=False).head(5000).to_csv(
         section_dir / "kg_top_paths_detail.csv",
@@ -820,10 +861,12 @@ def run_section3(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
         "n_samples": int(metrics["n_samples"]),
         "accuracy": metrics["accuracy"],
         "balanced_accuracy": metrics["balanced_accuracy"],
-        "macro_f1": metrics["macro_f1"],
-        "majority_baseline_accuracy": metrics["majority_baseline_accuracy"],
+        "single_class_collapse": metrics["single_class_collapse"],
+        "signed_edges_validated": True,
         "binary_accuracy": binary_metrics["accuracy"],
         "binary_balanced_accuracy": binary_metrics["balanced_accuracy"],
+        "binary_single_class_collapse": binary_metrics["single_class_collapse"],
+        "binary_metrics_kind": "class_balanced",
         "section_dir": str(section_dir),
     }
 
@@ -855,7 +898,7 @@ def kg_binary_adjudication(
     truth: pd.DataFrame,
     beta_diagnostics_path: Path,
     n_folds: int,
-) -> tuple[pd.DataFrame, dict[str, float | int]]:
+) -> tuple[pd.DataFrame, dict[str, float | int | bool]]:
     """Cross-validated KG adjudication of Health versus disease status."""
     from gmnps.validation.response_prediction import group_folds  # noqa: PLC0415
 
@@ -897,38 +940,33 @@ def kg_binary_adjudication(
     out = frame.reset_index()[["sample_id", "true_label", "kg_disease_score", "kg_health_score", "decision_score"]]
     out["true_binary_label"] = np.where(y == 1, "Disease", "Health")
     out["predicted_binary_label"] = np.where(pred == 1, "Disease", "Health")
-    accuracy = float((pred == y).mean())
     majority = float(max(np.mean(y == 0), np.mean(y == 1)))
-    metrics = {
-        "n_samples": int(len(frame)),
-        "accuracy": accuracy,
-        "balanced_accuracy": _balanced_accuracy_from_arrays(y, pred),
-        "majority_baseline_accuracy": majority,
-        "mean_cv_threshold": float(np.mean(thresholds)),
-    }
+    from gmnps.knowledge_graph.adjudicator_eval import class_balanced_metrics  # noqa: PLC0415
+
+    metrics = class_balanced_metrics(
+        out[["sample_id", "predicted_binary_label"]].rename(
+            columns={"predicted_binary_label": "predicted_label"}
+        ),
+        out[["sample_id", "true_binary_label"]].rename(
+            columns={"true_binary_label": "true_label"}
+        ),
+    )
+    metrics["majority_baseline_accuracy"] = majority
+    metrics["mean_cv_threshold"] = float(np.mean(thresholds))
     return out, metrics
 
 
-def pca_features(frame: pd.DataFrame, n_components: int, prefix: str) -> pd.DataFrame:
-    x = frame.astype(float).copy()
-    x = x.fillna(x.median(axis=0))
-    x = (x - x.mean(axis=0)) / x.std(axis=0, ddof=0).replace(0, 1.0)
-    u, s, _ = np.linalg.svd(x.to_numpy(dtype=float), full_matrices=False)
-    n = min(n_components, u.shape[1])
-    return pd.DataFrame(u[:, :n] * s[:n], index=frame.index, columns=[f"{prefix}{i+1}" for i in range(n)])
-
-
-def design_matrix(data: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
-    x = data.loc[:, columns].apply(pd.to_numeric, errors="coerce")
-    x = x.fillna(x.median(axis=0))
-    x = (x - x.mean(axis=0)) / x.std(axis=0, ddof=0).replace(0, 1.0)
-    x.insert(0, "intercept", 1.0)
-    return x
-
-
-def run_cv_models(data: pd.DataFrame, outcome: str, feature_sets: dict[str, list[str]], folds: int, alpha: float) -> pd.DataFrame:
+def run_cv_models(
+    data: pd.DataFrame,
+    outcome: str,
+    feature_sets: dict[str, list[str]],
+    folds: int,
+    alpha: float,
+    pca_blocks: dict[str, tuple[list[str], int]] | None = None,
+) -> pd.DataFrame:
     from gmnps.validation.response_prediction import (  # noqa: PLC0415
         fit_ridge_predict,
+        fold_local_design_matrices,
         group_folds,
     )
 
@@ -941,9 +979,12 @@ def run_cv_models(data: pd.DataFrame, outcome: str, feature_sets: dict[str, list
         train = subset.loc[~test_mask]
         test = subset.loc[test_mask]
         for model, columns in feature_sets.items():
-            x_train = design_matrix(train, columns)
-            x_test = design_matrix(test, columns)
-            x_test = x_test.reindex(columns=x_train.columns, fill_value=0.0)
+            x_train, x_test = fold_local_design_matrices(
+                train,
+                test,
+                columns,
+                pca_blocks or {},
+            )
             pred = fit_ridge_predict(
                 x_train.to_numpy(dtype=float),
                 train[outcome].to_numpy(dtype=float),
@@ -990,6 +1031,19 @@ def read_response_outcome_list(path: Path) -> list[str]:
     return list(dict.fromkeys(outcomes))
 
 
+def validate_registered_outcomes(outcomes: list[str], available_columns: Iterable[str]) -> None:
+    """Fail before modelling when any pre-registered response target is unavailable."""
+
+    if not outcomes:
+        raise ValueError("--response-outcome-list must contain at least one outcome")
+    available = {str(column) for column in available_columns}
+    missing = [outcome for outcome in outcomes if outcome not in available]
+    if missing:
+        raise ValueError(
+            "--response-outcome-list contains unavailable outcomes: " + ", ".join(missing)
+        )
+
+
 def bootstrap_ci_p_value(estimate: float, ci_low: float, ci_high: float) -> float:
     """Approximate a two-sided p-value from a 95% bootstrap confidence interval."""
 
@@ -1024,14 +1078,16 @@ def run_section4(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
     host = host.set_index("subject_id", drop=False)
     food = food.set_index("subject_id", drop=False)
     abundance = abundance.set_index("subject_id", drop=False)
-    food_features = food.drop(columns=["subject_id"], errors="ignore").apply(pd.to_numeric, errors="coerce")
-    micro_features = abundance.drop(columns=["subject_id"], errors="ignore").apply(pd.to_numeric, errors="coerce")
-    food_pc = pca_features(food_features, 6, "food_pc_")
-    micro_pc = pca_features(micro_features, 8, "micro_pc_")
-    beta_proxy = cra_beta_proxy(abundance.reset_index(drop=True), bridge)
+    food_features = food.drop(columns=["subject_id"], errors="ignore").apply(
+        pd.to_numeric, errors="coerce"
+    ).add_prefix("food_raw__")
+    micro_features = abundance.drop(columns=["subject_id"], errors="ignore").apply(
+        pd.to_numeric, errors="coerce"
+    ).add_prefix("micro_raw__")
+    beta_proxy = cra_beta_proxy(abundance, bridge)
     beta_proxy.index = beta_proxy.index.astype(str)
 
-    data = host.join(food_pc, how="inner").join(micro_pc, how="inner").join(
+    data = host.join(food_features, how="inner").join(micro_features, how="inner").join(
         beta_proxy[["beta_personalized_axis", "beta_mac_mean", "beta_lipid_mean"]],
         how="left",
     )
@@ -1041,7 +1097,10 @@ def run_section4(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
     data["shuffled_beta"] = rng.permutation(data["beta_personalized_axis"].fillna(0.0).to_numpy())
     data["random_beta"] = rng.normal(0, 1, size=len(data))
     data["high_compression_beta"] = 0.2 * data["beta_personalized_axis"].fillna(0.0)
-    data["kg_evidence_axis"] = zscore(data["beta_personalized_axis"].fillna(0.0)) + 0.1 * zscore(data["micro_pc_1"])
+    first_micro_feature = micro_features.columns[0] if len(micro_features.columns) else None
+    data["kg_evidence_axis"] = data["beta_personalized_axis"].fillna(0.0)
+    if first_micro_feature is not None:
+        data["kg_evidence_axis"] = data["kg_evidence_axis"] + 0.1 * data[first_micro_feature].fillna(0.0)
     selected_metabolites: list[str] = []
     metabolite_split: dict[str, str] = {}
     metabolite_source = "not_available"
@@ -1053,7 +1112,14 @@ def run_section4(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
     if metabolites is not None:
         metab = metabolites.set_index("subject_id", drop=False)
         if requested_outcomes is not None:
-            selected_metabolites = [outcome for outcome in requested_outcomes if outcome in metab.columns]
+            validate_registered_outcomes(
+                requested_outcomes,
+                set(data.columns) | set(metab.columns),
+            )
+            selected_metabolites = [
+                outcome for outcome in requested_outcomes
+                if outcome in metab.columns and outcome not in data.columns
+            ]
             metabolite_split = {outcome: "validation" for outcome in selected_metabolites}
             metabolite_source = "prespecified_list"
         else:
@@ -1068,10 +1134,16 @@ def run_section4(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
             metabolite_source = "deterministic_discovery_validation_split"
         if selected_metabolites:
             data = data.join(metab[selected_metabolites], how="left")
+    elif requested_outcomes is not None:
+        validate_registered_outcomes(requested_outcomes, data.columns)
 
     base_cols = [c for c in ["age", "bmi", "sex_female"] if c in data.columns]
-    food_cols = list(food_pc.columns)
-    micro_cols = list(micro_pc.columns)
+    food_cols = list(food_features.columns)
+    micro_cols = list(micro_features.columns)
+    pca_blocks = {
+        "food_pc_": (food_cols, 6),
+        "micro_pc_": (micro_cols, 8),
+    }
     feature_sets = {
         "FCS2_only": base_cols,
         "food_nutrients": base_cols + food_cols,
@@ -1093,10 +1165,7 @@ def run_section4(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
         outcome_sources = {
             outcome: ("prespecified_list", "validation")
             for outcome in requested_outcomes
-            if outcome in data.columns
         }
-        if not outcome_sources:
-            raise ValueError("--response-outcome-list contains no outcomes available in the response data")
     else:
         outcome_sources = {
             outcome: ("prespecified_primary", "validation")
@@ -1112,7 +1181,16 @@ def run_section4(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
         )
     predictions = []
     for outcome in outcome_sources:
-        predictions.append(run_cv_models(data, outcome, feature_sets, args.response_folds, args.ridge_alpha))
+        predictions.append(
+            run_cv_models(
+                data,
+                outcome,
+                feature_sets,
+                args.response_folds,
+                args.ridge_alpha,
+                pca_blocks,
+            )
+        )
     pred = pd.concat(predictions, ignore_index=True)
     metrics_rows = []
     for (outcome, model), frame in pred.groupby(["outcome", "model"], sort=False):
@@ -1233,10 +1311,11 @@ def data_resource_audit(paths: dict[str, Path], root: Path) -> pd.DataFrame:
         rows.append(
             {
                 "resource": key,
-                "path": str(path.relative_to(root)) if path.exists() else str(path),
-                "exists": bool(path.exists()),
+                "source_path": str(path.relative_to(root)) if path.exists() else str(path),
+                "source_exists": bool(path.exists()),
                 "bytes": int(path.stat().st_size) if path.exists() and path.is_file() else 0,
                 "sha256": sha256_file(path) if path.exists() and path.is_file() and path.stat().st_size < 200_000_000 else "not_recorded_large_or_missing",
+                "provenance": "runner_input_registry",
             }
         )
     return pd.DataFrame(rows)
@@ -1427,6 +1506,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--delta-cap", type=float, default=20.0)
     parser.add_argument("--calibration-temperature", type=float, default=1.0)
     parser.add_argument("--group-penalty", type=float, default=0.0)
+    parser.add_argument("--min-individual-rank-shift", type=float, default=0.01)
     parser.add_argument("--legacy-score-matrix", action="store_true")
     parser.add_argument("--top-k", type=int, default=50)
     parser.add_argument("--chunk-size", type=int, default=256)
