@@ -29,7 +29,7 @@ def reference_targets() -> dict[str, ReferenceTarget]:
             "gmwi2_external_balanced_accuracy",
             0.72,
             ">=",
-            "Official GMWI2 reports external validation around this level.",
+            "Reference-only benchmark based on official GMWI2 external validation around this level for compatible taxonomic profiles using the official GMWI2 model; this project has not run official GMWI2 validation.",
         ),
         "kg_binary_balanced_accuracy": ReferenceTarget(
             "kg_binary_balanced_accuracy",
