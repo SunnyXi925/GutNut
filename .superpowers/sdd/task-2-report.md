@@ -36,3 +36,25 @@ Test output:
 ............                                                             [100%]
 12 passed in 0.44s
 ```
+
+## Second Fix
+
+- Made `expected_group_direction` and `expected_subgroup_direction` authoritative
+  metadata fields, with `expected_direction` as a shared fallback.
+- Missing direction metadata now fails by default; the existing name-based
+  mapping is retained only as the explicitly named, versioned
+  `allow_legacy_name_direction_policy=True` compatibility mode. Invalid
+  directions always fail fast.
+- Added default 90% group/subgroup consensus gates and a 100-point failure
+  penalty, plus returned gate status and penalty fields from the objective.
+- Rejected zero-row, zero-column, and zero-aligned-column offset matrices.
+- Added regression coverage for explicit-direction naming quirks, fail-fast
+  direction validation, empty offsets, and consensus failures with larger rank
+  shifts.
+
+Test output:
+
+```text
+..................                                                       [100%]
+18 passed in 0.53s
+```
