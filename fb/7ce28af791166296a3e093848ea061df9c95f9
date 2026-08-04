@@ -1,0 +1,18 @@
+code/src/gmnps/validation/response_benchmark.py
+  h_f3d5b5bc65ef89 1-74
+code/src/scripts/run_personalized_calibration_experiments.py
+  h_f3d5b5bc65ef89 866-868,871,873-874,876-899,903-907,944-950,953-966,990-1010,1012,1017-1026,1045-1046,1053,1061,1066-1071,1079,1084-1094,1105
+code/src/tests/test_response_benchmark.py
+  h_f3d5b5bc65ef89 1-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "fb7ce28af791166296a3e093848ea061df9c95f9",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  }
+}
