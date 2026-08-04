@@ -112,3 +112,27 @@ Top-level runner import output:
 ```text
 ok
 ```
+
+## All-Rejected Section 1 Fix
+
+- Defined stable schemas for all Section 1 CSV outputs and always write their
+  headers, including when every candidate fails the consensus gates.
+- Retained rejected candidates only in `population_consensus.csv` with
+  `calibration_status = rejected_consensus_gate` and objective diagnostics.
+- Made supplement generation resilient to empty eligible Section 1 tables and
+  added a population calibration diagnostics table.
+- Added a no-data regression test covering header-only eligible outputs and
+  supplement generation for an all-rejected Section 1 run.
+
+Test output:
+
+```text
+............................................                             [100%]
+44 passed in 1.00s
+```
+
+Top-level runner import output:
+
+```text
+ok
+```

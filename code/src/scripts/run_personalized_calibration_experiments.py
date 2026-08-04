@@ -88,6 +88,72 @@ FCS2_CONSENSUS_DIRECTION_POLICY_V1 = {
     "processed foods": "stable_or_down",
 }
 
+SECTION1_POPULATION_COLUMNS = [
+    "amplification",
+    "n_individuals",
+    "n_foods",
+    "score_source",
+    "direction_policy_version",
+    "calibration_status",
+    "population_spearman",
+    "mean_absolute_population_shift",
+    "mean_individual_rank_shift",
+    "food_group_direction_pass_fraction",
+    "food_subgroup_direction_pass_fraction",
+    "group_penalty",
+    "group_consensus_gate_passed",
+    "subgroup_consensus_gate_passed",
+    "consensus_gates_passed",
+    "consensus_gate_penalty",
+    "objective_value",
+    "spearman_fcs2_gmnps_mean",
+    "median_food_sd",
+]
+SECTION1_RANK_THRESHOLD_COLUMNS = [
+    "group",
+    "n_individuals",
+    "median_rank_spearman_vs_fcs2",
+    "median_top_k_jaccard_vs_fcs2",
+    "median_delta_span_p95_p05",
+    "passes_healthy_rank_preservation",
+    "passes_disease_reranking",
+    "passes_delta_span",
+    "amplification",
+]
+SECTION1_INDIVIDUAL_RANK_COLUMNS = [
+    "individual_id",
+    "phenotype_label",
+    "disease",
+    "label_group",
+    "n_foods",
+    "amplification",
+    "rank_spearman_vs_fcs2",
+    "top_k_jaccard_vs_fcs2",
+    "delta_span_p95_p05",
+]
+SECTION1_GROUP_CONSENSUS_COLUMNS = [
+    "amplification",
+    "food_group",
+    "n_foods",
+    "mean_fcs2",
+    "mean_gmnps",
+    "median_within_food_sd",
+    "between_food_sd",
+]
+SECTION1_FOOD_SUMMARY_COLUMNS = [
+    "foodcode",
+    "description",
+    "food_group",
+    "FCS2",
+    "GMNPS_mean",
+    "GMNPS_sd",
+    "amplification",
+    "food_subgroup",
+    "expected_group_direction",
+    "expected_subgroup_direction",
+    "GMNPS_delta_mean",
+]
+
 
 def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
     digest = hashlib.sha256()
@@ -260,6 +326,32 @@ def calibration_candidate_status(diagnostics: dict[str, object]) -> str:
     return "eligible"
 
 
+def section1_output_frame(rows: list[dict[str, object]], columns: list[str]) -> pd.DataFrame:
+    """Build a schema-stable Section 1 output frame, including zero-row outputs."""
+    return pd.DataFrame(rows).reindex(columns=columns)
+
+
+def write_section1_outputs(
+    section_dir: Path,
+    population: pd.DataFrame,
+    rank_thresholds: pd.DataFrame,
+    individual_rank_metrics: pd.DataFrame,
+    group_consensus: pd.DataFrame,
+    food_summary: pd.DataFrame,
+) -> None:
+    """Write every Section 1 CSV with headers even when no candidate is eligible."""
+    section_dir.mkdir(parents=True, exist_ok=True)
+    outputs = {
+        "population_consensus.csv": (population, SECTION1_POPULATION_COLUMNS),
+        "rank_shift_thresholds.csv": (rank_thresholds, SECTION1_RANK_THRESHOLD_COLUMNS),
+        "individual_rank_shift_metrics.csv": (individual_rank_metrics, SECTION1_INDIVIDUAL_RANK_COLUMNS),
+        "food_group_consensus.csv": (group_consensus, SECTION1_GROUP_CONSENSUS_COLUMNS),
+        "food_summary_by_amplification.csv": (food_summary, SECTION1_FOOD_SUMMARY_COLUMNS),
+    }
+    for filename, (frame, columns) in outputs.items():
+        frame.reindex(columns=columns).to_csv(section_dir / filename, index=False)
+
+
 def run_section1(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace) -> dict[str, object]:
     from gmnps.validation.rank_shift import (  # noqa: PLC0415
         RankShiftThresholds,
@@ -323,7 +415,7 @@ def run_section1(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
             "n_foods": int(raw_offset.shape[1]),
             "score_source": score_source,
             "direction_policy_version": FCS2_CONSENSUS_DIRECTION_POLICY_VERSION,
-            "status": status,
+            "calibration_status": status,
             **diagnostics,
         }
         if status != "eligible":
@@ -366,11 +458,23 @@ def run_section1(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
         threshold["amplification"] = amplification
         threshold_frames.append(threshold)
 
-    food_all = pd.concat(food_rows, ignore_index=True) if food_rows else pd.DataFrame()
-    rank_all = pd.concat(rank_frames, ignore_index=True) if rank_frames else pd.DataFrame()
-    threshold_all = pd.concat(threshold_frames, ignore_index=True) if threshold_frames else pd.DataFrame()
-    population = pd.DataFrame(summary_rows)
-    group_summary = pd.DataFrame()
+    food_all = (
+        pd.concat(food_rows, ignore_index=True).reindex(columns=SECTION1_FOOD_SUMMARY_COLUMNS)
+        if food_rows
+        else section1_output_frame([], SECTION1_FOOD_SUMMARY_COLUMNS)
+    )
+    rank_all = (
+        pd.concat(rank_frames, ignore_index=True).reindex(columns=SECTION1_INDIVIDUAL_RANK_COLUMNS)
+        if rank_frames
+        else section1_output_frame([], SECTION1_INDIVIDUAL_RANK_COLUMNS)
+    )
+    threshold_all = (
+        pd.concat(threshold_frames, ignore_index=True).reindex(columns=SECTION1_RANK_THRESHOLD_COLUMNS)
+        if threshold_frames
+        else section1_output_frame([], SECTION1_RANK_THRESHOLD_COLUMNS)
+    )
+    population = section1_output_frame(summary_rows, SECTION1_POPULATION_COLUMNS)
+    group_summary = section1_output_frame([], SECTION1_GROUP_CONSENSUS_COLUMNS)
     if not food_all.empty:
         group_summary = (
             food_all.groupby(["amplification", "food_group"], sort=False)
@@ -383,14 +487,10 @@ def run_section1(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
             )
             .reset_index()
         )
+        group_summary = group_summary.reindex(columns=SECTION1_GROUP_CONSENSUS_COLUMNS)
 
     section_dir = out_dir / "section1_population_consensus"
-    section_dir.mkdir(parents=True, exist_ok=True)
-    population.to_csv(section_dir / "population_consensus.csv", index=False)
-    threshold_all.to_csv(section_dir / "rank_shift_thresholds.csv", index=False)
-    rank_all.to_csv(section_dir / "individual_rank_shift_metrics.csv", index=False)
-    group_summary.to_csv(section_dir / "food_group_consensus.csv", index=False)
-    food_all.to_csv(section_dir / "food_summary_by_amplification.csv", index=False)
+    write_section1_outputs(section_dir, population, threshold_all, rank_all, group_summary, food_all)
 
     return {
         "population_consensus": population.to_dict(orient="records"),
@@ -941,6 +1041,9 @@ def latex_escape(value: object) -> str:
 
 
 def simple_latex_table(frame: pd.DataFrame, columns: list[str], caption: str, label: str, max_rows: int = 12) -> str:
+    columns = [column for column in columns if column in frame.columns]
+    if not columns:
+        return rf"\noindent {latex_escape(caption)} No rows or compatible columns were available."
     view = frame.loc[:, columns].head(max_rows).copy()
     header = " & ".join(latex_escape(c) for c in columns) + r" \\"
     body = []
@@ -965,9 +1068,24 @@ def simple_latex_table(frame: pd.DataFrame, columns: list[str], caption: str, la
     )
 
 
+def read_csv_with_schema(path: Path, columns: list[str]) -> pd.DataFrame:
+    """Read a result table while tolerating legacy zero-byte eligible outputs."""
+    try:
+        frame = pd.read_csv(path)
+    except pd.errors.EmptyDataError:
+        frame = pd.DataFrame()
+    return frame.reindex(columns=[*columns, *[column for column in frame.columns if column not in columns]])
+
+
 def write_supplement(out_dir: Path, manifest: dict[str, object]) -> None:
-    s1 = pd.read_csv(out_dir / "section1_population_consensus" / "population_consensus.csv")
-    s1_thr = pd.read_csv(out_dir / "section1_population_consensus" / "rank_shift_thresholds.csv")
+    s1 = read_csv_with_schema(
+        out_dir / "section1_population_consensus" / "population_consensus.csv",
+        SECTION1_POPULATION_COLUMNS,
+    )
+    s1_thr = read_csv_with_schema(
+        out_dir / "section1_population_consensus" / "rank_shift_thresholds.csv",
+        SECTION1_RANK_THRESHOLD_COLUMNS,
+    )
     s2 = pd.read_csv(out_dir / "section2_clinical_consistency" / "gmwi2_retention.csv")
     s4 = pd.read_csv(out_dir / "section4_response_prediction" / "model_metrics.csv")
     s4_gain = pd.read_csv(out_dir / "section4_response_prediction" / "gmnps_added_value_summary.csv")
@@ -990,9 +1108,23 @@ def write_supplement(out_dir: Path, manifest: dict[str, object]) -> None:
         "Population-level GMNPS scores were compared with Food Compass 2.0 scores across 9,234 foods. Individual rank shifts were computed in matrix chunks to avoid expanding the 15,492-by-9,234 score matrix to long form.",
         simple_latex_table(
             s1,
-            ["amplification", "n_individuals", "n_foods", "spearman_fcs2_gmnps_mean", "mean_absolute_population_shift", "median_food_sd"],
+            ["amplification", "n_individuals", "n_foods", "calibration_status", "spearman_fcs2_gmnps_mean", "mean_absolute_population_shift", "median_food_sd"],
             "Population consensus after personalized calibration.",
             "tab:population-consensus",
+        ),
+        simple_latex_table(
+            s1,
+            [
+                "amplification",
+                "calibration_status",
+                "objective_value",
+                "food_group_direction_pass_fraction",
+                "food_subgroup_direction_pass_fraction",
+                "group_consensus_gate_passed",
+                "subgroup_consensus_gate_passed",
+            ],
+            "Calibration candidate diagnostics, including consensus-gate rejections.",
+            "tab:population-calibration-diagnostics",
         ),
         simple_latex_table(
             s1_thr,
