@@ -1179,6 +1179,21 @@ def read_csv_with_schema(path: Path, columns: list[str]) -> pd.DataFrame:
     return frame.reindex(columns=[*columns, *[column for column in frame.columns if column not in columns]])
 
 
+def read_supplement_source(path: Path) -> pd.DataFrame:
+    """Read a manifest source into a compact, renderable table preview."""
+    if path.suffix.lower() == ".csv":
+        return read_csv_with_schema(path, [])
+    if path.suffix.lower() == ".json":
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            return pd.DataFrame(
+                {"field": list(payload), "value": [json.dumps(value, ensure_ascii=True) for value in payload.values()]}
+            )
+        if isinstance(payload, list):
+            return pd.json_normalize(payload)
+    return pd.DataFrame()
+
+
 def write_supplement(out_dir: Path, manifest: dict[str, object]) -> None:
     supplement_dir = out_dir / "supplement"
     supplement_dir.mkdir(parents=True, exist_ok=True)
@@ -1195,7 +1210,7 @@ def write_supplement(out_dir: Path, manifest: dict[str, object]) -> None:
     calibration_status_text = ", ".join(latex_escape(status) for status in population_statuses) or "missing source"
 
     section_text = [
-        rf"\section*{{{latex_escape(name)}}}\n{latex_escape(purpose)}"
+        f"\\section*{{{latex_escape(name)}}}\n{latex_escape(purpose)}"
         for name, purpose in supplement_manifest.loc[
             supplement_manifest["kind"] == "section", ["name", "purpose"]
         ].itertuples(index=False, name=None)
@@ -1203,14 +1218,26 @@ def write_supplement(out_dir: Path, manifest: dict[str, object]) -> None:
     table_text = []
     for row in supplement_manifest.loc[supplement_manifest["kind"] == "table"].itertuples(index=False):
         source = row.source_path if row.source_path else "No source path registered"
-        table_text.append(
-            "\n".join(
-                [
-                    rf"\subsection*{{{latex_escape(row.name)}}}",
-                    rf"\noindent Status: \texttt{{{latex_escape(row.status)}}}. Source: \texttt{{{latex_escape(source)}}}.",
-                ]
-            )
-        )
+        blocks = [
+            rf"\subsection*{{{latex_escape(row.name)}}}",
+            rf"Status: \texttt{{{latex_escape(row.status)}}}. Source: \texttt{{{latex_escape(source)}}}.",
+        ]
+        if row.source_exists:
+            source_path = out_dir / row.source_path
+            preview = read_supplement_source(source_path)
+            if preview.empty and not list(preview.columns):
+                blocks.append("The source was available but contained no renderable rows.")
+            else:
+                blocks.append(
+                    simple_latex_table(
+                        preview,
+                        list(preview.columns[:6]),
+                        f"Preview of {row.name}",
+                        f"supplement-preview-{len(table_text) + 1}",
+                        max_rows=12,
+                    )
+                )
+        table_text.append("\n".join(blocks))
     text = [
         r"\documentclass[11pt]{article}",
         r"\usepackage[margin=1in]{geometry}",

@@ -38,7 +38,7 @@ _TABLE_SOURCES = {
     "Table S4. beta_i nutrient weights, evidence channels and coefficient distributions": "tables/beta_i_nutrient_weights.csv",
     "Table S5. Food-level FCS2.0 and GMNPS scores for 9,234 foods": "section1_population_consensus/food_summary_by_amplification.csv",
     "Table S6. Major food-group and subgroup score distributions": "section1_population_consensus/food_summary_by_amplification.csv",
-    "Table S7. Universal and microbiome-conditioned food-group classification": "section1_population_consensus/group_consensus.csv",
+    "Table S7. Universal and microbiome-conditioned food-group classification": "section1_population_consensus/food_group_consensus.csv",
     "Table S8. Clinical metadata completeness and cohort-selection audit": "section2_clinical_consistency/cra013939_clinical_completeness.csv",
     "Table S9. Official/proxy microbiome health validation metrics": "section2_clinical_consistency/microbiome_health_retention.csv",
     "Table S10. Nutrient-level beta_i clinical and demographic associations": "tables/beta_i_clinical_associations.csv",

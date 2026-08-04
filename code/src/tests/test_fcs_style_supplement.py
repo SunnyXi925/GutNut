@@ -1,8 +1,11 @@
+import pandas as pd
+
 from gmnps.supplement.fcs_style import (
     build_supplement_manifest,
     required_supplement_sections,
     required_supplement_tables,
 )
+from scripts.run_personalized_calibration_experiments import write_supplement
 
 
 def test_fcs_style_supplement_sections_are_complete():
@@ -27,3 +30,27 @@ def test_manifest_marks_absent_table_source_without_omitting_required_table(tmp_
     table = manifest.loc[manifest["name"] == "Table S16. Dietary-response model comparisons and ablations"].iloc[0]
     assert table["status"] == "missing_source"
     assert table["source_path"] == "section4_response_prediction/model_comparisons.csv"
+
+
+def test_supplement_renderer_writes_required_outputs_and_available_s7_preview(tmp_path):
+    section1 = tmp_path / "section1_population_consensus"
+    section1.mkdir()
+    pd.DataFrame(
+        [{"amplification": 1.0, "food_group": "Vegetables", "n_foods": 42}]
+    ).to_csv(section1 / "food_group_consensus.csv", index=False)
+
+    write_supplement(tmp_path, {"sections": {}})
+
+    supplement_dir = tmp_path / "supplement"
+    assert (supplement_dir / "supplementary_material.tex").is_file()
+    assert (supplement_dir / "supplement_manifest.csv").is_file()
+    manifest = pd.read_csv(supplement_dir / "supplement_manifest.csv")
+    s7 = manifest.loc[
+        manifest["name"] == "Table S7. Universal and microbiome-conditioned food-group classification"
+    ].iloc[0]
+    assert s7["source_path"] == "section1_population_consensus/food_group_consensus.csv"
+    assert bool(s7["source_exists"])
+    assert s7["status"] == "available"
+    latex = (supplement_dir / "supplementary_material.tex").read_text(encoding="utf-8")
+    assert r"\n" not in latex
+    assert "Vegetables" in latex
