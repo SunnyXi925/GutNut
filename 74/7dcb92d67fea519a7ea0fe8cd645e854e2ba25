@@ -1,0 +1,18 @@
+code/src/scripts/run_personalized_calibration_experiments.py
+  h_f3d5b5bc65ef89 1-962
+code/src/tests/test_personalized_calibration_runner.py
+  h_f3d5b5bc65ef89 1-25
+.superpowers/sdd/task-2-report.md
+  h_f3d5b5bc65ef89 76-88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "747dcb92d67fea519a7ea0fe8cd645e854e2ba25",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  }
+}
