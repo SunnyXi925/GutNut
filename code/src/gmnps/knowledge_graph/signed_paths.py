@@ -52,7 +52,7 @@ def enumerate_signed_paths(edges: pd.DataFrame, max_paths_per_nutrient: int) -> 
 
     nutrients = sorted(validated_edges.loc[validated_edges["source_type"].eq("nutrient"), "source"].unique())
     for nutrient in nutrients:
-        paths = _paths_from_nutrient(nutrient, adjacency)
+        paths = _paths_from_nutrient(("nutrient", nutrient), adjacency)
         paths.sort(key=lambda path: (str(path[-1]["target"]), _path_string(path)))
         rows.extend(_path_row(path) for path in paths[:max_paths_per_nutrient])
 
@@ -71,24 +71,25 @@ def enumerate_signed_paths(edges: pd.DataFrame, max_paths_per_nutrient: int) -> 
     )
 
 
-def _build_adjacency(edges: pd.DataFrame) -> dict[str, list[dict[str, object]]]:
-    adjacency: dict[str, list[dict[str, object]]] = {}
+def _build_adjacency(edges: pd.DataFrame) -> dict[tuple[str, str], list[dict[str, object]]]:
+    adjacency: dict[tuple[str, str], list[dict[str, object]]] = {}
     for edge in edges.to_dict("records"):
-        adjacency.setdefault(str(edge["source"]), []).append(edge)
+        source_key = (str(edge["source_type"]), str(edge["source"]))
+        adjacency.setdefault(source_key, []).append(edge)
     for edge_list in adjacency.values():
         edge_list.sort(key=lambda edge: (str(edge["target"]), str(edge["relation"]), str(edge["evidence_source"])))
     return adjacency
 
 
 def _paths_from_nutrient(
-    nutrient: str,
-    adjacency: dict[str, list[dict[str, object]]],
+    nutrient: tuple[str, str],
+    adjacency: dict[tuple[str, str], list[dict[str, object]]],
 ) -> list[list[dict[str, object]]]:
     found: list[list[dict[str, object]]] = []
 
-    def visit(node: str, path: list[dict[str, object]], visited: set[str]) -> None:
+    def visit(node: tuple[str, str], path: list[dict[str, object]], visited: set[tuple[str, str]]) -> None:
         for edge in adjacency.get(node, []):
-            target = str(edge["target"])
+            target = (str(edge["target_type"]), str(edge["target"]))
             if target in visited:
                 continue
             next_path = [*path, edge]

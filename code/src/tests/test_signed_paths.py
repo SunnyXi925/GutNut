@@ -31,3 +31,16 @@ def test_validate_signed_edges_rejects_invalid_signs():
         assert "sign" in str(exc)
     else:
         raise AssertionError("invalid sign should fail validation")
+
+
+def test_enumerate_signed_paths_does_not_traverse_same_id_across_node_types():
+    edges = pd.DataFrame(
+        [
+            {"source": "Fiber", "target": "X", "source_type": "nutrient", "target_type": "kegg_compound", "relation": "maps_to", "sign": 1, "weight": 1.0, "evidence_source": "KEGG"},
+            {"source": "X", "target": "IBD", "source_type": "microbe", "target_type": "disease", "relation": "causes", "sign": 1, "weight": 1.0, "evidence_source": "GMMAD2"},
+        ]
+    )
+
+    paths = enumerate_signed_paths(edges, 10)
+
+    assert paths.empty
