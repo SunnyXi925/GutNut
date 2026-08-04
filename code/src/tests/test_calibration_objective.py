@@ -70,7 +70,8 @@ def test_increasing_group_penalty_worsens_imperfect_direction_objective():
     high = calibration_objective(fcs, raw, groups, CalibrationParams(group_penalty=3.0))
     assert low["food_group_direction_pass_fraction"] < 1.0
     assert high["group_penalty"] > low["group_penalty"]
-    assert high["objective_value"] > low["objective_value"]
+    assert np.isinf(low["objective_value"])
+    assert np.isinf(high["objective_value"])
 
 
 def test_food_group_direction_pass_fraction_detects_wrong_group_direction():
@@ -244,3 +245,38 @@ def test_consensus_gate_penalty_outweighs_larger_rank_shift():
     assert not failed["group_consensus_gate_passed"]
     assert failed["consensus_gate_penalty"] == 100.0
     assert failed["objective_value"] > passed["objective_value"]
+
+
+@pytest.mark.parametrize("failed_gate", ["group", "subgroup"])
+def test_failed_consensus_gate_is_infinite_with_zero_penalties(failed_gate):
+    fcs = pd.Series({"a": 60.0, "b": 60.0})
+    raw = pd.DataFrame({"a": [-1.0], "b": [-1.0]}, index=["s1"])
+    if failed_gate == "group":
+        labels = pd.DataFrame(
+            {
+                "food_group": ["A", "B"],
+                "expected_group_direction": ["stable_or_up", "stable_or_up"],
+            },
+            index=fcs.index,
+        )
+    else:
+        labels = pd.DataFrame(
+            {
+                "food_group": ["A", "A"],
+                "food_subgroup": ["A1", "A2"],
+                "expected_group_direction": ["stable_or_down", "stable_or_down"],
+                "expected_subgroup_direction": ["stable_or_up", "stable_or_up"],
+            },
+            index=fcs.index,
+        )
+
+    result = calibration_objective(
+        fcs,
+        raw,
+        labels,
+        CalibrationParams(consensus_failure_penalty=0.0, group_penalty=0.0),
+    )
+
+    assert not result[f"{failed_gate}_consensus_gate_passed"]
+    assert not result["consensus_gates_passed"]
+    assert np.isinf(result["objective_value"])

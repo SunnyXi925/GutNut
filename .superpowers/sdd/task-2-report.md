@@ -58,3 +58,18 @@ Test output:
 ..................                                                       [100%]
 18 passed in 0.53s
 ```
+
+## Final Small Fix
+
+- Consensus gate failures now make the candidate ineligible with an infinite
+  objective, even when both failure and group penalties are zero; diagnostic
+  fields remain available.
+- Added regression coverage for failed group and subgroup gates under zero
+  penalties.
+
+Test output:
+
+```text
+....................                                                     [100%]
+20 passed in 0.60s
+```

@@ -255,7 +255,9 @@ def calibration_objective(
             + int(not subgroup_consensus_gate_passed)
         )
     )
-    objective_value = float(
+    objective_value = float("inf") if not (
+        group_consensus_gate_passed and subgroup_consensus_gate_passed
+    ) else float(
         (1.0 - population_spearman)
         + (mean_absolute_population_shift / 100.0)
         + group_penalty
