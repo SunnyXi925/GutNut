@@ -502,16 +502,6 @@ def run_section1(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
     }
 
 
-def microbial_health_proxy(abundance: pd.DataFrame) -> pd.Series:
-    frame = abundance.copy()
-    frame = frame.set_index("subject_id") if "subject_id" in frame.columns else frame
-    positive = [c for c in ["Akkermansia", "Bifidobacterium", "Faecalibacterium", "Roseburia"] if c in frame.columns]
-    negative = [c for c in ["Escherichia", "Klebsiella", "Enterococcus", "Bilophila"] if c in frame.columns]
-    pos = np.log1p(frame[positive].astype(float)).mean(axis=1) if positive else pd.Series(0.0, index=frame.index)
-    neg = np.log1p(frame[negative].astype(float)).mean(axis=1) if negative else pd.Series(0.0, index=frame.index)
-    return zscore(pos - neg).rename("gmwi2_proxy")
-
-
 def cra_beta_proxy(abundance: pd.DataFrame, bridge: pd.DataFrame) -> pd.DataFrame:
     frame = abundance.set_index("subject_id") if "subject_id" in abundance.columns else abundance.copy()
     genera = [g for g in bridge.columns.astype(str) if g in frame.columns]
@@ -538,13 +528,18 @@ def normalized_clinical_metadata(host: pd.DataFrame) -> pd.DataFrame:
     return meta
 
 
-def run_section2(paths: dict[str, Path], out_dir: Path) -> dict[str, object]:
+def run_section2(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace) -> dict[str, object]:
     from gmnps.validation.clinical_correlation import (  # noqa: PLC0415
         ClinicalVariableSpec,
         audit_clinical_completeness,
         choose_clinical_cohort,
         evaluate_gmwi2_retention,
         spearman_clinical_correlations,
+    )
+    from gmnps.validation.microbiome_health import (  # noqa: PLC0415
+        MicrobiomeHealthMode,
+        genus_proxy_health_score,
+        load_official_gmwi2_scores,
     )
 
     spec = ClinicalVariableSpec(min_n=50)
@@ -560,29 +555,44 @@ def run_section2(paths: dict[str, Path], out_dir: Path) -> dict[str, object]:
     cra_audit = audit_clinical_completeness(cra_host, list(spec.variables), spec.max_missing_fraction, spec.min_n)
     selected = choose_clinical_cohort(gmrepo_audit, cra_audit)
 
-    gmwi2_proxy = microbial_health_proxy(cra_abundance)
+    health_mode = MicrobiomeHealthMode(args.microbiome_health_mode)
+    if health_mode is MicrobiomeHealthMode.OFFICIAL_GMWI2:
+        if args.official_gmwi2_scores is None:
+            raise ValueError("official_gmwi2 mode requires --official-gmwi2-scores")
+        official_path = Path(args.official_gmwi2_scores)
+        if not official_path.is_absolute():
+            official_path = Path(args.root) / official_path
+        health_scores = load_official_gmwi2_scores(official_path).set_index("sample_id")["official_gmwi2_score"]
+        health_feature = "official_gmwi2_score"
+        health_mode_label = MicrobiomeHealthMode.OFFICIAL_GMWI2.value
+    else:
+        health_scores = genus_proxy_health_score(cra_abundance)
+        health_feature = "genus_proxy_health_score"
+        health_mode_label = health_scores.attrs["mode"]
+
     beta_proxy = cra_beta_proxy(cra_abundance, bridge)
-    features = pd.DataFrame({"sample_id": gmwi2_proxy.index.astype(str), "gmwi2_proxy": gmwi2_proxy.to_numpy(dtype=float)})
+    features = pd.DataFrame({"sample_id": health_scores.index.astype(str), health_feature: health_scores.to_numpy(dtype=float)})
+    features["microbiome_health_mode"] = health_mode_label
     if not beta_proxy.empty:
         features = features.merge(
             beta_proxy[["beta_personalized_axis", "beta_mac_mean", "beta_lipid_mean"]].reset_index(),
             on="sample_id",
             how="left",
         )
-        features["personalized_health_axis"] = zscore(features["gmwi2_proxy"]) + 0.15 * zscore(
+        features["personalized_health_axis"] = zscore(features[health_feature]) + 0.15 * zscore(
             features["beta_personalized_axis"].fillna(0.0)
         )
     else:
-        features["personalized_health_axis"] = features["gmwi2_proxy"]
+        features["personalized_health_axis"] = features[health_feature]
 
     correlations = spearman_clinical_correlations(
         features,
         cra_host,
         list(spec.variables),
-        ["gmwi2_proxy", "personalized_health_axis", "beta_personalized_axis"],
+        [health_feature, "personalized_health_axis", "beta_personalized_axis"],
     )
     retention = evaluate_gmwi2_retention(
-        correlations.loc[correlations["feature"].eq("gmwi2_proxy")],
+        correlations.loc[correlations["feature"].eq(health_feature)],
         correlations.loc[correlations["feature"].eq("personalized_health_axis")],
         spec.min_retained_fraction,
         spec.max_abs_loss,
@@ -593,13 +603,14 @@ def run_section2(paths: dict[str, Path], out_dir: Path) -> dict[str, object]:
     gmrepo_audit.to_csv(section_dir / "gmrepo_clinical_completeness.csv", index=False)
     cra_audit.to_csv(section_dir / "cra013939_clinical_completeness.csv", index=False)
     correlations.to_csv(section_dir / "clinical_correlations.csv", index=False)
-    retention.to_csv(section_dir / "gmwi2_retention.csv", index=False)
+    retention.to_csv(section_dir / "microbiome_health_retention.csv", index=False)
     features.to_csv(section_dir / "cra013939_health_beta_features.csv", index=False)
 
     return {
         "selected_clinical_cohort": selected,
         "gmrepo_variables_passing": int(gmrepo_audit["passes"].sum()),
         "cra013939_variables_passing": int(cra_audit["passes"].sum()),
+        "microbiome_health_mode": health_mode_label,
         "retention_pass_fraction": float(retention["passes_retention"].mean()) if len(retention) else float("nan"),
         "section_dir": str(section_dir),
     }
@@ -1086,7 +1097,12 @@ def write_supplement(out_dir: Path, manifest: dict[str, object]) -> None:
         out_dir / "section1_population_consensus" / "rank_shift_thresholds.csv",
         SECTION1_RANK_THRESHOLD_COLUMNS,
     )
-    s2 = pd.read_csv(out_dir / "section2_clinical_consistency" / "gmwi2_retention.csv")
+    section2_dir = out_dir / "section2_clinical_consistency"
+    retention_path = section2_dir / "microbiome_health_retention.csv"
+    # Accept old local experiment fixtures while writing only the neutral canonical filename.
+    if not retention_path.exists():
+        retention_path = section2_dir / "gmwi2_retention.csv"
+    s2 = pd.read_csv(retention_path)
     s4 = pd.read_csv(out_dir / "section4_response_prediction" / "model_metrics.csv")
     s4_gain = pd.read_csv(out_dir / "section4_response_prediction" / "gmnps_added_value_summary.csv")
     kg_metrics = json.loads((out_dir / "section3_kg_label_adjudication" / "kg_label_metrics.json").read_text())
@@ -1179,6 +1195,8 @@ def write_supplement(out_dir: Path, manifest: dict[str, object]) -> None:
 
 
 def run(args: argparse.Namespace) -> None:
+    if args.microbiome_health_mode == "official_gmwi2" and args.official_gmwi2_scores is None:
+        raise ValueError("official_gmwi2 mode requires --official-gmwi2-scores")
     root = Path(args.root).resolve()
     paths = load_paths(root)
     out_dir = (root / args.output_dir).resolve()
@@ -1189,7 +1207,7 @@ def run(args: argparse.Namespace) -> None:
     audit.to_csv(out_dir / "data_resource_audit.csv", index=False)
 
     section1 = run_section1(paths, out_dir, args)
-    section2 = run_section2(paths, out_dir)
+    section2 = run_section2(paths, out_dir, args)
     section3 = run_section3(paths, out_dir, args)
     section4 = run_section4(paths, out_dir, args)
 
@@ -1227,6 +1245,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ridge-alpha", type=float, default=10.0)
     parser.add_argument("--bootstrap", type=int, default=200)
     parser.add_argument("--metabolite-outcomes", type=int, default=12)
+    parser.add_argument("--official-gmwi2-scores", type=Path)
+    parser.add_argument(
+        "--microbiome-health-mode",
+        choices=["official_gmwi2", "genus_proxy"],
+        default="genus_proxy",
+    )
     return parser
 
 
