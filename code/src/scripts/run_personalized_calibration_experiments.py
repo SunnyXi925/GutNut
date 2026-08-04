@@ -219,6 +219,17 @@ def build_submission_readiness_report(
     """Evaluate blocking reference targets from metrics actually produced by sections 1-4."""
 
     primary_section1 = _primary_section1_row(section1)
+    response_outcomes_pre_registered = section4.get("response_outcomes_pre_registered") is True
+    response_fdr_pass_fraction = (
+        section4.get("pre_registered_response_delta_spearman_fdr_pass_fraction")
+        if response_outcomes_pre_registered
+        else None
+    )
+    response_source = (
+        "section4.pre_registered_response_delta_spearman_fdr_pass_fraction"
+        if response_outcomes_pre_registered
+        else "not computed: section4 has no explicit pre-registered response outcome list"
+    )
     observations = [
         (
             "fcs2_population_spearman",
@@ -244,8 +255,8 @@ def build_submission_readiness_report(
         ),
         (
             "response_delta_spearman_fdr_pass_fraction",
-            section4.get("response_delta_spearman_fdr_pass_fraction"),
-            "section4.response_delta_spearman_fdr_pass_fraction",
+            response_fdr_pass_fraction,
+            response_source,
         ),
     ]
     rows = []
@@ -1189,6 +1200,14 @@ def run_section4(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
     response_fdr_pass_fraction = (
         float(added_value["improved_over_food_plus_microbiome"].mean()) if len(added_value) else float("nan")
     )
+    pre_registered_added_value = added_value.loc[
+        added_value["outcome_source"].eq("prespecified_list")
+    ]
+    pre_registered_response_fdr_pass_fraction = (
+        float(pre_registered_added_value["improved_over_food_plus_microbiome"].mean())
+        if requested_outcomes is not None and len(pre_registered_added_value)
+        else float("nan")
+    )
     return {
         "n_subjects": int(data["subject_id"].nunique()),
         "n_outcomes": int(metrics["outcome"].nunique()),
@@ -1201,6 +1220,9 @@ def run_section4(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
         "best_full_spearman": float(full["spearman"].max()),
         "median_full_r2": float(full["r2"].median()),
         "response_delta_spearman_fdr_pass_fraction": response_fdr_pass_fraction,
+        "response_outcomes_pre_registered": requested_outcomes is not None,
+        "pre_registered_response_outcomes": list(requested_outcomes or []),
+        "pre_registered_response_delta_spearman_fdr_pass_fraction": pre_registered_response_fdr_pass_fraction,
         "section_dir": str(section_dir),
     }
 

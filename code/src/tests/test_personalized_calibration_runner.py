@@ -1,3 +1,5 @@
+import json
+
 import pandas as pd
 import pytest
 
@@ -12,6 +14,7 @@ from scripts.run_personalized_calibration_experiments import (
     build_submission_readiness_report,
     fcs2_consensus_direction_policy_v1,
     section1_output_frame,
+    write_submission_readiness_report,
     write_section1_outputs,
     write_supplement,
 )
@@ -44,8 +47,52 @@ def test_submission_readiness_uses_section_metrics_and_fails_missing_official_gm
     assert rows["fcs2_population_spearman"]["observed"] == 0.97
     assert rows["gmwi2_external_balanced_accuracy"]["status"] == "missing"
     assert rows["gmwi2_external_balanced_accuracy"]["passes"] is False
-    assert report["n_blocking_targets_passing"] == 4
+    assert rows["response_delta_spearman_fdr_pass_fraction"]["status"] == "missing"
+    assert rows["response_delta_spearman_fdr_pass_fraction"]["passes"] is False
+    assert report["n_blocking_targets_passing"] == 3
     assert report["ready_for_submission"] is False
+
+
+def test_write_submission_readiness_report_writes_csv_and_json(tmp_path):
+    report = {
+        "ready_for_submission": False,
+        "n_blocking_targets": 2,
+        "n_blocking_targets_passing": 1,
+        "blocking_targets": [
+            {"name": "passing_target", "observed": 1.0, "passes": True},
+            {"name": "missing_target", "observed": float("nan"), "passes": False},
+        ],
+    }
+
+    write_submission_readiness_report(tmp_path, report)
+
+    csv_path = tmp_path / "submission_readiness_report.csv"
+    json_path = tmp_path / "submission_readiness_report.json"
+    assert csv_path.exists()
+    assert json_path.exists()
+    assert json.loads(json_path.read_text())["ready_for_submission"] is False
+    rows = pd.read_csv(csv_path)
+    assert rows["name"].tolist() == ["passing_target", "missing_target"]
+    assert rows["passes"].tolist() == [True, False]
+
+
+def test_submission_readiness_uses_only_pre_registered_response_outcomes():
+    report = build_submission_readiness_report(
+        {"population_consensus": []},
+        {},
+        {},
+        {
+            "response_delta_spearman_fdr_pass_fraction": 1.0,
+            "response_outcomes_pre_registered": True,
+            "pre_registered_response_delta_spearman_fdr_pass_fraction": 0.25,
+        },
+    )
+
+    rows = {row["name"]: row for row in report["blocking_targets"]}
+    response = rows["response_delta_spearman_fdr_pass_fraction"]
+    assert response["observed"] == 0.25
+    assert response["passes"] is False
+    assert response["observed_source"] == "section4.pre_registered_response_delta_spearman_fdr_pass_fraction"
 
 
 def test_fcs2_direction_policy_builds_explicit_objective_metadata():
