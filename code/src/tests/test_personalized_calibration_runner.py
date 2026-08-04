@@ -10,8 +10,10 @@ from scripts.run_personalized_calibration_experiments import (
     SECTION1_INDIVIDUAL_RANK_COLUMNS,
     SECTION1_POPULATION_COLUMNS,
     SECTION1_RANK_THRESHOLD_COLUMNS,
+    build_typed_kg_edges,
     calibration_candidate_status,
     build_submission_readiness_report,
+    data_resource_audit,
     fcs2_consensus_direction_policy_v1,
     section1_output_frame,
     write_submission_readiness_report,
@@ -143,6 +145,60 @@ def test_fcs2_direction_policy_builds_explicit_objective_metadata():
     assert metadata.loc["sweet", "expected_group_direction"] == "stable_or_down"
     assert metadata.loc["other", "expected_group_direction"] == "stable"
     assert metadata["expected_subgroup_direction"].notna().all()
+
+
+@pytest.mark.parametrize("missing_subgroup", [None, "", "nan", "None"])
+def test_fcs2_direction_policy_rejects_missing_subgroup_labels(missing_subgroup):
+    food = pd.DataFrame(
+        {
+            "food_group": ["Vegetables", "Vegetables"],
+            "food_subgroup": ["Leafy vegetables", missing_subgroup],
+        },
+        index=["leafy", "missing"],
+    )
+
+    with pytest.raises(ValueError, match="missing food_subgroup labels"):
+        fcs2_consensus_direction_policy_v1(food)
+
+
+def test_section3_edge_builder_preserves_metabolite_intermediate_nodes():
+    nutrient_metabolite = pd.DataFrame(
+        {"butyrate": [2.0, -1.0], "acetate": [0.0, 3.0]},
+        index=["Fiber", "Protein"],
+    )
+    disease_metabolite = pd.DataFrame(
+        {"butyrate": [-4.0], "acetate": [2.0]},
+        index=["IBD cohort"],
+    )
+
+    edges = build_typed_kg_edges(nutrient_metabolite, disease_metabolite)
+
+    assert set(zip(edges["source_type"], edges["target_type"])) == {
+        ("nutrient", "metabolite"),
+        ("metabolite", "disease"),
+    }
+    assert not (
+        edges["source_type"].eq("nutrient") & edges["target_type"].eq("disease")
+    ).any()
+
+    from gmnps.knowledge_graph.signed_paths import enumerate_signed_paths, validate_signed_edges
+
+    paths = enumerate_signed_paths(validate_signed_edges(edges), max_paths_per_nutrient=10)
+    assert paths["n_hops"].eq(2).all()
+    assert "Fiber->butyrate->IBD" in set(paths["path"])
+
+
+def test_data_resource_audit_exposes_unrecorded_provenance_fields(tmp_path):
+    resource = tmp_path / "resource.csv"
+    resource.write_text("value\n1\n", encoding="utf-8")
+
+    audit = data_resource_audit({"resource": resource}, tmp_path)
+
+    assert audit.loc[0, ["version", "access_date", "licence"]].tolist() == [
+        "not_recorded",
+        "not_recorded",
+        "not_recorded",
+    ]
 
 
 @pytest.mark.parametrize(

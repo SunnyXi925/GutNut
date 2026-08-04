@@ -33,7 +33,17 @@ _SECTIONS = (
 )
 
 _TABLE_S2_REQUIRED_COLUMNS = frozenset(
-    {"resource", "source_path", "source_exists", "bytes", "sha256", "provenance"}
+    {
+        "resource",
+        "source_path",
+        "source_exists",
+        "bytes",
+        "sha256",
+        "provenance",
+        "version",
+        "access_date",
+        "licence",
+    }
 )
 
 _TABLE_SOURCES = {

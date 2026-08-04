@@ -364,3 +364,26 @@ def test_required_subgroup_consensus_marks_missing_metadata_as_failure():
     assert result["subgroup_metadata_available"] is False
     assert result["subgroup_consensus_gate_passed"] is False
     assert result["consensus_gates_passed"] is False
+
+
+@pytest.mark.parametrize("missing_subgroup", [None, "", "nan", "None"])
+def test_required_subgroup_consensus_rejects_missing_subgroup_values(missing_subgroup):
+    fcs = pd.Series({"a": 60.0, "b": 40.0})
+    raw = pd.DataFrame({"a": [-1.0], "b": [1.0]})
+    labels = pd.DataFrame(
+        {
+            "food_group": ["A", "A"],
+            "food_subgroup": ["A1", missing_subgroup],
+            "expected_group_direction": ["stable", "stable"],
+            "expected_subgroup_direction": ["stable", "stable"],
+        },
+        index=fcs.index,
+    )
+
+    with pytest.raises(ValueError, match="missing food_subgroup labels"):
+        calibration_objective(
+            fcs,
+            raw,
+            labels,
+            CalibrationParams(require_subgroup_consensus=True),
+        )

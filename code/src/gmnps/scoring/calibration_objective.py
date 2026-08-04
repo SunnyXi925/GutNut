@@ -139,10 +139,14 @@ def _food_group_frame(food_groups: pd.Series | pd.DataFrame, foods: pd.Index) ->
     if len(missing_foods):
         raise ValueError(f"food_groups missing required foods: {list(missing_foods)}")
     labels = labels.reindex(foods)
-    if labels["food_group"].isna().any():
-        raise ValueError("food_groups contains missing food_group labels")
-    if "food_subgroup" in labels and labels["food_subgroup"].isna().any():
-        raise ValueError("food_groups contains missing food_subgroup labels")
+    for column in ("food_group", "food_subgroup"):
+        if column not in labels:
+            continue
+        normalized = labels[column].astype("string").str.strip()
+        missing = normalized.isna() | normalized.str.lower().isin({"", "nan", "none"})
+        if missing.any():
+            raise ValueError(f"food_groups contains missing {column} labels")
+        labels[column] = normalized.astype(object)
     return labels
 
 

@@ -34,15 +34,43 @@ def test_manifest_marks_absent_table_source_without_omitting_required_table(tmp_
 
 
 def test_table_s2_requires_provenance_schema_not_just_an_existing_file(tmp_path):
-    pd.DataFrame({"resource": ["food"], "path": ["data/food.csv"]}).to_csv(
-        tmp_path / "data_resource_audit.csv", index=False
-    )
+    pd.DataFrame(
+        {
+            "resource": ["food"],
+            "source_path": ["data/food.csv"],
+            "source_exists": [True],
+            "bytes": [42],
+            "sha256": ["abc123"],
+            "provenance": ["runner_input_registry"],
+        }
+    ).to_csv(tmp_path / "data_resource_audit.csv", index=False)
 
     manifest = build_supplement_manifest(tmp_path)
     table = manifest.loc[manifest["name"].str.startswith("Table S2.")].iloc[0]
 
     assert bool(table["source_exists"])
     assert table["status"] == "invalid_schema"
+
+
+def test_table_s2_accepts_version_access_date_and_licence_provenance(tmp_path):
+    pd.DataFrame(
+        {
+            "resource": ["food"],
+            "source_path": ["data/food.csv"],
+            "source_exists": [True],
+            "bytes": [42],
+            "sha256": ["abc123"],
+            "provenance": ["runner_input_registry"],
+            "version": ["not_recorded"],
+            "access_date": ["not_recorded"],
+            "licence": ["not_recorded"],
+        }
+    ).to_csv(tmp_path / "data_resource_audit.csv", index=False)
+
+    manifest = build_supplement_manifest(tmp_path)
+    table = manifest.loc[manifest["name"].str.startswith("Table S2.")].iloc[0]
+
+    assert table["status"] == "available"
 
 
 def test_supplement_renderer_writes_required_outputs_and_available_s7_preview(tmp_path):

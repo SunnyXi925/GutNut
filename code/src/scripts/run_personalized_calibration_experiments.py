@@ -361,14 +361,22 @@ def fcs2_consensus_direction_policy_v1(food: pd.DataFrame) -> pd.DataFrame:
     """Return explicit, deterministic direction metadata for the FCS2 food table."""
     if "food_group" not in food.columns:
         raise ValueError("FCS2 food table missing required column: food_group")
+
+    def required_labels(column: str) -> pd.Series:
+        labels = food[column].astype("string").str.strip()
+        missing = labels.isna() | labels.str.lower().isin({"", "nan", "none"})
+        if missing.any():
+            raise ValueError(f"FCS2 food table contains missing {column} labels")
+        return labels.astype(object)
+
     metadata = pd.DataFrame(index=food.index)
-    metadata["food_group"] = food["food_group"].astype(str)
+    metadata["food_group"] = required_labels("food_group")
     subgroup_column = next(
         (column for column in ("food_subgroup", "food_sub_group", "subgroup") if column in food.columns),
         None,
     )
     if subgroup_column is not None:
-        metadata["food_subgroup"] = food[subgroup_column].astype(str)
+        metadata["food_subgroup"] = required_labels(subgroup_column)
 
     def direction(label: object) -> str:
         return FCS2_CONSENSUS_DIRECTION_POLICY_V1.get(str(label).strip().lower(), "stable")
@@ -755,36 +763,76 @@ def disease_rows(matrix: pd.DataFrame, label: str) -> pd.DataFrame:
     return matrix.loc[mask]
 
 
-def build_direct_kg_edges(nutrient_metabolite: pd.DataFrame, disease_metabolite: pd.DataFrame) -> pd.DataFrame:
+def build_typed_kg_edges(
+    nutrient_metabolite: pd.DataFrame,
+    disease_metabolite: pd.DataFrame,
+) -> pd.DataFrame:
+    """Build signed nutrient-to-metabolite and metabolite-to-disease edges."""
+    nutrient_metabolite = nutrient_metabolite.copy()
+    disease_metabolite = disease_metabolite.copy()
     nutrient_metabolite.index = nutrient_metabolite.index.astype(str)
     nutrient_metabolite.columns = nutrient_metabolite.columns.astype(str)
     disease_metabolite.index = disease_metabolite.index.astype(str)
     disease_metabolite.columns = disease_metabolite.columns.astype(str)
     common = [c for c in nutrient_metabolite.columns if c in disease_metabolite.columns]
-    rows = []
+    nutrient_coefficients = nutrient_metabolite.loc[:, common].apply(
+        pd.to_numeric, errors="coerce"
+    )
+    disease_coefficients: dict[str, pd.Series] = {}
     for label in DISEASE_KEYWORDS:
         d_rows = disease_rows(disease_metabolite[common], label)
         if d_rows.empty:
             continue
-        disease_vector = d_rows.astype(float).mean(axis=0)
-        assoc = nutrient_metabolite[common].astype(float).fillna(0.0).to_numpy() @ disease_vector.fillna(0.0).to_numpy()
-        assoc = pd.Series(assoc, index=nutrient_metabolite.index)
-        scale = assoc.abs().quantile(0.95)
-        scale = float(scale) if np.isfinite(scale) and scale > 1e-12 else 1.0
-        for nutrient, value in assoc.items():
-            weight = float(np.clip(value / scale, -1.0, 1.0))
-            if abs(weight) < 0.05:
+        disease_coefficients[label] = d_rows.apply(
+            pd.to_numeric, errors="coerce"
+        ).mean(axis=0)
+
+    def coefficient_scale(values: np.ndarray) -> float:
+        finite = np.abs(values[np.isfinite(values)])
+        finite = finite[finite > 0]
+        if not len(finite):
+            return 1.0
+        scale = float(np.quantile(finite, 0.95))
+        return scale if scale > 1e-12 else 1.0
+
+    nutrient_scale = coefficient_scale(nutrient_coefficients.to_numpy(dtype=float))
+    disease_values = (
+        np.concatenate([series.to_numpy(dtype=float) for series in disease_coefficients.values()])
+        if disease_coefficients
+        else np.array([], dtype=float)
+    )
+    disease_scale = coefficient_scale(disease_values)
+    rows: list[dict[str, object]] = []
+    for nutrient, coefficients in nutrient_coefficients.iterrows():
+        for metabolite, coefficient in coefficients.items():
+            if not np.isfinite(coefficient) or coefficient == 0:
                 continue
             rows.append(
                 {
                     "source": nutrient,
-                    "target": label,
+                    "target": metabolite,
                     "source_type": "nutrient",
+                    "target_type": "metabolite",
+                    "relation": "nutrient_metabolite_association",
+                    "sign": 1 if coefficient > 0 else -1,
+                    "weight": float(min(abs(coefficient) / nutrient_scale, 1.0)),
+                    "evidence_source": "nutrient_metabolite_matrix",
+                }
+            )
+    for label, coefficients in disease_coefficients.items():
+        for metabolite, coefficient in coefficients.items():
+            if not np.isfinite(coefficient) or coefficient == 0:
+                continue
+            rows.append(
+                {
+                    "source": metabolite,
+                    "target": label,
+                    "source_type": "metabolite",
                     "target_type": "disease",
-                    "relation": "nutrient_metabolite_disease_projection",
-                    "sign": 1 if weight > 0 else -1,
-                    "weight": abs(weight),
-                    "evidence_source": "KEGG;GMMAD2",
+                    "relation": "metabolite_disease_association",
+                    "sign": 1 if coefficient > 0 else -1,
+                    "weight": float(min(abs(coefficient) / disease_scale, 1.0)),
+                    "evidence_source": "GMMAD2",
                 }
             )
     return pd.DataFrame(
@@ -829,7 +877,7 @@ def run_section3(paths: dict[str, Path], out_dir: Path, args: argparse.Namespace
 
     nutrient_metabolite = pd.read_parquet(paths["nutrient_metabolite"])
     disease_metabolite = pd.read_parquet(paths["gmmad2_disease_metabolite"])
-    edges = validate_signed_edges(build_direct_kg_edges(nutrient_metabolite, disease_metabolite))
+    edges = validate_signed_edges(build_typed_kg_edges(nutrient_metabolite, disease_metabolite))
     signed_paths = enumerate_signed_paths(edges, max_paths_per_nutrient=50)
     path_scores, paths_all = score_signed_paths(beta_subset, signed_paths, top_n=10)
     predictions = adjudicate_signed_evidence_labels(path_scores, list(DISEASE_KEYWORDS.keys()))
@@ -1316,6 +1364,9 @@ def data_resource_audit(paths: dict[str, Path], root: Path) -> pd.DataFrame:
                 "bytes": int(path.stat().st_size) if path.exists() and path.is_file() else 0,
                 "sha256": sha256_file(path) if path.exists() and path.is_file() and path.stat().st_size < 200_000_000 else "not_recorded_large_or_missing",
                 "provenance": "runner_input_registry",
+                "version": "not_recorded",
+                "access_date": "not_recorded",
+                "licence": "not_recorded",
             }
         )
     return pd.DataFrame(rows)
