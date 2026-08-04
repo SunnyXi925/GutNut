@@ -73,3 +73,20 @@ Test output:
 ....................                                                     [100%]
 20 passed in 0.60s
 ```
+
+## Runner Integration Fix
+
+- Wired Section 1 to derive `raw_offset` from the beta_i and food-nutrient
+  matrices, then evaluate and apply `CalibrationParams` through
+  `calibration_objective` and `apply_personalized_offset`.
+- Added deterministic, explicit `fcs2_consensus_direction_policy_v1` metadata
+  to Section 1 outputs and manifest records; legacy score-matrix input is now
+  opt-in with `--legacy-score-matrix`.
+- Added a focused runner test covering explicit direction metadata.
+
+Test output:
+
+```text
+.....................                                                    [100%]
+21 passed in 0.49s
+```
