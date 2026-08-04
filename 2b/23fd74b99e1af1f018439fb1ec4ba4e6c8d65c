@@ -1,0 +1,24 @@
+code/src/gmnps/supplement/fcs_style.py
+  h_f3d5b5bc65ef89 36-46
+code/src/scripts/run_personalized_calibration_experiments.py
+  h_f3d5b5bc65ef89 364-371,373,379,766-772,778-781,786-808,813,815-830,832-835
+code/src/gmnps/scoring/calibration_objective.py
+  h_f3d5b5bc65ef89 142-149
+code/src/tests/test_calibration_objective.py
+  h_f3d5b5bc65ef89 367-386
+code/src/tests/test_fcs_style_supplement.py
+  h_f3d5b5bc65ef89 37-46,55-71
+code/src/tests/test_personalized_calibration_runner.py
+  h_f3d5b5bc65ef89 13,16,150-190
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "2b23fd74b99e1af1f018439fb1ec4ba4e6c8d65c",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  }
+}
