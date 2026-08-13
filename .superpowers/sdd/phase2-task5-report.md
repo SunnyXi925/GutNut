@@ -174,20 +174,15 @@ above includes and passes every related test.
 
 The production API now accepts only `EvidenceGateArtifactPaths`. It no longer
 accepts a caller mapping or data frame. In one fail-closed call it rereads regular
-non-symlink artifacts, invokes the Task 3 trusted method-lock/outcome loader (which
-revalidates Task 1/2/3 contracts), verifies the independently approved result-run
-manifest digest from the repository-fixed registry, and verifies hashes for paired
-results, detailed split audit, analysis status, outcome source, predictor frame,
-feature contract, validation config, Task 3 implementations and benchmark
-specification.
+non-symlink artifacts and invokes the Task 3 trusted method-lock/outcome loader.
+This v2 closure did not yet export the real `BenchmarkResult` schema or independently
+recompute production splits; those claims are corrected and superseded by the v3
+re-review closure below.
 
-The gate independently recomputes the run binding, requires all result and audit
-rows to share it, requires exactly the two frozen subject-held-out primary RMSE
-rows, recomputes Holm adjustment from raw paired permutation P values, enforces the
-exact paired family/twin-component bootstrap method, 2,000 bootstrap and
-permutation replicates, and at least 90% valid replicates. Participant and
-family/twin-component disjointness is recomputed from the hashed detailed split
-audit, not accepted from manifest lists.
+The v2 gate independently recomputed the run binding and primary statistical
+checks, but its uploaded detailed split table was not an independent split
+recomputation. Independent component and fold verification begins only with the v3
+implementation documented below.
 
 The lower-level in-memory evaluator always returns
 `testing_only_no_claim_upgrade`. Tests cover self-signing, fake digests, supporting
@@ -269,3 +264,100 @@ implementation and cannot establish robustness to misspecification. Five seeds
 give coarse replicate intervals. Direct observed-response validation remains
 blocked by controlled access and absent immutable production artifacts; this is an
 expected gate outcome, not evidence that a real validation run was completed.
+
+## Re-review closure: Task 3-integrated evidence gate v3
+
+### Status and correction boundary
+
+**DONE.** All four Major re-review findings are closed. This section supersedes
+the v2 gate-integration and split-verification descriptions above. Independent
+split/component recomputation was not present in v2; it begins with this v3
+implementation. No manuscript, grouped-split test, `scoring/__init__.py`, or the
+user-owned legacy `synthetic_twin.py` was modified.
+
+### M1: actual Task 3 integration
+
+`export_benchmark_result` now accepts the real
+`person_meal_benchmark.BenchmarkResult` dataclass and a `VerifiedRunBinding`. It
+writes canonical CSV artifacts for the actual Task 3 `paired_metrics`,
+`predictions`, `analysis_status` DataFrame and split-audit summary, then writes a
+result-run manifest containing each artifact SHA-256. The path-only gate reads
+exactly those artifacts and preserves Task 3 fields including `comparator`,
+`reference` and `adjusted_p_value`; the former parallel `model` and
+`holm_adjusted_p_value` contract was removed. Predictions are now a required,
+hash-bound artifact.
+
+The integration test constructs an actual `BenchmarkResult`, exports it, registers
+the immutable manifest digest and roundtrips all artifacts through the production
+gate contract.
+
+### M2: independently recomputed split semantics
+
+After the trusted Task 3 loader has revalidated the live method lock and outcomes,
+the v3 gate obtains the verified predictor frame and frozen validation config. It
+calls production `family_twin_component_ids` and `make_nested_group_splits` using
+the frozen five-fold settings and seeds. It then verifies:
+
+- development/test component disjointness from the recomputed transitive graph;
+- one consistent test fold per predictor row, participant and component;
+- every prediction `row_id`, participant, meal, recomputed component and
+  `outer_fold`;
+- exact finite-outcome row coverage for every primary endpoint and locked Task 3
+  comparator; and
+- all five nonempty split-summary rows and their recomputed train/test/drop counts.
+
+Uploaded component labels are not trusted. Predictor opportunities and entire
+participants with no outcome row, as well as individual non-finite endpoint
+values, are permitted and omitted only from the applicable prediction coverage.
+The gate no longer requires the predictor/audit universe to equal the outcome
+participant universe.
+
+### M3: strict primary statistical domains
+
+Raw permutation P values and adjusted values must be finite and in [0,1]. Confidence
+interval bounds must be finite, ordered and in the required improvement direction,
+with the exact Task 3 paired component-bootstrap method. Requested and valid
+resample counts must be strict non-boolean integers: requested counts equal 2,000,
+counts are nonnegative, valid never exceeds requested, and valid fractions are at
+least 90% and consistent with Task 3's recorded fraction columns. No integer
+truncation is performed. Holm adjustment is recomputed from the two raw Task 3 P
+values and compared with `adjusted_p_value`.
+
+### M4: dynamic claim policy
+
+The generated policy now derives `tier`, `source_state`, allowed claims, forbidden
+claims and tier-specific forbidden patterns from the actual gate outcome. A direct
+tier remains conservative and continues to prohibit clinical utility/validity,
+causal dietary-effect, precision-ready and transformation claims, while it no
+longer contradicts a verified endpoint-scoped direct-validity decision by globally
+forbidding the phrase “external validity”. The checker recognizes explicit
+negative limitation constructions such as “does not establish external validity”
+but still rejects positive assertions.
+
+The current artifacts remain fail-closed because no real production artifacts are
+available:
+
+```text
+tier=computational_feasibility
+source_state=absent_real_validation_artifacts
+```
+
+Current artifact SHA-256 values:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `claim_policy.json` | `9eac4dac7085834757068dc145015279bb88fba90151ee8e7fb128e81570be51` |
+| `current_gate_decision.json` | `74765d4461365ae1da5d4aa719c28ef053dc9ebe884c7e88b95fb799b1a74dd8` |
+
+No current manuscript was checked or revised.
+
+### Final tests
+
+| Scope | Result | Time |
+| --- | ---: | ---: |
+| Focused exporter/integration/tamper plus synthetic tests | 30 passed | 37.54 s |
+| Related attribute, lock, loader, benchmark and split tests before the final provenance-tamper case | 289 passed | 170.70 s |
+| Full `code/src/tests` suite after all cases | 660 passed | 208.25 s |
+
+All runs had zero failures. The sole warning remains the pre-existing environment
+mismatch: NumPy 2.4.6 is outside SciPy 1.13.1's declared `<2.3.0` range.

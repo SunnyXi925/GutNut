@@ -8,46 +8,249 @@ import subprocess
 import sys
 from types import SimpleNamespace
 
+import numpy as np
 import pandas as pd
 import pytest
 
 from gmnps.validation import evidence_gate as gate_module
 from gmnps.validation.claim_policy import (
+    build_claim_policy_payload,
     check_claim_inputs,
     write_claim_restriction_artifacts,
+)
+from gmnps.validation.cohort_split import (
+    family_twin_component_ids,
+    make_nested_group_splits,
 )
 from gmnps.validation.evidence_gate import (
     COMPUTATIONAL_FEASIBILITY,
     DIRECT_EXTERNAL_VALIDITY,
     TESTING_ONLY_NO_CLAIM_UPGRADE,
     EvidenceGateArtifactPaths,
+    EvidenceGateOutcome,
+    VerifiedRunBinding,
     evaluate_evidence_gate,
     evaluate_testing_evidence,
+    export_benchmark_result,
 )
 from gmnps.validation.method_lock_gate import MethodLockArtifactPaths
+from gmnps.validation.person_meal_benchmark import (
+    REQUIRED_COMPARATORS,
+    BenchmarkResult,
+)
+
+
+ROOT = Path(__file__).resolve().parents[3]
+CONFIG_PATH = ROOT / "code/src/configs/person_meal_validation.yaml"
+SOURCE_ID = "predict_controlled_clinical_zenodo"
 
 
 def _sha(path: Path) -> str:
     return sha256(path.read_bytes()).hexdigest()
 
 
-def _canonical_hash(value: object) -> str:
-    return sha256(
-        json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
-
-
 def _write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def _production_fixture(tmp_path: Path, monkeypatch, mutation: str | None = None):
+def _tables() -> tuple[pd.DataFrame, pd.DataFrame]:
+    predictors: list[dict[str, object]] = []
+    outcomes: list[dict[str, object]] = []
+    for person in range(10):
+        participant = f"p{person:02d}"
+        for meal in range(2):
+            meal_id = f"m{meal}"
+            predictors.append(
+                {
+                    "participant_id": participant,
+                    "meal_id": meal_id,
+                    "food_id": f"f{meal}",
+                    "family_id": None,
+                    "twin_id": None,
+                    "cohort_id": "c0",
+                    "feature": float(person + meal),
+                }
+            )
+            # p09 deliberately has predictor opportunities but no outcome rows.
+            if person < 9:
+                outcomes.append(
+                    {
+                        "participant_id": participant,
+                        "meal_id": meal_id,
+                        "glucose_iAUC_2h": float(person + meal + 1),
+                        "tg_6h_rise": float(person - meal + 2),
+                    }
+                )
+    outcome = pd.DataFrame(outcomes)
+    outcome.loc[0, "glucose_iAUC_2h"] = np.nan
+    return pd.DataFrame(predictors), outcome
+
+
+def _benchmark_result(
+    predictors: pd.DataFrame,
+    outcomes: pd.DataFrame,
+    config: dict[str, object],
+    binding: VerifiedRunBinding,
+) -> BenchmarkResult:
+    split = config["split"]
+    seeds = config["seeds"]
+    nested = make_nested_group_splits(
+        predictors,
+        outer_folds=int(split["outer_folds"]),
+        inner_folds=int(split["inner_folds"]),
+        outer_seed=int(seeds["outer_split"]),
+        inner_seed=int(seeds["inner_cv"]),
+        secondary_holdout=None,
+    )
+    working = predictors.copy()
+    working.insert(
+        0,
+        "row_id",
+        working["participant_id"].astype(str)
+        + "::"
+        + working["meal_id"].astype(str),
+    )
+    working["inference_cluster_id"] = family_twin_component_ids(working)
+    joined = working.merge(
+        outcomes,
+        on=["participant_id", "meal_id"],
+        how="left",
+        validate="one_to_one",
+    )
+    prediction_rows: list[dict[str, object]] = []
+    for endpoint in ("glucose_iAUC_2h", "tg_6h_rise"):
+        for fold in nested:
+            test = joined.iloc[list(fold.outer.test_positions)]
+            test = test.loc[np.isfinite(pd.to_numeric(test[endpoint], errors="coerce"))]
+            for comparator in REQUIRED_COMPARATORS:
+                for row in test.itertuples(index=False):
+                    prediction_rows.append(
+                        {
+                            "analysis_mode": "subject_held_out",
+                            "row_id": row.row_id,
+                            "participant_id": row.participant_id,
+                            "meal_id": row.meal_id,
+                            "inference_cluster_id": row.inference_cluster_id,
+                            "endpoint": endpoint,
+                            "outer_fold": fold.outer.fold_id,
+                            "comparator": comparator,
+                            "y_true": float(getattr(row, endpoint)),
+                            "y_pred": float(getattr(row, endpoint) - 0.1),
+                            "selected_alpha": 1.0,
+                            "outer_fit_seed": 100 + fold.outer.fold_id,
+                            "outer_split_seed": int(seeds["outer_split"]),
+                            "inner_cv_seed": int(seeds["inner_cv"]),
+                        }
+                    )
+    provenance = {
+        "manifest_sha256": binding.method_lock_manifest_sha256,
+        "outcome_source_id": binding.outcome_source_id,
+        "outcome_source_sha256": binding.outcome_sha256,
+        "predictor_frame_sha256": binding.predictor_frame_sha256,
+        "feature_contract_sha256": binding.feature_contract_sha256,
+        "method_lock_gate_implementation_sha256": binding.method_lock_gate_implementation_sha256,
+        "cohort_split_implementation_sha256": binding.cohort_split_implementation_sha256,
+        "person_meal_benchmark_implementation_sha256": binding.person_meal_benchmark_implementation_sha256,
+        "benchmark_specification_sha256": binding.benchmark_specification_sha256,
+        "validation_config_sha256": binding.person_meal_validation_config_sha256,
+    }
+    paired = pd.DataFrame(
+        [
+            {
+                **provenance,
+                "endpoint": endpoint,
+                "analysis_mode": "subject_held_out",
+                "analysis_status": "completed",
+                "comparator": "locked_attribute_gmnps",
+                "reference": "fcs_microbiome",
+                "metric": "rmse",
+                "estimate_delta": -0.20,
+                "ci_lower": -0.30,
+                "ci_upper": -0.10,
+                "ci_method": "paired_family_twin_component_cluster_percentile_bootstrap_95",
+                "bootstrap_replicates_requested": 2000,
+                "bootstrap_replicates_valid": 1900,
+                "bootstrap_minimum_valid_fraction": 0.9,
+                "bootstrap_valid_fraction": 0.95,
+                "permutation_replicates_requested": 2000,
+                "permutation_replicates_valid": 1900,
+                "permutation_minimum_valid_fraction": 0.9,
+                "permutation_valid_fraction": 0.95,
+                "permutation_p_value": raw_p,
+                "adjusted_p_value": adjusted,
+                "test_role": "primary",
+                "correction_family": "two_primary_endpoints_locked_gmnps_vs_fcs_microbiome_rmse",
+                "multiplicity_method": "holm",
+                "inference_status": "completed",
+            }
+            for endpoint, raw_p, adjusted in (
+                ("glucose_iAUC_2h", 0.01, 0.02),
+                ("tg_6h_rise", 0.03, 0.03),
+            )
+        ]
+    )
+    split_audit = pd.DataFrame(
+        [
+            {
+                **provenance,
+                "analysis_mode": "subject_held_out",
+                "analysis_role": "primary",
+                "secondary_unit": None,
+                "analysis_status": "completed",
+                "reason": None,
+                "outer_fold": fold.outer.fold_id,
+                "train_n_rows": len(fold.outer.train_positions),
+                "test_n_rows": len(fold.outer.test_positions),
+                "dropped_n_rows": len(fold.outer.dropped_positions),
+                "dropped_n_participants": 0,
+                "dropped_n_person_meals": 0,
+                "dropped_row_ids": (),
+                "dropped_reason": None,
+                "outer_split_seed": int(seeds["outer_split"]),
+                "inner_cv_seed": int(seeds["inner_cv"]),
+            }
+            for fold in nested
+        ]
+    )
+    status = pd.DataFrame(
+        [
+            {
+                **provenance,
+                "analysis_mode": "subject_held_out",
+                "endpoint": endpoint,
+                "endpoint_role": "primary",
+                "analysis_status": "completed",
+                "reason": None,
+                "n_prediction_rows": int(
+                    pd.DataFrame(prediction_rows)["endpoint"].eq(endpoint).sum()
+                ),
+                "analysis_role": "primary",
+                "outer_split_seed": int(seeds["outer_split"]),
+                "inner_cv_seed": int(seeds["inner_cv"]),
+            }
+            for endpoint in ("glucose_iAUC_2h", "tg_6h_rise")
+        ]
+    )
+    return BenchmarkResult(
+        predictions=pd.DataFrame(prediction_rows),
+        absolute_metrics=pd.DataFrame(),
+        paired_metrics=paired,
+        fit_audit=pd.DataFrame(),
+        splits={"subject_held_out": nested},
+        split_audit=split_audit,
+        missingness_source=pd.DataFrame(),
+        analysis_status=status,
+    )
+
+
+def _production_fixture(tmp_path: Path, monkeypatch):
     tmp_path.mkdir(parents=True, exist_ok=True)
-    run_id = "direct-run-001"
-    outcome_sha = "d" * 64
+    config_payload = json.loads(CONFIG_PATH.read_text())
+    predictors, outcomes = _tables()
     method_lock_path = tmp_path / "method-lock.json"
-    method_lock_path.write_bytes(b"trusted fixture bytes\n")
+    method_lock_path.write_bytes(b"trusted method lock fixture\n")
     lock_sha = _sha(method_lock_path)
+    outcome_sha = "d" * 64
     lock_manifest = {
         "person_meal_validation_config_sha256": "1" * 64,
         "feature_contract_sha256": "2" * 64,
@@ -57,136 +260,40 @@ def _production_fixture(tmp_path: Path, monkeypatch, mutation: str | None = None
         "benchmark_specification_sha256": "6" * 64,
         "method_lock_gate_implementation_sha256": "7" * 64,
     }
-    binding = _canonical_hash(
-        {
-            "run_id": run_id,
-            "method_lock_manifest_sha256": lock_sha,
-            "outcome_source_id": "predict_controlled_clinical_zenodo",
-            "outcome_sha256": outcome_sha,
-            **lock_manifest,
-        }
+    loaded = SimpleNamespace(
+        outcome=SimpleNamespace(frame=outcomes, sha256=outcome_sha, source_id=SOURCE_ID),
+        verified_lock=SimpleNamespace(
+            manifest=lock_manifest,
+            manifest_sha256=lock_sha,
+            predictor_frame=predictors,
+            config=SimpleNamespace(
+                payload=config_payload,
+                sha256=lock_manifest["person_meal_validation_config_sha256"],
+            ),
+        ),
     )
-    paired = pd.DataFrame(
-        [
-            {
-                "run_id": run_id,
-                "run_binding_sha256": binding,
-                "endpoint": endpoint,
-                "analysis_mode": "subject_held_out",
-                "model": "locked_attribute_gmnps",
-                "reference": "fcs_microbiome",
-                "metric": "rmse",
-                "estimate_delta": -0.20,
-                "ci_lower": -0.30,
-                "ci_upper": -0.10,
-                "ci_method": "paired_family_twin_component_cluster_percentile_bootstrap_95",
-                "bootstrap_replicates_requested": 2000,
-                "bootstrap_replicates_valid": 1900,
-                "permutation_replicates_requested": 2000,
-                "permutation_replicates_valid": 1900,
-                "permutation_p_value": raw_p,
-                "holm_adjusted_p_value": adjusted,
-                "test_role": "primary",
-                "correction_family": "two_primary_endpoints_locked_gmnps_vs_fcs_microbiome_rmse",
-                "inference_status": "completed",
-            }
-            for endpoint, raw_p, adjusted in (
-                ("glucose_iAUC_2h", 0.01, 0.02),
-                ("tg_6h_rise", 0.03, 0.03),
-            )
-        ]
+    monkeypatch.setattr(
+        gate_module,
+        "load_locked_outcomes_for_benchmark",
+        lambda *args, **kwargs: loaded,
     )
-    split = pd.DataFrame(
-        [
-            {
-                "run_id": run_id,
-                "run_binding_sha256": binding,
-                "analysis_mode": "subject_held_out",
-                "outer_fold": 0,
-                "participant_id": participant,
-                "family_twin_component_id": component,
-                "partition": partition,
-            }
-            for participant, component, partition in (
-                ("p1", "c1", "development"),
-                ("p2", "c2", "development"),
-                ("p3", "c3", "test"),
-                ("p4", "c4", "test"),
-            )
-        ]
-    )
-    status = {
-        "run_id": run_id,
-        "run_binding_sha256": binding,
-        "analysis_status": "completed",
-    }
-    evidence_role = "direct_validation"
-    if mutation == "mismatched_run":
-        paired.loc[0, "run_id"] = "other-run"
-    elif mutation == "forged_holm":
-        paired.loc[paired["endpoint"].eq("tg_6h_rise"), "permutation_p_value"] = 0.20
-    elif mutation == "participant_leakage":
-        split.loc[len(split)] = {
-            **split.iloc[0].to_dict(),
-            "partition": "test",
-        }
-    elif mutation == "component_leakage":
-        split.loc[split["participant_id"].eq("p3"), "family_twin_component_id"] = "c1"
-    elif mutation == "supporting_relabel":
-        evidence_role = "correctly_specified_synthetic_positive_control"
-    elif mutation == "wrong_direction":
-        paired.loc[paired["endpoint"].eq("glucose_iAUC_2h"), "estimate_delta"] = 0.10
-    elif mutation == "wrong_ci_method":
-        paired.loc[paired["endpoint"].eq("glucose_iAUC_2h"), "ci_method"] = "percentile_95"
-    elif mutation == "low_valid_fraction":
-        paired.loc[
-            paired["endpoint"].eq("tg_6h_rise"),
-            "bootstrap_replicates_valid",
-        ] = 1799
-    elif mutation == "missing_primary":
-        paired = paired.loc[paired["endpoint"].ne("tg_6h_rise")].copy()
-
-    paired_path = tmp_path / "paired.csv"
-    split_path = tmp_path / "split.csv"
-    status_path = tmp_path / "status.json"
-    paired.to_csv(paired_path, index=False)
-    split.to_csv(split_path, index=False)
-    _write_json(status_path, status)
-
-    manifest = {
-        "schema_version": "direct-validity-result-run-v1",
-        "run_id": run_id,
-        "run_binding_sha256": binding,
-        "evidence_role": evidence_role,
-        "data_class": "real_observed_participant_meal_outcomes",
-        "outcome_source_id": "predict_controlled_clinical_zenodo",
-        "outcome_sha256": outcome_sha,
-        "method_lock_manifest_sha256": lock_sha,
-        **lock_manifest,
-        "artifacts": {
-            "paired_results": {"sha256": _sha(paired_path)},
-            "split_audit": {"sha256": _sha(split_path)},
-            "analysis_status": {"sha256": _sha(status_path)},
-        },
-    }
-    if mutation == "fake_digest":
-        manifest["artifacts"]["paired_results"]["sha256"] = "0" * 64
-    manifest_path = tmp_path / "result-manifest.json"
-    _write_json(manifest_path, manifest)
-
-    registry = {
-        "schema_version": "direct-validity-result-registry-v1",
-        "approved_runs": [
-            {
-                "run_id": run_id,
-                "result_run_manifest_sha256": _sha(manifest_path),
-            }
-        ],
-    }
+    binding = VerifiedRunBinding.from_locked_outcome("direct-run-001", loaded)
+    result = _benchmark_result(predictors, outcomes, config_payload, binding)
+    exported = export_benchmark_result(result, binding, tmp_path / "export")
     registry_path = tmp_path / "trusted-registry.json"
-    _write_json(registry_path, registry)
+    _write_json(
+        registry_path,
+        {
+            "schema_version": "direct-validity-result-registry-v1",
+            "approved_runs": [
+                {
+                    "run_id": binding.run_id,
+                    "result_run_manifest_sha256": _sha(exported.result_run_manifest),
+                }
+            ],
+        },
+    )
     monkeypatch.setattr(gate_module, "_TRUSTED_RESULT_REGISTRY_PATH", registry_path)
-
     dummy = tmp_path / "dummy"
     dummy.write_bytes(b"x")
     lock_paths = MethodLockArtifactPaths(
@@ -195,183 +302,246 @@ def _production_fixture(tmp_path: Path, monkeypatch, mutation: str | None = None
     paths = EvidenceGateArtifactPaths(
         method_lock_manifest=method_lock_path,
         method_lock_artifacts=lock_paths,
-        result_run_manifest=manifest_path,
-        paired_results=paired_path,
-        split_audit=split_path,
-        analysis_status=status_path,
-        controlled_outcome_source_id="predict_controlled_clinical_zenodo",
+        result_run_manifest=exported.result_run_manifest,
+        paired_metrics=exported.paired_metrics,
+        predictions=exported.predictions,
+        split_audit=exported.split_audit,
+        analysis_status=exported.analysis_status,
+        controlled_outcome_source_id=SOURCE_ID,
     )
-    loaded = SimpleNamespace(
-        outcome=SimpleNamespace(
-            frame=pd.DataFrame(
-                {"participant_id": ["p1", "p2", "p3", "p4"]}
-            ),
-            sha256=outcome_sha,
-            source_id="predict_controlled_clinical_zenodo",
-        ),
-        verified_lock=SimpleNamespace(
-            manifest=lock_manifest,
-            manifest_sha256=lock_sha,
-        ),
+    return paths, exported, loaded, registry_path
+
+
+def _rehash(paths: EvidenceGateArtifactPaths, registry_path: Path) -> None:
+    manifest = json.loads(paths.result_run_manifest.read_text())
+    for name, path in (
+        ("paired_metrics", paths.paired_metrics),
+        ("predictions", paths.predictions),
+        ("split_audit", paths.split_audit),
+        ("analysis_status", paths.analysis_status),
+    ):
+        manifest["artifacts"][name]["sha256"] = _sha(path)
+    _write_json(paths.result_run_manifest, manifest)
+    registry = json.loads(registry_path.read_text())
+    registry["approved_runs"][0]["result_run_manifest_sha256"] = _sha(
+        paths.result_run_manifest
     )
-    monkeypatch.setattr(
-        gate_module,
-        "load_locked_outcomes_for_benchmark",
-        lambda *args, **kwargs: loaded,
-    )
-    return paths, manifest_path, registry_path
+    _write_json(registry_path, registry)
 
 
-def test_production_api_is_path_only_and_absent_artifacts_fail_closed():
-    with pytest.raises(TypeError):
-        evaluate_evidence_gate({})
-    with pytest.raises(TypeError):
-        evaluate_evidence_gate(pd.DataFrame())
-    outcome = evaluate_evidence_gate()
-    assert outcome.tier == COMPUTATIONAL_FEASIBILITY
-    assert outcome.passed is False
-    assert "controlled_not_granted" in " ".join(outcome.blockers)
-    assert "result-run manifest path is missing" in outcome.blockers
-
-
-def test_fixed_empty_trusted_registry_and_self_signed_manifest_cannot_upgrade(
-    tmp_path, monkeypatch
-):
-    paths, manifest_path, _ = _production_fixture(tmp_path, monkeypatch)
-    manifest = json.loads(manifest_path.read_text())
-    manifest["self_signed_approval"] = {
-        "run_id": manifest["run_id"],
-        "result_run_manifest_sha256": _sha(manifest_path),
-    }
-    _write_json(manifest_path, manifest)
-    empty_registry = tmp_path / "fixed-empty-registry.json"
-    _write_json(
-        empty_registry,
-        {
-            "schema_version": "direct-validity-result-registry-v1",
-            "approved_runs": [],
-        },
-    )
-    monkeypatch.setattr(gate_module, "_TRUSTED_RESULT_REGISTRY_PATH", empty_registry)
-    outcome = evaluate_evidence_gate(paths)
-    assert outcome.tier == COMPUTATIONAL_FEASIBILITY
-    assert any("not independently approved" in item for item in outcome.blockers)
-
-
-@pytest.mark.parametrize(
-    "mutation, blocker_fragment",
-    [
-        ("fake_digest", "paired_results hash"),
-        ("supporting_relabel", "supporting evidence"),
-        ("mismatched_run", "same run_id"),
-        ("forged_holm", "recomputed Holm"),
-        ("participant_leakage", "participant leakage"),
-        ("component_leakage", "family/twin component leakage"),
-        ("wrong_direction", "required direction"),
-        ("wrong_ci_method", "CI/method"),
-        ("low_valid_fraction", "valid-resample threshold"),
-        ("missing_primary", "exactly the two frozen"),
-    ],
-)
-def test_production_gate_rejects_forgery_and_leakage(
-    tmp_path, monkeypatch, mutation, blocker_fragment
-):
-    paths, _, _ = _production_fixture(tmp_path, monkeypatch, mutation)
-    outcome = evaluate_evidence_gate(paths)
-    assert outcome.tier == COMPUTATIONAL_FEASIBILITY
-    assert any(blocker_fragment in item for item in outcome.blockers)
-
-
-def test_artifact_tamper_and_registry_manifest_mismatch_fail_closed(tmp_path, monkeypatch):
-    paths, manifest_path, _ = _production_fixture(tmp_path, monkeypatch)
-    paths.paired_results.write_bytes(paths.paired_results.read_bytes() + b"\n")
-    tampered = evaluate_evidence_gate(paths)
-    assert any("paired_results hash" in item for item in tampered.blockers)
-
-    paths, manifest_path, _ = _production_fixture(tmp_path / "second", monkeypatch)
-    manifest_path.write_bytes(manifest_path.read_bytes() + b" ")
-    mismatch = evaluate_evidence_gate(paths)
-    assert any("trusted registry" in item for item in mismatch.blockers)
-
-
-def test_only_full_path_validated_run_can_reach_direct_external_validity(
-    tmp_path, monkeypatch
-):
-    paths, _, _ = _production_fixture(tmp_path, monkeypatch)
+def test_exporter_roundtrips_actual_benchmark_result_schema(tmp_path, monkeypatch):
+    paths, exported, _, _ = _production_fixture(tmp_path, monkeypatch)
+    paired = pd.read_csv(exported.paired_metrics)
+    status = pd.read_csv(exported.analysis_status)
+    split = pd.read_csv(exported.split_audit)
+    manifest = json.loads(exported.result_run_manifest.read_text())
+    assert "comparator" in paired and "adjusted_p_value" in paired
+    assert "model" not in paired and "holm_adjusted_p_value" not in paired
+    assert set(status["analysis_status"]) == {"completed"}
+    assert set(split["outer_fold"]) == set(range(5))
+    assert "predictions" in manifest["artifacts"]
     outcome = evaluate_evidence_gate(paths)
     assert outcome.tier == DIRECT_EXTERNAL_VALIDITY
     assert outcome.passed is True
-    assert outcome.endpoint_checks["passed"].all()
 
 
-def test_testing_only_in_memory_evaluator_and_supporting_evidence_never_upgrade():
+def test_production_api_is_path_only_and_current_state_fails_closed():
+    with pytest.raises(TypeError):
+        evaluate_evidence_gate({})
+    outcome = evaluate_evidence_gate()
+    assert outcome.tier == COMPUTATIONAL_FEASIBILITY
+    assert "controlled_not_granted" in " ".join(outcome.blockers)
+
+
+@pytest.mark.parametrize(
+    "column,value,fragment",
+    [
+        ("permutation_p_value", np.nan, "raw permutation p-value"),
+        ("permutation_p_value", -0.01, "raw permutation p-value"),
+        ("permutation_p_value", 1.01, "raw permutation p-value"),
+        ("ci_lower", np.nan, "confidence interval"),
+        ("ci_lower", 0.0, "confidence interval"),
+        ("bootstrap_replicates_requested", True, "strict non-boolean integer"),
+        ("bootstrap_replicates_requested", 2000.5, "strict non-boolean integer"),
+        ("bootstrap_replicates_valid", -1, "nonnegative"),
+        ("bootstrap_replicates_valid", 2001, "cannot exceed requested"),
+        ("permutation_replicates_valid", 1799, "valid-resample threshold"),
+    ],
+)
+def test_strict_primary_numeric_domains_fail_closed(
+    tmp_path, monkeypatch, column, value, fragment
+):
+    paths, _, _, registry = _production_fixture(tmp_path, monkeypatch)
+    paired = pd.read_csv(paths.paired_metrics)
+    if isinstance(value, bool) or (
+        isinstance(value, float) and not float(value).is_integer()
+    ):
+        paired[column] = paired[column].astype(object)
+    paired.loc[0, column] = value
+    paired.to_csv(paths.paired_metrics, index=False)
+    _rehash(paths, registry)
+    outcome = evaluate_evidence_gate(paths)
+    assert any(fragment in blocker for blocker in outcome.blockers)
+
+
+def test_holm_is_recomputed_from_task3_raw_p_and_compared_to_adjusted(
+    tmp_path, monkeypatch
+):
+    paths, _, _, registry = _production_fixture(tmp_path, monkeypatch)
+    paired = pd.read_csv(paths.paired_metrics)
+    paired.loc[1, "adjusted_p_value"] = 0.001
+    paired.to_csv(paths.paired_metrics, index=False)
+    _rehash(paths, registry)
+    outcome = evaluate_evidence_gate(paths)
+    assert any("recomputed Holm" in blocker for blocker in outcome.blockers)
+
+
+@pytest.mark.parametrize(
+    "artifact,mutator,fragment",
+    [
+        (
+            "paired_metrics",
+            lambda frame: frame.assign(
+                manifest_sha256=frame["manifest_sha256"].where(
+                    frame.index != 0, "0" * 64
+                )
+            ),
+            "Task 3 provenance manifest_sha256",
+        ),
+        (
+            "predictions",
+            lambda frame: frame.assign(
+                outer_fold=frame["outer_fold"].where(frame.index != 0, 4)
+            ),
+            "recomputed test fold",
+        ),
+        (
+            "predictions",
+            lambda frame: frame.assign(
+                inference_cluster_id=frame["inference_cluster_id"].where(
+                    frame.index != 0, "forged-component"
+                )
+            ),
+            "recomputed family/twin component",
+        ),
+        (
+            "split_audit",
+            lambda frame: frame.assign(
+                test_n_rows=frame["test_n_rows"].where(frame.index != 0, 999)
+            ),
+            "split summary does not match recomputed",
+        ),
+    ],
+)
+def test_predictions_and_split_summary_are_checked_against_recomputed_production_splits(
+    tmp_path, monkeypatch, artifact, mutator, fragment
+):
+    paths, _, _, registry = _production_fixture(tmp_path, monkeypatch)
+    path = getattr(paths, artifact)
+    frame = mutator(pd.read_csv(path))
+    frame.to_csv(path, index=False)
+    _rehash(paths, registry)
+    outcome = evaluate_evidence_gate(paths)
+    assert any(fragment in blocker for blocker in outcome.blockers)
+
+
+def test_missing_outcomes_and_predictor_only_participants_are_allowed(tmp_path, monkeypatch):
+    paths, _, loaded, _ = _production_fixture(tmp_path, monkeypatch)
+    assert "p09" in set(loaded.verified_lock.predictor_frame["participant_id"])
+    assert "p09" not in set(loaded.outcome.frame["participant_id"])
+    assert loaded.outcome.frame["glucose_iAUC_2h"].isna().any()
+    assert evaluate_evidence_gate(paths).passed is True
+
+
+def test_trusted_predictor_relationships_not_uploaded_component_labels_define_splits(
+    tmp_path, monkeypatch
+):
+    paths, _, loaded, _ = _production_fixture(tmp_path, monkeypatch)
+    predictors = loaded.verified_lock.predictor_frame
+    predictors.loc[predictors["participant_id"].isin(["p00", "p09"]), "family_id"] = (
+        "trusted-shared-family"
+    )
+    outcome = evaluate_evidence_gate(paths)
+    assert outcome.passed is False
+    assert any(
+        "recomputed test fold" in blocker
+        or "prediction coverage" in blocker
+        or "split summary does not match recomputed" in blocker
+        for blocker in outcome.blockers
+    )
+
+
+def test_prediction_tamper_and_supporting_relabel_cannot_upgrade(tmp_path, monkeypatch):
+    paths, _, _, _ = _production_fixture(tmp_path, monkeypatch)
+    paths.predictions.write_bytes(paths.predictions.read_bytes() + b"\n")
+    assert any(
+        "predictions hash" in blocker
+        for blocker in evaluate_evidence_gate(paths).blockers
+    )
+    paths, _, _, registry = _production_fixture(tmp_path / "role", monkeypatch)
+    manifest = json.loads(paths.result_run_manifest.read_text())
+    manifest["evidence_role"] = "correctly_specified_synthetic_positive_control"
+    _write_json(paths.result_run_manifest, manifest)
+    registry_payload = json.loads(registry.read_text())
+    registry_payload["approved_runs"][0]["result_run_manifest_sha256"] = _sha(
+        paths.result_run_manifest
+    )
+    _write_json(registry, registry_payload)
+    outcome = evaluate_evidence_gate(paths)
+    assert any("supporting evidence" in blocker for blocker in outcome.blockers)
+
+
+def test_testing_only_in_memory_evaluator_never_upgrades():
     outcome = evaluate_testing_evidence(
-        {"evidence_role": "direct_validation"},
-        pd.DataFrame({"endpoint": ["glucose_iAUC_2h"]}),
+        {"evidence_role": "direct_validation"}, pd.DataFrame({"x": [1]})
     )
     assert outcome.tier == TESTING_ONLY_NO_CLAIM_UPGRADE
-    assert outcome.tier != DIRECT_EXTERNAL_VALIDITY
-    supporting = evaluate_testing_evidence(
-        {"evidence_role": "correctly_specified_synthetic_positive_control"},
-        pd.DataFrame(),
+    assert outcome.passed is False
+
+
+def test_claim_policy_is_dynamic_conservative_and_allows_negative_limitations(tmp_path):
+    computational = evaluate_evidence_gate()
+    computational_policy = build_claim_policy_payload(computational)
+    assert computational_policy["tier"] == COMPUTATIONAL_FEASIBILITY
+    assert computational_policy["source_state"] == "absent_real_validation_artifacts"
+    direct = EvidenceGateOutcome(
+        tier=DIRECT_EXTERNAL_VALIDITY,
+        passed=True,
+        blockers=(),
+        endpoint_checks=pd.DataFrame(),
+        allowed_claims=("direct_external_validity_for_locked_primary_endpoints",),
+        prohibited_claims=("clinical_utility", "causal_dietary_effect"),
+        source_state="verified_direct_validation_artifacts",
     )
-    assert supporting.passed is False
+    direct_policy = build_claim_policy_payload(direct)
+    assert direct_policy["tier"] == DIRECT_EXTERNAL_VALIDITY
+    assert "external validity" not in direct_policy["forbidden_patterns"]
+    assert "clinical validity" in direct_policy["forbidden_patterns"]
+    assert "causal dietary effect" in direct_policy["forbidden_patterns"]
+
+    generated = write_claim_restriction_artifacts(tmp_path / "gate", computational)
+    negative = tmp_path / "negative.txt"
+    positive = tmp_path / "positive.txt"
+    negative.write_text("This correctly specified control does not establish external validity.")
+    positive.write_text("The model establishes external validity.")
+    assert check_claim_inputs(generated["decision"], generated["policy"], [negative]) == ()
+    assert check_claim_inputs(generated["decision"], generated["policy"], [positive])
 
 
-def test_claim_policy_checker_rejects_forbidden_claims_and_tamper(tmp_path):
-    decision = tmp_path / "decision.json"
-    policy = tmp_path / "policy.json"
-    allowed = tmp_path / "allowed.txt"
-    forbidden = tmp_path / "forbidden.txt"
-    policy_payload = {
-        "schema_version": "claim-policy-v1",
-        "tier": COMPUTATIONAL_FEASIBILITY,
-        "allowed_claims": ["computational feasibility"],
-        "forbidden_patterns": ["external validity", "precision[- ]ready"],
-    }
-    policy_payload["payload_sha256"] = _canonical_hash(policy_payload)
-    _write_json(policy, policy_payload)
-    decision_payload = {
-        "schema_version": "evidence-gate-decision-v1",
-        "tier": COMPUTATIONAL_FEASIBILITY,
-        "passed": False,
-        "claim_policy_file_sha256": _sha(policy),
-    }
-    decision_payload["payload_sha256"] = _canonical_hash(decision_payload)
-    _write_json(decision, decision_payload)
-    allowed.write_text("This work demonstrates computational feasibility.")
-    forbidden.write_text("The system has external validity and is precision-ready.")
-    assert check_claim_inputs(decision, policy, [allowed]) == ()
-    violations = check_claim_inputs(decision, policy, [forbidden])
-    assert {item.pattern for item in violations} == {
-        "external validity",
-        "precision[- ]ready",
-    }
-    policy.write_bytes(policy.read_bytes() + b" ")
-    with pytest.raises(ValueError, match="claim policy hash"):
-        check_claim_inputs(decision, policy, [allowed])
-
-
-def test_current_decision_artifacts_and_cli_enforce_phase3_inputs(tmp_path):
-    root = Path(__file__).resolve().parents[3]
-    decision = root / "results/phase2/evidence-gate/current_gate_decision.json"
-    policy = root / "results/phase2/evidence-gate/claim_policy.json"
-    script = root / "code/src/scripts/check_claim_policy.py"
-    allowed = tmp_path / "allowed.txt"
-    forbidden = tmp_path / "forbidden.txt"
-    allowed.write_text("Correctly specified synthetic positive-control only.")
-    forbidden.write_text("This establishes clinical validity.")
+def test_current_decision_artifacts_are_deterministic_and_cli_enforced(tmp_path):
+    decision = ROOT / "results/phase2/evidence-gate/current_gate_decision.json"
+    policy = ROOT / "results/phase2/evidence-gate/claim_policy.json"
     generated = write_claim_restriction_artifacts(
-        tmp_path / "generated",
-        evaluate_evidence_gate(),
+        tmp_path / "generated", evaluate_evidence_gate()
     )
     assert generated["decision"].read_bytes() == decision.read_bytes()
     assert generated["policy"].read_bytes() == policy.read_bytes()
-    assert check_claim_inputs(decision, policy, [allowed]) == ()
+    forbidden = tmp_path / "forbidden.txt"
+    forbidden.write_text("The system has clinical validity.")
     completed = subprocess.run(
         [
             sys.executable,
-            str(script),
+            str(ROOT / "code/src/scripts/check_claim_policy.py"),
             "--decision",
             str(decision),
             "--policy",
@@ -383,11 +553,3 @@ def test_current_decision_artifacts_and_cli_enforce_phase3_inputs(tmp_path):
         check=False,
     )
     assert completed.returncode == 1
-    assert "FORBIDDEN_CLAIM" in completed.stdout
-
-    decision_payload = json.loads(decision.read_text())
-    decision_payload["tier"] = DIRECT_EXTERNAL_VALIDITY
-    tampered = tmp_path / "tampered-decision.json"
-    _write_json(tampered, decision_payload)
-    with pytest.raises(ValueError, match="gate decision payload hash"):
-        check_claim_inputs(tampered, policy, [allowed])

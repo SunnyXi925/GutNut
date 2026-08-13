@@ -9,12 +9,13 @@
     "eligible observed participant-by-meal outcomes are unavailable: predict_controlled_clinical_zenodo access_status=controlled_not_granted",
     "run-level method-lock manifest path is missing",
     "result-run manifest path is missing",
-    "paired primary results path is missing",
-    "hashed detailed split audit path is missing",
+    "paired metrics path is missing",
+    "predictions path is missing",
+    "split audit summary path is missing",
     "analysis status path is missing"
   ],
   "claim_policy_file": "claim_policy.json",
-  "claim_policy_file_sha256": "a8e25726890a9a4a87a5d99a55c9c34116710de40a2caf64733401409006d016",
+  "claim_policy_file_sha256": "9eac4dac7085834757068dc145015279bb88fba90151ee8e7fb128e81570be51",
   "forbidden_claims": [
     "transforms_postprandial_response",
     "precision_ready",
@@ -23,10 +24,10 @@
     "direct_response_validity",
     "causal_dietary_effect"
   ],
-  "gate_version": "direct-response-evidence-gate-v2",
+  "gate_version": "direct-response-evidence-gate-v3",
   "manuscript_checked_or_revised": false,
   "passed": false,
-  "payload_sha256": "2ea009e842b64c89520d8030e7d15f4e6401a982370f067f68cb8cec3aee5074",
+  "payload_sha256": "c0934b9fe2bd1c6aaea40f0d309fc4fee56bb1e0189a856507e9971179f8599a",
   "schema_version": "evidence-gate-decision-v1",
   "source_state": "absent_real_validation_artifacts",
   "tier": "computational_feasibility"

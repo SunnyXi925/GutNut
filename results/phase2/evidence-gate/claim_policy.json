@@ -1,21 +1,31 @@
 {
   "allowed_claims": [
-    "computational feasibility",
-    "correctly specified synthetic positive-control",
-    "biological consistency",
-    "mechanistic consistency"
+    "computational_feasibility",
+    "correctly_specified_synthetic_positive_control",
+    "biological_consistency",
+    "mechanistic_consistency"
+  ],
+  "forbidden_claims": [
+    "transforms_postprandial_response",
+    "precision_ready",
+    "clinical_validity",
+    "external_validity",
+    "direct_response_validity",
+    "causal_dietary_effect"
   ],
   "forbidden_patterns": [
     "transform(s|ed|ing)?\\s+postprandial response",
     "precision[- ]ready",
     "clinical validity",
+    "clinical utility",
+    "causal dietary effect",
     "external validity",
-    "direct response validity",
-    "causal dietary effect"
+    "direct response validity"
   ],
-  "payload_sha256": "45db7d3a6b550eea1c9fe1b35a32d751a03a6c2ba52413063521273ec813c7ec",
+  "payload_sha256": "037cda4d7065771a8da9092e4c3cd8e7203fef18a050935e4149e4ec7c70cbe8",
   "phase3_must_consume": true,
   "schema_version": "claim-policy-v1",
   "scope": "Phase 3 manuscript and build inputs",
+  "source_state": "absent_real_validation_artifacts",
   "tier": "computational_feasibility"
 }

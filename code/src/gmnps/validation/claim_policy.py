@@ -12,13 +12,23 @@ if TYPE_CHECKING:
     from gmnps.validation.evidence_gate import EvidenceGateOutcome
 
 
-_FORBIDDEN_PATTERNS = (
+_ALWAYS_FORBIDDEN_PATTERNS = (
     r"transform(s|ed|ing)?\s+postprandial response",
     r"precision[- ]ready",
     r"clinical validity",
+    r"clinical utility",
+    r"causal dietary effect",
+)
+_COMPUTATIONAL_ONLY_FORBIDDEN_PATTERNS = (
     r"external validity",
     r"direct response validity",
-    r"causal dietary effect",
+)
+_NEGATIVE_LIMITATION_PREFIX = re.compile(
+    r"(?:does|do|did)\s+not\s+(?:establish|demonstrate|show|support|claim)\s*$"
+    r"|(?:cannot|can't)\s+(?:establish|demonstrate|show|support|claim)\s*$"
+    r"|(?:is|are)\s+not\s+(?:evidence|proof)\s+of\s*$"
+    r"|no\s+(?:evidence|claim)\s+of\s*$",
+    flags=re.IGNORECASE,
 )
 
 
@@ -47,17 +57,23 @@ def _json_bytes(payload: dict[str, object]) -> bytes:
     ).encode("utf-8")
 
 
-def build_claim_policy_payload() -> dict[str, object]:
+def build_claim_policy_payload(outcome: "EvidenceGateOutcome") -> dict[str, object]:
+    """Build a conservative policy that is consistent with the actual gate tier."""
+
+    if outcome.tier == "direct_external_validity":
+        forbidden = list(_ALWAYS_FORBIDDEN_PATTERNS)
+    else:
+        forbidden = [
+            *_ALWAYS_FORBIDDEN_PATTERNS,
+            *_COMPUTATIONAL_ONLY_FORBIDDEN_PATTERNS,
+        ]
     payload: dict[str, object] = {
         "schema_version": "claim-policy-v1",
-        "tier": "computational_feasibility",
-        "allowed_claims": [
-            "computational feasibility",
-            "correctly specified synthetic positive-control",
-            "biological consistency",
-            "mechanistic consistency",
-        ],
-        "forbidden_patterns": list(_FORBIDDEN_PATTERNS),
+        "tier": outcome.tier,
+        "source_state": outcome.source_state,
+        "allowed_claims": list(outcome.allowed_claims),
+        "forbidden_claims": list(outcome.prohibited_claims),
+        "forbidden_patterns": forbidden,
         "scope": "Phase 3 manuscript and build inputs",
         "phase3_must_consume": True,
     }
@@ -73,7 +89,7 @@ def write_claim_restriction_artifacts(
 
     output = Path(output_directory)
     output.mkdir(parents=True, exist_ok=True)
-    policy = build_claim_policy_payload()
+    policy = build_claim_policy_payload(outcome)
     policy_bytes = _json_bytes(policy)
     policy_path = output / "claim_policy.json"
     policy_path.write_bytes(policy_bytes)
@@ -87,7 +103,7 @@ def write_claim_restriction_artifacts(
         "forbidden_claims": list(outcome.prohibited_claims),
         "claim_policy_file": policy_path.name,
         "claim_policy_file_sha256": sha256(policy_bytes).hexdigest(),
-        "source_state": "absent_real_validation_artifacts",
+        "source_state": outcome.source_state,
         "manuscript_checked_or_revised": False,
     }
     decision["payload_sha256"] = canonical_payload_sha256(decision)
@@ -123,6 +139,12 @@ def check_claim_inputs(
         raise ValueError("claim policy hash does not match gate decision")
     if decision.get("tier") != policy.get("tier"):
         raise ValueError("claim policy tier does not match gate decision")
+    if decision.get("source_state") != policy.get("source_state"):
+        raise ValueError("claim policy source_state does not match gate decision")
+    if decision.get("allowed_claims") != policy.get("allowed_claims"):
+        raise ValueError("claim policy allowed_claims do not match gate decision")
+    if decision.get("forbidden_claims") != policy.get("forbidden_claims"):
+        raise ValueError("claim policy forbidden_claims do not match gate decision")
     patterns = policy.get("forbidden_patterns")
     if not isinstance(patterns, list) or not all(
         isinstance(pattern, str) and pattern for pattern in patterns
@@ -133,8 +155,12 @@ def check_claim_inputs(
         path = Path(value)
         text = path.read_text(encoding="utf-8")
         for pattern in patterns:
-            if re.search(pattern, text, flags=re.IGNORECASE):
+            for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+                prefix = text[max(0, match.start() - 120) : match.start()]
+                if _NEGATIVE_LIMITATION_PREFIX.search(prefix):
+                    continue
                 violations.append(ClaimViolation(path=path, pattern=pattern))
+                break
     return tuple(violations)
 
 
