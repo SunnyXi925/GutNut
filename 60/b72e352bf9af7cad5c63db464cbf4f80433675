@@ -1,0 +1,29 @@
+code/src/gmnps/scoring/fcs2_attribute_rules.py
+  s_4d75bbbcc79dac::t_4f70cd1f618385 29-47,209-216,291,295-296,315,325,370-384,387-394,399-400,403,408,411-422,424,426-430,432
+code/src/tests/test_fcs2_attribute_rules.py
+  s_4d75bbbcc79dac::t_019e368bd887af 11,88,103,106,117-125,132,191-192,194,200-201,205-252
+  s_4d75bbbcc79dac::t_a03e206dfaee2d 253-254
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "60b72e352bf9af7cad5c63db464cbf4f80433675",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  },
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 2,
+      "accepted_lines": 2
+    }
+  }
+}
