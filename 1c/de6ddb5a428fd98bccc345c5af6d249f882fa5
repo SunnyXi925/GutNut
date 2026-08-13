@@ -1,0 +1,24 @@
+code/src/gmnps/scoring/fcs2_attribute_rules.py
+  s_4d75bbbcc79dac::t_b1a41e4f58bf06 311-312
+code/src/tests/test_fcs2_attribute_rules.py
+  s_4d75bbbcc79dac::t_18fc31bbdc8ad6 89-93,99-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "1cde6ddb5a428fd98bccc345c5af6d249f882fa5",
+  "prompts": {},
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 209,
+      "total_deletions": 2,
+      "accepted_lines": 209
+    }
+  }
+}
