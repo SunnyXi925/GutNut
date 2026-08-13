@@ -1,0 +1,33 @@
+{
+  "schema_version": "fcs2-fndds-release-registry-schema-v1",
+  "registry_version": "fcs2-fndds-release-registry-v1",
+  "canonical_release_set": [
+    "FNDDS 2001-2002",
+    "FNDDS 2003-2004",
+    "FNDDS 2005-2006",
+    "FNDDS 2007-2008",
+    "FNDDS 2009-2010",
+    "FNDDS 2011-2012",
+    "FNDDS 2013-2014",
+    "FNDDS 2015-2016",
+    "FNDDS 2017-2018"
+  ],
+  "approved_artifact_entry_schema": {
+    "required_fields": [
+      "bundle_id",
+      "fndds_releases",
+      "artifact_sha256",
+      "food_source_linkage_sha256",
+      "nutrient_units",
+      "exposure_basis"
+    ],
+    "artifact_sha256_keys": [
+      "official_fcs",
+      "food_metadata",
+      "baseline_attribute_points",
+      "food_exposures"
+    ],
+    "digest_algorithm": "sha256"
+  },
+  "approved_artifacts": []
+}

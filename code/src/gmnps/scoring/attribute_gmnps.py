@@ -1,11 +1,11 @@
 """Public, provenance-bound API for attribute-level GMNPS scoring."""
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace as dataclass_replace
 from hashlib import sha256
 import json
 from math import isfinite
-import re
+from pathlib import Path
 from typing import Mapping
 
 import numpy as np
@@ -32,10 +32,12 @@ from gmnps.scoring.fcs2_attribute_mapping import (
     reconstruction_status_table,
 )
 from gmnps.scoring.fcs2_attribute_rules import FCS2_RULES, NOT_CALCULATED, NotCalculated
-from gmnps.scoring.masks import PRIMARY_MASK_VERSION, build_channel_vectors
+from gmnps.scoring.masks import PRIMARY_MASK_VERSION
 
 
 ATTRIBUTE_GMNPS_SCORING_VERSION = "attribute-gmnps-v1"
+NOT_CALCULATED_TOKEN = "__GMNPS_NOT_CALCULATED_V1__"
+NOT_CALCULATED_SCHEMA_VERSION = "gmnps-not-calculated-csv-v1"
 PRIMARY_METHOD = "attribute_recomposition"
 LEGACY_METHOD = "legacy_final_score_offset"
 _ALLOWED_METHODS = frozenset({PRIMARY_METHOD, LEGACY_METHOD})
@@ -61,7 +63,7 @@ _REQUIRED_SOURCE_HASHES = frozenset(
     }
 )
 _HEX = frozenset("0123456789abcdef")
-_INDIVIDUAL_COLUMNS = (
+_PRIMARY_INDIVIDUAL_COLUMNS = (
     "individual_id",
     "food_id",
     "food_name",
@@ -74,11 +76,72 @@ _INDIVIDUAL_COLUMNS = (
     "channel_interaction_delta",
     "top_positive_drivers",
     "top_negative_drivers",
+    "driver_basis",
     "mask_version",
     "mapping_version",
     "scoring_version",
     "method_role",
 )
+_LEGACY_INDIVIDUAL_COLUMNS = tuple(
+    "legacy_top_positive_nutrient_drivers"
+    if column == "top_positive_drivers"
+    else "legacy_top_negative_nutrient_drivers"
+    if column == "top_negative_drivers"
+    else column
+    for column in _PRIMARY_INDIVIDUAL_COLUMNS
+)
+_PRODUCTION_ARTIFACT_HASH_KEYS = (
+    "official_fcs",
+    "food_metadata",
+    "baseline_attribute_points",
+    "food_exposures",
+)
+_TRUSTED_REGISTRY_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "configs/fcs2_fndds_release_registry.json"
+)
+
+
+def _load_trusted_registry() -> tuple[dict[str, object], str]:
+    try:
+        raw = _TRUSTED_REGISTRY_PATH.read_bytes()
+        registry = json.loads(raw)
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError("trusted FCS2/FNDDS release registry is unreadable") from error
+    if not isinstance(registry, dict):
+        raise RuntimeError("trusted FCS2/FNDDS release registry must be an object")
+    required = {
+        "schema_version",
+        "registry_version",
+        "canonical_release_set",
+        "approved_artifact_entry_schema",
+        "approved_artifacts",
+    }
+    if set(registry) != required:
+        raise RuntimeError("trusted FCS2/FNDDS release registry schema is invalid")
+    if not isinstance(registry["registry_version"], str):
+        raise RuntimeError("trusted registry version is invalid")
+    canonical = registry["canonical_release_set"]
+    if not isinstance(canonical, list) or not canonical or any(
+        not isinstance(value, str) or not value for value in canonical
+    ):
+        raise RuntimeError("trusted registry canonical release set is invalid")
+    entries = registry["approved_artifacts"]
+    if not isinstance(entries, list):
+        raise RuntimeError("trusted registry approved_artifacts must be a list")
+    required_entry_fields = set(
+        registry["approved_artifact_entry_schema"]["required_fields"]
+    )
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != required_entry_fields:
+            raise RuntimeError("trusted registry contains an invalid approved artifact entry")
+        if set(entry["artifact_sha256"]) != set(_PRODUCTION_ARTIFACT_HASH_KEYS):
+            raise RuntimeError("trusted registry artifact digest keys are invalid")
+        if any(not _is_sha256(value) for value in entry["artifact_sha256"].values()):
+            raise RuntimeError("trusted registry contains an invalid artifact digest")
+        if not _is_sha256(entry["food_source_linkage_sha256"]):
+            raise RuntimeError("trusted registry contains an invalid linkage digest")
+    return registry, sha256(raw).hexdigest()
 
 
 def _json_scalar(value: object) -> object:
@@ -135,13 +198,54 @@ def _is_sha256(value: object) -> bool:
     return isinstance(value, str) and len(value) == 64 and set(value) <= _HEX
 
 
+_TRUSTED_FCS2_FNDDS_REGISTRY, _TRUSTED_FCS2_FNDDS_REGISTRY_SHA256 = (
+    _load_trusted_registry()
+)
+FCS2_FNDDS_REGISTRY_VERSION = str(
+    _TRUSTED_FCS2_FNDDS_REGISTRY["registry_version"]
+)
+_CANONICAL_PRODUCTION_RELEASES = tuple(
+    _TRUSTED_FCS2_FNDDS_REGISTRY["canonical_release_set"]
+)
+
+
 def _mapping_rows(version: str):
     if version == PRIMARY_MAPPING_VERSION:
         return PRIMARY_ATTRIBUTE_MAPPINGS
     try:
-        return SENSITIVITY_ATTRIBUTE_MAPPINGS[version]
+        rows = SENSITIVITY_ATTRIBUTE_MAPPINGS[version]
     except (KeyError, TypeError) as error:
         raise ValueError(f"unknown reviewed mapping version: {version}") from error
+    if version == "carbohydrate_proxy":
+        # The sensitivity activates the carbohydrate side of the reviewed MAC ratio.
+        rows = tuple(
+            dataclass_replace(row, channel="MAC")
+            if row.role == "effect" and row.nutrient == "Carbohydrate (g)"
+            else row
+            for row in rows
+        )
+    return rows
+
+
+def _effect_nutrients_by_channel(mapping_version: str) -> dict[str, tuple[str, ...]]:
+    """Return the exact reviewed effect nutrients for each supported channel."""
+
+    grouped: dict[str, list[str]] = {"MAC": [], "LIPID": []}
+    for row in _mapping_rows(mapping_version):
+        if row.role != "effect":
+            continue
+        if row.channel not in grouped:
+            raise ValueError(
+                f"reviewed effect mapping channel must be MAC or LIPID: {row.channel}"
+            )
+        if row.nutrient not in grouped[row.channel]:
+            grouped[row.channel].append(row.nutrient)
+    if not all(grouped.values()):
+        raise ValueError("reviewed mapping must contain both MAC and LIPID effect nutrients")
+    overlap = set(grouped["MAC"]) & set(grouped["LIPID"])
+    if overlap:
+        raise ValueError(f"reviewed MAC/LIPID effect nutrients overlap: {sorted(overlap)}")
+    return {channel: tuple(nutrients) for channel, nutrients in grouped.items()}
 
 
 def _target_domains(version: str) -> tuple[str, ...]:
@@ -177,7 +281,13 @@ class AttributeGMNPSConfig:
             raise ValueError("final_cap_mode must be primary, low, or high")
         if not isinstance(self.recomputed_domains, tuple):
             raise ValueError("recomputed_domains must be an immutable tuple")
-        if self.recomputed_domains != _target_domains(self.mapping_version):
+        expected_domains = _target_domains(self.mapping_version)
+        if (
+            self.mapping_version != PRIMARY_MAPPING_VERSION
+            and self.recomputed_domains == PRIMARY_RECOMPUTED_DOMAINS
+        ):
+            object.__setattr__(self, "recomputed_domains", expected_domains)
+        elif self.recomputed_domains != expected_domains:
             raise ValueError(
                 "recomputed_domains must exactly cover the reviewed mapping targets"
             )
@@ -233,18 +343,43 @@ def _finite_frame(frame: pd.DataFrame, label: str, *, nonnegative: bool = False)
 def _release_kind(releases: tuple[str, ...]) -> str:
     if not releases or any(not isinstance(value, str) or not value.strip() for value in releases):
         raise ValueError("fndds_releases must contain nonempty release labels")
-    joined = " ".join(releases).lower().replace("–", "-")
-    if "fndds" not in joined:
-        raise ValueError("FNDDS release provenance must name FNDDS")
-    years = [int(value) for value in re.findall(r"20\d{2}", joined)]
-    if years and min(years) == 2001 and max(years) == 2018:
+    if releases == _CANONICAL_PRODUCTION_RELEASES:
         return "production"
-    if 2021 in years and 2023 in years:
+    if releases == ("FNDDS 2021-2023",):
         return "non-production"
     raise ValueError(
-        "production requires FCS2-aligned FNDDS 2001-2018 provenance; "
+        "production requires the exact trusted FCS2-aligned FNDDS 2001-2018 "
+        "canonical release set; "
         "only FNDDS 2021-2023 is recognized for development smoke tests"
     )
+
+
+def _validate_approved_production_bundle(bundle: "FoodAttributeBundle") -> None:
+    if bundle.registry_version != FCS2_FNDDS_REGISTRY_VERSION:
+        raise ValueError("production registry version does not match the trusted registry")
+    entries = _TRUSTED_FCS2_FNDDS_REGISTRY["approved_artifacts"]
+    if not entries:
+        raise ValueError(
+            "no approved production bundle is registered; Phase 2 must verify official "
+            "FNDDS 2001-2018 digests and food/source linkage"
+        )
+    actual_artifacts = {
+        key: bundle.source_hashes[key] for key in _PRODUCTION_ARTIFACT_HASH_KEYS
+    }
+    matches = [
+        entry
+        for entry in entries
+        if tuple(entry["fndds_releases"]) == bundle.fndds_releases
+        and entry["artifact_sha256"] == actual_artifacts
+        and entry["food_source_linkage_sha256"]
+        == bundle.food_source_linkage_sha256
+        and entry["nutrient_units"] == dict(bundle.nutrient_units)
+        and entry["exposure_basis"] == bundle.exposure_basis
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            "production bundle does not exactly match one trusted registry entry"
+        )
 
 
 @dataclass(frozen=True)
@@ -261,6 +396,8 @@ class FoodAttributeBundle:
     exposure_basis: str
     reconstruction_status: pd.DataFrame
     production_label: str
+    registry_version: str
+    food_source_linkage_sha256: str
     fingerprint: str = ""
 
     def __post_init__(self) -> None:
@@ -285,6 +422,8 @@ class FoodAttributeBundle:
                 "exposure_basis": self.exposure_basis,
                 "reconstruction_status": _frame_payload(self.reconstruction_status),
                 "production_label": self.production_label,
+                "registry_version": self.registry_version,
+                "food_source_linkage_sha256": self.food_source_linkage_sha256,
             }
         )
 
@@ -350,6 +489,10 @@ class FoodAttributeBundle:
                 "production requires FNDDS 2001-2018; FNDDS 2021-2023 must be "
                 "labelled non-production"
             )
+        if self.registry_version != FCS2_FNDDS_REGISTRY_VERSION:
+            raise ValueError("bundle registry_version does not match the trusted registry")
+        if not _is_sha256(self.food_source_linkage_sha256):
+            raise ValueError("food_source_linkage_sha256 must be a lowercase SHA-256 digest")
 
         if not isinstance(self.source_hashes, Mapping):
             raise ValueError("source_hashes must be a mapping")
@@ -375,6 +518,9 @@ class FoodAttributeBundle:
             )
         except AssertionError as error:
             raise ValueError("reconstruction_status must match the locked Task 2 table") from error
+
+        if release_kind == "production":
+            _validate_approved_production_bundle(self)
 
         if check_fingerprint:
             expected = self.compute_fingerprint()
@@ -486,13 +632,15 @@ def _counterfactual_beta(
     state: BetaNormalizationState,
     *,
     frozen_channel: str,
-    mask_version: str,
+    mapping_version: str,
 ) -> pd.DataFrame:
-    masks = build_channel_vectors(state.nutrient_order, mask_version)
-    key = frozen_channel.lower()
+    channels = _effect_nutrients_by_channel(mapping_version)
+    if frozen_channel not in channels:
+        raise ValueError("frozen_channel must be MAC or LIPID")
+    frozen_nutrients = set(channels[frozen_channel])
     frozen = beta.loc[:, state.nutrient_order].copy()
-    for nutrient, selected in zip(state.nutrient_order, masks[key]):
-        if selected:
+    for nutrient in state.nutrient_order:
+        if nutrient in frozen_nutrients:
             frozen.loc[:, nutrient] = state.medians[nutrient]
     return frozen
 
@@ -579,6 +727,7 @@ def _attribution_tables(calibration, final, config: AttributeGMNPSConfig):
             ]
             personalized = point_row[attribute]
             delta = calibration.deltas.loc[(individual_id, food_id), attribute]
+            not_calculated = personalized is NOT_CALCULATED
             attribute_rows.append(
                 {
                     "individual_id": individual_id,
@@ -586,11 +735,18 @@ def _attribution_tables(calibration, final, config: AttributeGMNPSConfig):
                     "attribute": attribute,
                     "domain": FCS2_RULES[attribute].domain,
                     "channel": channels[attribute],
-                    "baseline_points": float(baseline) if pd.notna(baseline) else np.nan,
-                    "personalized_points": (
-                        float(personalized) if personalized is not NOT_CALCULATED else np.nan
+                    "baseline_points": (
+                        NOT_CALCULATED_TOKEN if not_calculated else float(baseline)
                     ),
-                    "attribute_point_delta": float(delta) if delta is not NOT_CALCULATED else np.nan,
+                    "personalized_points": (
+                        NOT_CALCULATED_TOKEN
+                        if not_calculated
+                        else float(personalized)
+                    ),
+                    "attribute_point_delta": (
+                        NOT_CALCULATED_TOKEN if not_calculated else float(delta)
+                    ),
+                    "not_calculated": not_calculated,
                     "mapping_version": config.mapping_version,
                     "calibration_fingerprint": calibration.calibration_fingerprint,
                 }
@@ -618,13 +774,13 @@ def _primary_result(
         beta,
         model.normalization_state,
         frozen_channel="LIPID",
-        mask_version=model.config.mask_version,
+        mapping_version=model.config.mapping_version,
     )
     lipid_only_beta = _counterfactual_beta(
         beta,
         model.normalization_state,
         frozen_channel="MAC",
-        mask_version=model.config.mask_version,
+        mapping_version=model.config.mapping_version,
     )
     mac_only = _run_primary_pipeline(model, mac_only_beta, bundle)
     lipid_only = _run_primary_pipeline(model, lipid_only_beta, bundle)
@@ -654,13 +810,14 @@ def _primary_result(
                 "channel_interaction_delta": total_delta - mac_delta - lipid_delta,
                 "top_positive_drivers": positive[pair],
                 "top_negative_drivers": negative[pair],
+                "driver_basis": "attribute_point_delta",
                 "mask_version": model.config.mask_version,
                 "mapping_version": model.config.mapping_version,
                 "scoring_version": model.config.scoring_version,
                 "method_role": model.config.method_role,
             }
         )
-    individual = pd.DataFrame(rows, columns=_INDIVIDUAL_COLUMNS).sort_values(
+    individual = pd.DataFrame(rows, columns=_PRIMARY_INDIVIDUAL_COLUMNS).sort_values(
         ["individual_id", "food_id"], kind="mergesort"
     ).reset_index(drop=True)
     attribute, domain = _attribution_tables(calibration, final, model.config)
@@ -677,6 +834,9 @@ def _primary_result(
                     "definition": "score_with_LIPID_frozen_minus_FCS2",
                     "frozen_channel": "LIPID",
                     "raw_beta_replacement": "development_median",
+                    "frozen_effect_nutrients": list(
+                        _effect_nutrients_by_channel(model.config.mapping_version)["LIPID"]
+                    ),
                     "response_fingerprint": mac_only[0].response_fingerprint,
                     "calibration_fingerprint": mac_only[1].calibration_fingerprint,
                     "recomposition_fingerprint": mac_only[3].fingerprint,
@@ -686,6 +846,9 @@ def _primary_result(
                     "definition": "score_with_MAC_frozen_minus_FCS2",
                     "frozen_channel": "MAC",
                     "raw_beta_replacement": "development_median",
+                    "frozen_effect_nutrients": list(
+                        _effect_nutrients_by_channel(model.config.mapping_version)["MAC"]
+                    ),
                     "response_fingerprint": lipid_only[0].response_fingerprint,
                     "calibration_fingerprint": lipid_only[1].calibration_fingerprint,
                     "recomposition_fingerprint": lipid_only[3].fingerprint,
@@ -710,6 +873,13 @@ def _base_manifest(
     model: AttributeGMNPSModel, bundle: FoodAttributeBundle
 ) -> dict[str, object]:
     config = model.config
+    not_calculated_mask = [
+        {"food_id": food_id, "attribute": attribute}
+        for food_id, row in bundle.baseline_points.iterrows()
+        for attribute, value in row.items()
+        if value is NOT_CALCULATED
+    ]
+    not_calculated_mask.sort(key=lambda row: (row["food_id"], row["attribute"]))
     return {
         "method": config.method,
         "method_role": config.method_role,
@@ -746,6 +916,24 @@ def _base_manifest(
         "missing_exposure_values": 0,
         "centering": "none",
         "candidate_selection": "none",
+        "driver_basis": (
+            "raw_nutrient_contribution"
+            if config.method == LEGACY_METHOD
+            else "attribute_point_delta"
+        ),
+        "trusted_registry_version": FCS2_FNDDS_REGISTRY_VERSION,
+        "trusted_registry_sha256": _TRUSTED_FCS2_FNDDS_REGISTRY_SHA256,
+        "food_source_linkage_sha256": bundle.food_source_linkage_sha256,
+        "not_calculated_serialization": {
+            "schema_version": NOT_CALCULATED_SCHEMA_VERSION,
+            "token": NOT_CALCULATED_TOKEN,
+            "allowed_attributes": [
+                attribute
+                for attribute in _ACTIVE_ATTRIBUTES
+                if FCS2_RULES[attribute].kind == "log_ratio"
+            ],
+            "baseline_attribute_points_mask": not_calculated_mask,
+        },
     }
 
 
@@ -770,10 +958,21 @@ def _legacy_result(
     individual["mapping_version"] = model.config.mapping_version
     individual["method_role"] = "sensitivity"
     individual["scoring_version"] = model.config.scoring_version
-    individual[["top_positive_drivers", "top_negative_drivers"]] = individual[
-        ["top_positive_drivers", "top_negative_drivers"]
-    ].replace("", "none")
-    individual = individual.loc[:, _INDIVIDUAL_COLUMNS].sort_values(
+    individual = individual.rename(
+        columns={
+            "top_positive_drivers": "legacy_top_positive_nutrient_drivers",
+            "top_negative_drivers": "legacy_top_negative_nutrient_drivers",
+        }
+    )
+    legacy_driver_columns = [
+        "legacy_top_positive_nutrient_drivers",
+        "legacy_top_negative_nutrient_drivers",
+    ]
+    individual[legacy_driver_columns] = individual[legacy_driver_columns].replace(
+        "", "none"
+    )
+    individual["driver_basis"] = "raw_nutrient_contribution"
+    individual = individual.loc[:, _LEGACY_INDIVIDUAL_COLUMNS].sort_values(
         ["individual_id", "food_id"], kind="mergesort"
     ).reset_index(drop=True)
     manifest = _base_manifest(model, bundle)
