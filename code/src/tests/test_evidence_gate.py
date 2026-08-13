@@ -12,11 +12,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from gmnps.data_sources.predict_zoe_loader import LoadedTable
+from gmnps.validation import claim_policy as policy_module
 from gmnps.validation import evidence_gate as gate_module
 from gmnps.validation.claim_policy import (
-    build_claim_policy_payload,
+    build_claim_policy_from_evidence_gate,
     check_claim_inputs,
-    write_claim_restriction_artifacts,
 )
 from gmnps.validation.cohort_split import (
     family_twin_component_ids,
@@ -35,14 +36,22 @@ from gmnps.validation.evidence_gate import (
 )
 from gmnps.validation.method_lock_gate import MethodLockArtifactPaths
 from gmnps.validation.person_meal_benchmark import (
+    BootstrapInterval,
+    PermutationTestResult,
     REQUIRED_COMPARATORS,
     BenchmarkResult,
+)
+import gmnps.validation.person_meal_benchmark as benchmark_module
+from tests.test_person_meal_benchmark import (
+    _testing_only_lock_fixture as _task3_lock_fixture,
+    _testing_only_tables as _task3_tables,
 )
 
 
 ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = ROOT / "code/src/configs/person_meal_validation.yaml"
 SOURCE_ID = "predict_controlled_clinical_zenodo"
+TEST_SOURCE_ID = "testing-only-controlled-source"
 
 
 def _sha(path: Path) -> str:
@@ -51,6 +60,166 @@ def _sha(path: Path) -> str:
 
 def _write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, sort_keys=True) + "\n", encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def real_task3_roundtrip(tmp_path_factory):
+    """Run the actual Task 3 producer once, then export and gate its result."""
+
+    base = tmp_path_factory.mktemp("real-task3-producer")
+    monkeypatch = pytest.MonkeyPatch()
+    predictors, _ = _task3_tables()
+    outcomes = predictors[["participant_id", "meal_id"]].copy()
+    outcomes["glucose_iAUC_2h"] = (
+        0.15 * predictors["gmnps_attribute_1"].to_numpy()
+        + 1.2 * predictors["gmnps_attribute_2"].to_numpy()
+    )
+    outcomes["tg_6h_rise"] = (
+        -0.05 * predictors["gmnps_attribute_1"].to_numpy()
+        + 0.8 * predictors["gmnps_attribute_2"].to_numpy()
+    )
+    outcomes.loc[0, "glucose_iAUC_2h"] = np.nan
+    lock_paths, manifest_path, _ = _task3_lock_fixture(base / "lock", predictors)
+    monkeypatch.setattr(
+        benchmark_module,
+        "validate_method_lock_manifest",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        benchmark_module,
+        "load_outcome_table_after_gate",
+        lambda *args, **kwargs: LoadedTable(
+            frame=outcomes.copy(),
+            sha256="1" * 64,
+            source_id=TEST_SOURCE_ID,
+        ),
+    )
+    monkeypatch.setattr(benchmark_module, "_ALPHA_GRID", (1.0,))
+
+    def fast_bootstrap(
+        y,
+        prediction,
+        clusters,
+        *,
+        metric,
+        n_bootstrap,
+        seed,
+        reference_prediction=None,
+    ):
+        if reference_prediction is None:
+            estimate = benchmark_module.compute_regression_metrics(y, prediction)[metric]
+            lower, upper = estimate - 0.1, estimate + 0.1
+        else:
+            estimate = benchmark_module._metric_delta(
+                y, prediction, reference_prediction, metric
+            )
+            lower, upper = (
+                (estimate - 0.2, min(-1e-6, estimate / 2.0))
+                if estimate < 0
+                else (estimate - 0.1, estimate + 0.1)
+            )
+        return BootstrapInterval(
+            estimate=estimate,
+            lower=lower,
+            upper=upper,
+            n_clusters=len(set(clusters)),
+            requested_replicates=2_000,
+            valid_replicates=1_900,
+        )
+
+    def fast_permutation(
+        y,
+        model_prediction,
+        reference_prediction,
+        clusters,
+        *,
+        metric,
+        n_permutations,
+        seed,
+    ):
+        estimate = benchmark_module._metric_delta(
+            y, model_prediction, reference_prediction, metric
+        )
+        return PermutationTestResult(
+            estimate_delta=estimate,
+            p_value=0.01,
+            null_distribution=(0.0,),
+            n_clusters=len(set(clusters)),
+            requested_replicates=2_000,
+            valid_replicates=1_900,
+        )
+
+    monkeypatch.setattr(benchmark_module, "participant_bootstrap_ci", fast_bootstrap)
+    monkeypatch.setattr(
+        benchmark_module, "participant_permutation_test", fast_permutation
+    )
+    original_loader = benchmark_module.load_locked_outcomes_for_benchmark
+    captured: dict[str, object] = {}
+
+    def recording_loader(*args, **kwargs):
+        locked = original_loader(*args, **kwargs)
+        captured["locked"] = locked
+        return locked
+
+    monkeypatch.setattr(
+        benchmark_module, "load_locked_outcomes_for_benchmark", recording_loader
+    )
+    result = benchmark_module.run_person_meal_benchmark(
+        TEST_SOURCE_ID,
+        manifest_path=manifest_path,
+        method_lock_paths=lock_paths,
+    )
+    locked = captured["locked"]
+    binding = VerifiedRunBinding.from_locked_outcome("task3-producer-run", locked)
+    exported = export_benchmark_result(result, binding, base / "export")
+    registry_path = base / "trusted-result-registry.json"
+    _write_json(
+        registry_path,
+        {
+            "schema_version": "direct-validity-result-registry-v1",
+            "approved_runs": [
+                {
+                    "run_id": binding.run_id,
+                    "result_run_manifest_sha256": _sha(
+                        exported.result_run_manifest
+                    ),
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(gate_module, "_TRUSTED_RESULT_REGISTRY_PATH", registry_path)
+    monkeypatch.setattr(
+        gate_module,
+        "load_locked_outcomes_for_benchmark",
+        lambda *args, **kwargs: locked,
+    )
+    dummy = base / "unused-lock-artifact"
+    dummy.write_bytes(b"unused\n")
+    formal_lock_paths = MethodLockArtifactPaths(
+        **{
+            field.name: getattr(lock_paths, field.name, dummy)
+            for field in fields(MethodLockArtifactPaths)
+        }
+    )
+    paths = EvidenceGateArtifactPaths(
+        method_lock_manifest=manifest_path,
+        method_lock_artifacts=formal_lock_paths,
+        result_run_manifest=exported.result_run_manifest,
+        paired_metrics=exported.paired_metrics,
+        predictions=exported.predictions,
+        split_audit=exported.split_audit,
+        analysis_status=exported.analysis_status,
+        controlled_outcome_source_id=TEST_SOURCE_ID,
+    )
+    try:
+        yield {
+            "result": result,
+            "exported": exported,
+            "paths": paths,
+            "locked": locked,
+        }
+    finally:
+        monkeypatch.undo()
 
 
 def _tables() -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -329,16 +498,46 @@ def _rehash(paths: EvidenceGateArtifactPaths, registry_path: Path) -> None:
     _write_json(registry_path, registry)
 
 
-def test_exporter_roundtrips_actual_benchmark_result_schema(tmp_path, monkeypatch):
-    paths, exported, _, _ = _production_fixture(tmp_path, monkeypatch)
+def test_actual_task3_producer_exporter_and_path_gate_roundtrip(real_task3_roundtrip):
+    result = real_task3_roundtrip["result"]
+    paths = real_task3_roundtrip["paths"]
+    exported = real_task3_roundtrip["exported"]
+    assert isinstance(result, BenchmarkResult)
+    assert isinstance(result.analysis_status, pd.DataFrame)
+    assert set(result.splits) == {
+        "subject_held_out",
+        "subject_plus_food_held_out",
+        "subject_plus_meal_held_out",
+        "cohort_held_out",
+    }
+    assert len(result.splits["subject_held_out"]) == 5
+    assert {
+        "analysis_mode",
+        "row_id",
+        "participant_id",
+        "meal_id",
+        "inference_cluster_id",
+        "endpoint",
+        "outer_fold",
+        "comparator",
+        "y_true",
+        "y_pred",
+        "selected_alpha",
+        "outer_fit_seed",
+    }.issubset(result.predictions.columns)
     paired = pd.read_csv(exported.paired_metrics)
     status = pd.read_csv(exported.analysis_status)
     split = pd.read_csv(exported.split_audit)
     manifest = json.loads(exported.result_run_manifest.read_text())
     assert "comparator" in paired and "adjusted_p_value" in paired
     assert "model" not in paired and "holm_adjusted_p_value" not in paired
-    assert set(status["analysis_status"]) == {"completed"}
-    assert set(split["outer_fold"]) == set(range(5))
+    primary_status = status.loc[
+        status["analysis_mode"].eq("subject_held_out")
+        & status["endpoint"].isin(["glucose_iAUC_2h", "tg_6h_rise"])
+    ]
+    assert set(primary_status["analysis_status"]) == {"completed"}
+    primary_split = split.loc[split["analysis_mode"].eq("subject_held_out")]
+    assert set(primary_split["outer_fold"]) == set(range(5))
     assert "predictions" in manifest["artifacts"]
     outcome = evaluate_evidence_gate(paths)
     assert outcome.tier == DIRECT_EXTERNAL_VALIDITY
@@ -499,12 +698,8 @@ def test_testing_only_in_memory_evaluator_never_upgrades():
     assert outcome.passed is False
 
 
-def test_claim_policy_is_dynamic_conservative_and_allows_negative_limitations(tmp_path):
-    computational = evaluate_evidence_gate()
-    computational_policy = build_claim_policy_payload(computational)
-    assert computational_policy["tier"] == COMPUTATIONAL_FEASIBILITY
-    assert computational_policy["source_state"] == "absent_real_validation_artifacts"
-    direct = EvidenceGateOutcome(
+def _direct_outcome() -> EvidenceGateOutcome:
+    return EvidenceGateOutcome(
         tier=DIRECT_EXTERNAL_VALIDITY,
         passed=True,
         blockers=(),
@@ -513,32 +708,185 @@ def test_claim_policy_is_dynamic_conservative_and_allows_negative_limitations(tm
         prohibited_claims=("clinical_utility", "causal_dietary_effect"),
         source_state="verified_direct_validation_artifacts",
     )
-    direct_policy = build_claim_policy_payload(direct)
-    assert direct_policy["tier"] == DIRECT_EXTERNAL_VALIDITY
-    assert "external validity" not in direct_policy["forbidden_patterns"]
-    assert "clinical validity" in direct_policy["forbidden_patterns"]
-    assert "causal dietary effect" in direct_policy["forbidden_patterns"]
 
-    generated = write_claim_restriction_artifacts(tmp_path / "gate", computational)
+
+def _activate_claim_bundle(
+    tmp_path: Path,
+    monkeypatch,
+    outcome: EvidenceGateOutcome,
+    *,
+    production_authorized: bool = True,
+    empty_patterns: bool = False,
+) -> dict[str, Path]:
+    root = tmp_path / "repository"
+    output = root / "results/phase2/evidence-gate"
+    generated = policy_module._write_claim_artifacts(
+        output,
+        outcome,
+        production_authorized=production_authorized,
+    )
+    if empty_patterns:
+        policy = json.loads(generated["policy"].read_text())
+        policy["forbidden_patterns"] = []
+        policy["payload_sha256"] = policy_module.canonical_payload_sha256(policy)
+        generated["policy"].write_bytes(policy_module._json_bytes(policy))
+        decision = json.loads(generated["decision"].read_text())
+        decision["claim_policy_file_sha256"] = _sha(generated["policy"])
+        decision["payload_sha256"] = policy_module.canonical_payload_sha256(decision)
+        generated["decision"].write_bytes(policy_module._json_bytes(decision))
+    registry = root / "code/src/configs/claim_policy_registry.json"
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    _write_json(
+        registry,
+        {
+            "schema_version": "claim-policy-registry-v1",
+            "approved_bundles": [
+                {
+                    "bundle_id": "testing-only-approved-pair",
+                    "tier": outcome.tier,
+                    "source_state": outcome.source_state,
+                    "decision_path": (
+                        "results/phase2/evidence-gate/current_gate_decision.json"
+                    ),
+                    "policy_path": "results/phase2/evidence-gate/claim_policy.json",
+                    "decision_sha256": _sha(generated["decision"]),
+                    "policy_sha256": _sha(generated["policy"]),
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(policy_module, "_REPOSITORY_ROOT", root)
+    monkeypatch.setattr(
+        policy_module, "_TRUSTED_DECISION_PATH", generated["decision"]
+    )
+    monkeypatch.setattr(policy_module, "_TRUSTED_POLICY_PATH", generated["policy"])
+    monkeypatch.setattr(policy_module, "_TRUSTED_POLICY_REGISTRY_PATH", registry)
+    return generated
+
+
+def test_production_policy_builder_reruns_path_only_gate_and_rejects_outcome_authority(
+    tmp_path, monkeypatch
+):
+    output = tmp_path / "results/phase2/evidence-gate"
+    monkeypatch.setattr(
+        policy_module, "_TRUSTED_DECISION_PATH", output / "current_gate_decision.json"
+    )
+    monkeypatch.setattr(
+        policy_module, "_TRUSTED_POLICY_PATH", output / "claim_policy.json"
+    )
+    generated = build_claim_policy_from_evidence_gate()
+    decision = json.loads(generated["decision"].read_text())
+    policy = json.loads(generated["policy"].read_text())
+    assert decision["tier"] == COMPUTATIONAL_FEASIBILITY
+    assert decision["source_state"] == "absent_real_validation_artifacts"
+    assert decision["authorization"] == "production_path_only_evidence_gate"
+    assert policy["direct_scope_whitelist"] == []
+    with pytest.raises(TypeError):
+        build_claim_policy_from_evidence_gate(_direct_outcome())
+
+
+def test_self_signed_direct_bundle_cannot_authorize_production_claims(
+    tmp_path, monkeypatch
+):
+    _activate_claim_bundle(
+        tmp_path,
+        monkeypatch,
+        _direct_outcome(),
+        production_authorized=False,
+    )
+    claim = tmp_path / "claim.txt"
+    claim.write_text(
+        "The locked primary endpoints glucose_iAUC_2h and tg_6h_rise "
+        "demonstrate direct external validity."
+    )
+    with pytest.raises(ValueError, match="production path-only gate"):
+        check_claim_inputs([claim])
+
+
+def test_registry_schema_empty_entries_and_empty_patterns_fail_closed(
+    tmp_path, monkeypatch
+):
+    _activate_claim_bundle(
+        tmp_path / "patterns",
+        monkeypatch,
+        evaluate_evidence_gate(),
+        empty_patterns=True,
+    )
+    claim = tmp_path / "claim.txt"
+    claim.write_text("Computational feasibility only.")
+    with pytest.raises(ValueError, match="forbidden_patterns"):
+        check_claim_inputs([claim])
+
+    generated = _activate_claim_bundle(
+        tmp_path / "registry", monkeypatch, evaluate_evidence_gate()
+    )
+    registry = policy_module._TRUSTED_POLICY_REGISTRY_PATH
+    _write_json(
+        registry,
+        {"schema_version": "claim-policy-registry-v1", "approved_bundles": []},
+    )
+    assert generated["decision"].exists()
+    with pytest.raises(ValueError, match="no approved bundle"):
+        check_claim_inputs([claim])
+
+
+def test_direct_policy_rejects_generic_external_validity_and_allows_exact_scope(
+    tmp_path, monkeypatch
+):
+    _activate_claim_bundle(tmp_path, monkeypatch, _direct_outcome())
+    generic = tmp_path / "generic.txt"
+    scoped = tmp_path / "scoped.txt"
+    clinical = tmp_path / "clinical.txt"
+    generic.write_text("The model demonstrates external validity.")
+    scoped.write_text(
+        "The locked primary endpoints glucose_iAUC_2h and tg_6h_rise "
+        "demonstrate direct external validity."
+    )
+    clinical.write_text("The locked primary endpoints demonstrate clinical validity.")
+    assert check_claim_inputs([generic])
+    assert check_claim_inputs([scoped]) == ()
+    assert check_claim_inputs([clinical])
+
+
+def test_negative_limitation_sentence_is_allowed_by_current_policy(tmp_path):
     negative = tmp_path / "negative.txt"
     positive = tmp_path / "positive.txt"
-    negative.write_text("This correctly specified control does not establish external validity.")
+    negative.write_text(
+        "This correctly specified control does not establish external validity."
+    )
     positive.write_text("The model establishes external validity.")
-    assert check_claim_inputs(generated["decision"], generated["policy"], [negative]) == ()
-    assert check_claim_inputs(generated["decision"], generated["policy"], [positive])
+    assert check_claim_inputs([negative]) == ()
+    assert check_claim_inputs([positive])
 
 
-def test_current_decision_artifacts_are_deterministic_and_cli_enforced(tmp_path):
+def test_current_decision_policy_registry_and_cli_are_fixed(tmp_path, monkeypatch):
     decision = ROOT / "results/phase2/evidence-gate/current_gate_decision.json"
     policy = ROOT / "results/phase2/evidence-gate/claim_policy.json"
-    generated = write_claim_restriction_artifacts(
-        tmp_path / "generated", evaluate_evidence_gate()
+    output = tmp_path / "generated"
+    monkeypatch.setattr(
+        policy_module, "_TRUSTED_DECISION_PATH", output / "current_gate_decision.json"
     )
+    monkeypatch.setattr(
+        policy_module, "_TRUSTED_POLICY_PATH", output / "claim_policy.json"
+    )
+    generated = build_claim_policy_from_evidence_gate()
     assert generated["decision"].read_bytes() == decision.read_bytes()
     assert generated["policy"].read_bytes() == policy.read_bytes()
+    monkeypatch.undo()
     forbidden = tmp_path / "forbidden.txt"
     forbidden.write_text("The system has clinical validity.")
     completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "code/src/scripts/check_claim_policy.py"),
+            str(forbidden),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 1
+    bypass = subprocess.run(
         [
             sys.executable,
             str(ROOT / "code/src/scripts/check_claim_policy.py"),
@@ -552,4 +900,15 @@ def test_current_decision_artifacts_are_deterministic_and_cli_enforced(tmp_path)
         text=True,
         check=False,
     )
-    assert completed.returncode == 1
+    assert bypass.returncode == 2
+
+
+def test_public_checker_has_no_arbitrary_decision_or_policy_path_api(tmp_path):
+    text = tmp_path / "input.txt"
+    text.write_text("Computational feasibility only.")
+    with pytest.raises(TypeError):
+        check_claim_inputs(
+            ROOT / "results/phase2/evidence-gate/current_gate_decision.json",
+            ROOT / "results/phase2/evidence-gate/claim_policy.json",
+            [text],
+        )

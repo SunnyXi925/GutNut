@@ -28,7 +28,7 @@ establishes all of the following:
 1. Observed participant-by-meal outcomes with verified provenance and microbiome linkage.
 2. A production call using only `EvidenceGateArtifactPaths`; no caller-provided mapping or data frame can upgrade claims.
 3. Live Task 1/2/3 method-lock and trusted outcome-loader revalidation, plus an independently reviewed result-run manifest whose exact digest appears in the repository-fixed registry.
-4. The formal Task 5 exporter consumes the real Task 3 `BenchmarkResult` schema and hashes canonical `paired_metrics`, `predictions`, `analysis_status`, split-audit summary and result-run manifest artifacts. It preserves Task 3 `comparator`, `reference` and `adjusted_p_value` fields; no parallel hand-made result schema is accepted.
+4. The formal Task 5 exporter consumes the real Task 3 `BenchmarkResult` schema and hashes canonical `paired_metrics`, `predictions`, `analysis_status`, split-audit summary and result-run manifest artifacts. A module-scoped integration fixture actually invokes `run_person_meal_benchmark`, retains its produced predictions, status DataFrame and split objects, then roundtrips that result through the exporter and path-only gate. It preserves Task 3 `comparator`, `reference` and `adjusted_p_value` fields; no parallel hand-made result schema is accepted.
 5. After live method-lock/outcome-loader validation, the gate recomputes the frozen primary nested subject-held-out splits and transitive family/twin components from the verified predictor frame and config using the production cohort-split functions. Every prediction `row_id`, participant, component and outer fold, and every split-summary count, must match that recomputation. Predictor opportunities and participants without a finite outcome are allowed and are not required to appear in predictions.
 6. Exactly two subject-held-out primary RMSE rows, one each for `glucose_iAUC_2h` and `tg_6h_rise`, comparing locked attribute GMNPS with `fcs_microbiome`.
 7. RMSE differences in the favourable direction and the exact paired family/twin-component bootstrap method, with 95% intervals excluding zero.
@@ -57,9 +57,14 @@ absence of real production artifacts and reports these blockers:
 Therefore, no claim of transformation of postprandial response, precision readiness,
 clinical validity, direct response validity or external validity is permitted. No real
 participant-by-meal validation experiment is represented as completed. Phase 3 must
-run `code/src/scripts/check_claim_policy.py` against every manuscript/build input using
-the bound decision and `claim_policy.json`; a violation or artifact-hash mismatch fails
-the check. The policy is generated from the gate tier and source state. Explicit
-negative limitation sentences (for example, “does not establish external validity”)
-are permitted, while positive prohibited claims fail. Task 5 did not check or revise
-the current manuscript.
+run `code/src/scripts/check_claim_policy.py` against every manuscript/build input. The
+CLI accepts input files only: it loads the fixed decision/policy paths and verifies their
+exact hashes against `code/src/configs/claim_policy_registry.json`. Arbitrary decision
+or policy paths cannot authorize a claim. The production policy builder reruns the
+path-only evidence gate; an in-memory outcome can create testing-only bytes but cannot
+create an authorized bundle. Explicit negative limitation sentences (for example,
+“does not establish external validity”) are permitted. Even at a future direct tier,
+generic positive external-validity wording remains forbidden; only the frozen sentence
+scoped jointly to locked primary endpoints `glucose_iAUC_2h` and `tg_6h_rise` is
+eligible. Clinical, causal, general precision-ready and transformation claims remain
+forbidden. Task 5 did not check or revise the current manuscript.

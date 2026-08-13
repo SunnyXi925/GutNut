@@ -10,15 +10,9 @@ from gmnps.validation.claim_policy import check_claim_inputs
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--decision", required=True, type=Path)
-    parser.add_argument("--policy", required=True, type=Path)
     parser.add_argument("inputs", nargs="+", type=Path)
     arguments = parser.parse_args()
-    violations = check_claim_inputs(
-        arguments.decision,
-        arguments.policy,
-        arguments.inputs,
-    )
+    violations = check_claim_inputs(arguments.inputs)
     for violation in violations:
         print(f"FORBIDDEN_CLAIM {violation.path}: {violation.pattern}")
     return 1 if violations else 0

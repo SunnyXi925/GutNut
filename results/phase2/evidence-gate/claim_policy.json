@@ -5,6 +5,8 @@
     "biological_consistency",
     "mechanistic_consistency"
   ],
+  "authorization": "production_path_only_evidence_gate",
+  "direct_scope_whitelist": [],
   "forbidden_claims": [
     "transforms_postprandial_response",
     "precision_ready",
@@ -22,9 +24,10 @@
     "external validity",
     "direct response validity"
   ],
-  "payload_sha256": "037cda4d7065771a8da9092e4c3cd8e7203fef18a050935e4149e4ec7c70cbe8",
+  "negative_limitation_sentences_allowed": true,
+  "payload_sha256": "1aeeb23c11c65dafdec5d7a3c10d7cba0b40a6eec34be11831017e5164febb9a",
   "phase3_must_consume": true,
-  "schema_version": "claim-policy-v1",
+  "schema_version": "claim-policy-v2",
   "scope": "Phase 3 manuscript and build inputs",
   "source_state": "absent_real_validation_artifacts",
   "tier": "computational_feasibility"

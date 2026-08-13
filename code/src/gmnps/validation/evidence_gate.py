@@ -248,13 +248,37 @@ def export_benchmark_result(
     if not isinstance(binding, VerifiedRunBinding):
         raise TypeError("binding must be a VerifiedRunBinding")
     required = {
-        "paired_metrics": {"comparator", "reference", "adjusted_p_value"},
-        "predictions": {"comparator", "row_id", "outer_fold"},
-        "analysis_status": {"analysis_status", "endpoint"},
-        "split_audit": {"analysis_mode", "outer_fold", "train_n_rows", "test_n_rows"},
+        "paired_metrics": {
+            "analysis_mode", "endpoint", "analysis_status", "comparator",
+            "reference", "metric", "estimate_delta", "ci_lower", "ci_upper",
+            "ci_method", "bootstrap_replicates_requested",
+            "bootstrap_replicates_valid", "permutation_replicates_requested",
+            "permutation_replicates_valid", "permutation_p_value",
+            "adjusted_p_value", "test_role", "correction_family",
+            "multiplicity_method", "inference_status",
+        },
+        "predictions": {
+            "analysis_mode", "endpoint", "row_id", "participant_id", "meal_id",
+            "inference_cluster_id", "outer_fold", "comparator", "y_true",
+            "y_pred", "selected_alpha", "outer_fit_seed",
+        },
+        "analysis_status": {
+            "analysis_mode", "analysis_role", "endpoint", "endpoint_role",
+            "analysis_status", "n_prediction_rows", "outer_split_seed",
+            "inner_cv_seed",
+        },
+        "split_audit": {
+            "analysis_mode", "analysis_role", "analysis_status", "outer_fold",
+            "train_n_rows", "test_n_rows", "dropped_n_rows",
+            "outer_split_seed", "inner_cv_seed",
+        },
     }
     for name, columns in required.items():
         frame = getattr(result, name)
+        if not isinstance(frame, pd.DataFrame):
+            raise TypeError(f"BenchmarkResult {name} must be a pandas DataFrame")
+        if frame.empty:
+            raise ValueError(f"BenchmarkResult {name} must not be empty")
         missing = columns - set(frame.columns)
         if missing:
             raise ValueError(f"BenchmarkResult {name} omits columns: {sorted(missing)}")
@@ -262,6 +286,21 @@ def export_benchmark_result(
             provenance_blockers = _task3_provenance_blockers(frame, name, binding)
             if provenance_blockers:
                 raise ValueError("; ".join(provenance_blockers))
+    if not isinstance(result.splits, Mapping):
+        raise TypeError("BenchmarkResult splits must be a mapping")
+    subject_splits = result.splits.get("subject_held_out")
+    if not isinstance(subject_splits, tuple) or not subject_splits:
+        raise ValueError("BenchmarkResult omits produced subject-held-out splits")
+    primary_predictions = result.predictions.loc[
+        result.predictions["analysis_mode"].eq("subject_held_out")
+        & result.predictions["endpoint"].isin(_PRIMARY_ENDPOINTS)
+    ]
+    if primary_predictions.empty or set(primary_predictions["comparator"]) != set(
+        REQUIRED_COMPARATORS
+    ):
+        raise ValueError(
+            "BenchmarkResult primary predictions omit locked Task 3 comparators"
+        )
     output = Path(output_directory)
     output.mkdir(parents=True, exist_ok=False)
     artifact_paths = {

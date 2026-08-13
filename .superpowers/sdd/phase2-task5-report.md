@@ -361,3 +361,74 @@ No current manuscript was checked or revised.
 
 All runs had zero failures. The sole warning remains the pre-existing environment
 mismatch: NumPy 2.4.6 is outside SciPy 1.13.1's declared `<2.3.0` range.
+
+## Final review closure: producer integration and policy trust
+
+### M1: actual producer integration
+
+This section supersedes the earlier statement that constructing a
+`BenchmarkResult` dataclass alone demonstrated producer integration. The final
+module-scoped integration fixture builds coherent testing-only Task 3 lock,
+predictor and outcome artifacts and actually calls `run_person_meal_benchmark`
+once. It preserves the producer's real column names, `analysis_status` DataFrame,
+prediction rows and four split mappings. The resulting real `BenchmarkResult` is
+passed to `export_benchmark_result`; canonical paired metrics, predictions,
+analysis status and split summary are then consumed by the path-only gate with a
+test-controlled trusted result registry and outcome loader. The roundtrip reaches
+the direct tier only inside this testing-only controlled fixture.
+
+The exporter now rejects empty/non-DataFrame producer artifacts, incomplete real
+producer columns, missing subject-held-out split objects and incomplete primary
+comparator prediction coverage. The inexpensive tamper/domain tests continue to
+use small hand-built fixtures; they are not described as producer integration.
+
+### M4: fixed production claim authority
+
+Production policy generation no longer accepts an arbitrary in-memory
+`EvidenceGateOutcome`. `build_claim_policy_from_evidence_gate` reruns the
+path-only production gate and writes only the fixed repository decision/policy
+location. The lower-level fixture writer is private and stamps its output
+`testing_only_unauthorized`, which the production checker refuses.
+
+`code/src/configs/claim_policy_registry.json` fixes the approved current
+decision/policy pair. The checker reads only the repository-fixed paths, validates
+the registry schema and approved entry, verifies both exact file SHA-256 values,
+then verifies the decision-to-policy binding and payload hashes. The CLI accepts
+only manuscript/build inputs; `--decision`, `--policy` and public testing bypasses
+do not exist.
+
+The current path-only gate was rerun without real validation artifacts and remains:
+
+```text
+tier=computational_feasibility
+source_state=absent_real_validation_artifacts
+```
+
+Current approved hashes are:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `claim_policy.json` | `a437c42a5e91ddcc9eae64f463a0b79882f4fc2997c28e510ef520c4e6114d2f` |
+| `current_gate_decision.json` | `b0ab73b94a102dfa3a0ad272b0c4ec401bb20f6c60d387008ede153fa8981c64` |
+
+Generic positive “external validity” wording remains forbidden at every tier. A
+future verified direct tier permits only the exact frozen formulation scoped to
+both locked primary endpoints, `glucose_iAUC_2h` and `tg_6h_rise`. Explicit
+negative limitation sentences are allowed; clinical, causal, general
+precision-ready and postprandial-transformation claims remain forbidden. Task 5
+did not inspect, check or revise the manuscript.
+
+### Final-review tests
+
+Final test results were:
+
+| Scope | Result | Time |
+| --- | ---: | ---: |
+| Focused Task 5 | 35 passed, 1 warning | 60.01 s |
+| Related Task 1/2/3/5 validation | 295 passed, 1 warning | 185.93 s |
+| Full `code/src/tests` | 665 passed, 1 warning | 202.86 s |
+
+There were no failures. The one warning is the unchanged NumPy 2.4.6 / SciPy
+1.13.1 declared-version mismatch. The real producer fixture ran once per test
+module; no benchmark result cache or generated real-validation artifact was
+introduced.

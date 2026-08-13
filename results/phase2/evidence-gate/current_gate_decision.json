@@ -5,6 +5,7 @@
     "biological_consistency",
     "mechanistic_consistency"
   ],
+  "authorization": "production_path_only_evidence_gate",
   "blockers": [
     "eligible observed participant-by-meal outcomes are unavailable: predict_controlled_clinical_zenodo access_status=controlled_not_granted",
     "run-level method-lock manifest path is missing",
@@ -15,7 +16,7 @@
     "analysis status path is missing"
   ],
   "claim_policy_file": "claim_policy.json",
-  "claim_policy_file_sha256": "9eac4dac7085834757068dc145015279bb88fba90151ee8e7fb128e81570be51",
+  "claim_policy_file_sha256": "a437c42a5e91ddcc9eae64f463a0b79882f4fc2997c28e510ef520c4e6114d2f",
   "forbidden_claims": [
     "transforms_postprandial_response",
     "precision_ready",
@@ -27,8 +28,8 @@
   "gate_version": "direct-response-evidence-gate-v3",
   "manuscript_checked_or_revised": false,
   "passed": false,
-  "payload_sha256": "c0934b9fe2bd1c6aaea40f0d309fc4fee56bb1e0189a856507e9971179f8599a",
-  "schema_version": "evidence-gate-decision-v1",
+  "payload_sha256": "17245df5651460e643ed42d107d5eb01ef9e44aa573f4a696b2da9e318914b48",
+  "schema_version": "evidence-gate-decision-v2",
   "source_state": "absent_real_validation_artifacts",
   "tier": "computational_feasibility"
 }
