@@ -1,0 +1,55 @@
+code/src/tests/test_attribute_synthetic_twin.py
+  s_4d75bbbcc79dac::t_153dd7e03d5fd3 52
+  s_4d75bbbcc79dac::t_fa2b1c692bfe67 76,88-90
+  s_4d75bbbcc79dac::t_0778578fb58639 23-24,32-43,46,49,66-67,106-110,113,115,125,138-141
+  s_4d75bbbcc79dac::t_16d4d824a29398 14,161,185-194
+  s_4d75bbbcc79dac::t_7793b7996a062d 45,47-48,50,165-166
+  s_4d75bbbcc79dac::t_b47d231400652e 1-13,15-22,25-31,44,51,53-65,68-75,77-87,91-105,111-112,114,116-124,126-137,142-160,162-164,167-184
+results/phase2/source-data/synthetic_identifiability_stress_test/synthetic_attribute_twin_summary.csv
+  s_4d75bbbcc79dac::t_92270a16de853e 1-65
+.superpowers/sdd/phase2-task5-report.md
+  s_4d75bbbcc79dac::t_92270a16de853e 1-131
+code/src/gmnps/validation/evidence_gate.py
+  s_4d75bbbcc79dac::t_174f390042912a 1-282
+results/phase2/source-data/synthetic_identifiability_stress_test/synthetic_attribute_twin_config.json
+  s_4d75bbbcc79dac::t_2069d3d1bf60d1 1-28
+code/src/gmnps/validation/attribute_synthetic_twin.py
+  s_4d75bbbcc79dac::t_883e0464129ee0 294-301
+  s_4d75bbbcc79dac::t_5d1d2a0937adaf 44,486-499,519-520,528-561,563-576,578,613-615
+  s_4d75bbbcc79dac::t_d213ecf7113bfb 693-695,699
+  s_4d75bbbcc79dac::t_367c52d2c49723 1-20,26-27,29-32,39-43,45-172,174,180,182-190,207-293,302-485,500-518,521-527,562,577,579-612,616-658,660-665,701-702,707-817,819-825,828-922,930-934,936-937,939-943,945-1072,1130,1139-1147,1149-1152
+  s_4d75bbbcc79dac::t_ae65f82e9f7dcc 818,826-827,923-929,938
+  s_4d75bbbcc79dac::t_7793b7996a062d 21-25,28,33-38,173,175-179,181,659,666-692,696-698,700,703-706,935,944
+  s_4d75bbbcc79dac::t_16d4d824a29398 191-206,1073-1129,1131-1138,1148
+results/phase2/source-data/synthetic_identifiability_stress_test/synthetic_attribute_twin_manifest.json
+  s_4d75bbbcc79dac::t_2069d3d1bf60d1 1-114
+docs/data/validation_evidence_matrix.md
+  s_4d75bbbcc79dac::t_92270a16de853e 1-50
+code/src/tests/test_evidence_gate.py
+  s_4d75bbbcc79dac::t_b47d231400652e 1-145
+results/phase2/source-data/synthetic_identifiability_stress_test/synthetic_attribute_twin_replicate_metrics.csv
+  s_4d75bbbcc79dac::t_92270a16de853e 1-41
+docs/superpowers/plans/2026-08-13-predict-zoe-data-validation.md
+  s_4d75bbbcc79dac::t_92270a16de853e 111-115
+results/phase2/source-data/synthetic_identifiability_stress_test/synthetic_attribute_twin_success_checks.csv
+  s_4d75bbbcc79dac::t_92270a16de853e 1-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "290a0b5e561c0566a8c61f3afe65aee9ee012b22",
+  "prompts": {},
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 2209,
+      "total_deletions": 76,
+      "accepted_lines": 2209
+    }
+  }
+}
