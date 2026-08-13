@@ -1,0 +1,24 @@
+code/src/tests/test_run_attribute_gmnps.py
+  s_4d75bbbcc79dac::t_7d2a83da10f068 315-326
+code/src/scripts/run_attribute_gmnps.py
+  s_4d75bbbcc79dac::t_2c436a0ea535c1 495,505-514,516,526-535
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "f136f45f430a0aea76a9fcdc57fd7770e8c7319c",
+  "prompts": {},
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 233,
+      "total_deletions": 4,
+      "accepted_lines": 233
+    }
+  }
+}
