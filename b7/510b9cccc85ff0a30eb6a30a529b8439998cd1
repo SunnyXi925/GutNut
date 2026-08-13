@@ -1,0 +1,43 @@
+code/src/tests/test_method_lock_gate.py
+  s_4d75bbbcc79dac::t_bbfe6b8c02833f 3,18,53-59,149-150,184-188,213-221,225-229,244-249,256-260,278,292-313
+  s_4d75bbbcc79dac::t_4566875e4ebb0d 60
+  s_4d75bbbcc79dac::t_b76a9f8bd4fa8c 1-2,4-17,19-52,61-148,151-183,189-212,222-224,230-243,250-255,261-273,279-280,289-291
+  s_4d75bbbcc79dac::t_cce5959a0c31cb 274-277,281-288
+code/src/gmnps/data_sources/predict_zoe_registry.py
+  s_4d75bbbcc79dac::t_cbe40b7bd4a945 1-578
+docs/data/predict_zoe_source_manifest.csv
+  s_4d75bbbcc79dac::t_1101cea6e0cd0a 1-17
+docs/data/data_availability_audit.md
+  s_4d75bbbcc79dac::t_1101cea6e0cd0a 1-172
+docs/data/eligible_for_main_validation.csv
+  s_4d75bbbcc79dac::t_1101cea6e0cd0a 1-15
+code/src/tests/test_predict_zoe_registry.py
+  s_4d75bbbcc79dac::t_bbfe6b8c02833f 110-118
+  s_4d75bbbcc79dac::t_b76a9f8bd4fa8c 1-87,89-109,119-149
+  s_4d75bbbcc79dac::t_cce5959a0c31cb 88
+docs/data/predict1_real_vs_synthetic_audit.csv
+  s_4d75bbbcc79dac::t_1101cea6e0cd0a 1-8
+code/src/gmnps/validation/method_lock_gate.py
+  s_4d75bbbcc79dac::t_bbfe6b8c02833f 49-55,244-248,341-355,395-399
+  s_4d75bbbcc79dac::t_cce5959a0c31cb 229-236
+  s_4d75bbbcc79dac::t_9c6ac26b06c6cc 1-48,56-228,237-243,249-340,356-394,400-552
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "b7510b9cccc85ff0a30eb6a30a529b8439998cd1",
+  "prompts": {},
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 1827,
+      "total_deletions": 18,
+      "accepted_lines": 1827
+    }
+  }
+}
