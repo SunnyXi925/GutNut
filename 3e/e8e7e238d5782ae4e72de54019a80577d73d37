@@ -1,0 +1,27 @@
+code/src/gmnps/scoring/attribute_recomposition.py
+  s_4d75bbbcc79dac::t_0f57124725caa2 1-17,19-38,42-572,575-713,721-809,826-1027
+  s_4d75bbbcc79dac::t_8aafb0ab956e6d 18,39-41,714-720
+  s_4d75bbbcc79dac::t_f1f3c88af89991 573-574,810-825
+code/src/tests/test_attribute_recomposition.py
+  s_4d75bbbcc79dac::t_897d1bd08b0b2f 444-466
+  s_4d75bbbcc79dac::t_0df22f905aa265 1-443,467-497
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "3ee8e7e238d5782ae4e72de54019a80577d73d37",
+  "prompts": {},
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 1560,
+      "total_deletions": 15,
+      "accepted_lines": 1560
+    }
+  }
+}
