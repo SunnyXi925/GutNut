@@ -1,0 +1,36 @@
+code/src/gmnps/scoring/fcs2_attribute_mapping.py
+  s_4d75bbbcc79dac::t_f7853a3ab03243 350-364,406-408,422-470,472-479,481,483-502
+  s_4d75bbbcc79dac::t_deb1fe104c613a 534-535,584-585
+  s_4d75bbbcc79dac::t_3a923a9f4d108e 272-282
+  s_4d75bbbcc79dac::t_f12f04c6ed14f4 471,480
+  s_4d75bbbcc79dac::t_f6d18bf4bf5de7 6,16,85,154-170,185-205,231,233,237-248,255-261,264,266,268,284
+code/src/tests/test_fcs2_attribute_mapping.py
+  s_4d75bbbcc79dac::t_95d570aacf1cf1 116-132,140-154,176-198,216,220-227,229-230,234-250,357-386,401-410,414,416-427,446,452-467
+  s_4d75bbbcc79dac::t_f12f04c6ed14f4 387-400
+  s_4d75bbbcc79dac::t_dc8412c472e807 428-432,439-445,447-448,450-451
+  s_4d75bbbcc79dac::t_61d092b7a7f988 411-413,415,433-438,449
+  s_4d75bbbcc79dac::t_0de6dd8e789809 468-469
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "06d926dbe0f1bff7b2fd6f6a79d2ab91e6939762",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  },
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 2,
+      "accepted_lines": 2
+    }
+  }
+}
