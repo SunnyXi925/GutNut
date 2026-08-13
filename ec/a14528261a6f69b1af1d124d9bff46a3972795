@@ -1,0 +1,38 @@
+code/src/tests/test_person_meal_benchmark.py
+  s_4d75bbbcc79dac::t_a153f7653332fa 23-26,297-333
+  s_4d75bbbcc79dac::t_bf53e2c80496b2 1021-1082
+  s_4d75bbbcc79dac::t_5a1d9d3a23a91b 334-335,1083-1084
+docs/data/predict_zoe_reconstruction_log.md
+  s_4d75bbbcc79dac::t_45d4d2da6c0e29 202,206
+.superpowers/sdd/phase2-task3-report.md
+  s_4d75bbbcc79dac::t_45d4d2da6c0e29 302-342
+code/src/gmnps/validation/method_lock_gate.py
+  s_4d75bbbcc79dac::t_84966a6cb1bb9b 143
+  s_4d75bbbcc79dac::t_1ec8e557252fa8 1126
+  s_4d75bbbcc79dac::t_4fd3964db5ca05 51-142,144-158,189-198,384-391,1122
+code/src/gmnps/validation/person_meal_benchmark.py
+  s_4d75bbbcc79dac::t_f0e4ef98adb5ea 50,359-362,747-753
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "eca14528261a6f69b1af1d124d9bff46a3972795",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  },
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 4,
+      "accepted_lines": 4
+    }
+  }
+}
