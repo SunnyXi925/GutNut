@@ -62,6 +62,13 @@ def _nonempty_string(value: object, label: str) -> str:
     return normalized
 
 
+def _optional_relationship_id(value: object) -> str | None:
+    if pd.isna(value):
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
 def _participant_metadata(frame: pd.DataFrame) -> pd.DataFrame:
     required = {_PARTICIPANT_COLUMN, *_GROUPING_COLUMNS}
     missing = required.difference(frame.columns)
@@ -77,9 +84,9 @@ def _participant_metadata(frame: pd.DataFrame) -> pd.DataFrame:
     for column in _GROUPING_COLUMNS:
         for participant_id, values in working.groupby(_PARTICIPANT_COLUMN)[column]:
             observed = {
-                str(value).strip()
+                normalized
                 for value in values
-                if not pd.isna(value) and str(value).strip()
+                if (normalized := _optional_relationship_id(value)) is not None
             }
             if len(observed) > 1:
                 raise ValueError(
@@ -94,9 +101,9 @@ def _participant_metadata(frame: pd.DataFrame) -> pd.DataFrame:
         for column in _GROUPING_COLUMNS:
             observed = sorted(
                 {
-                    str(value).strip()
+                    normalized
                     for value in participant_rows[column]
-                    if not pd.isna(value) and str(value).strip()
+                    if (normalized := _optional_relationship_id(value)) is not None
                 }
             )
             record[column] = observed[0] if observed else None
@@ -111,8 +118,9 @@ def _component_by_participant(frame: pd.DataFrame) -> dict[str, str]:
     for column in _GROUPING_COLUMNS:
         grouped: dict[str, list[str]] = {}
         for participant_id, value in metadata[column].items():
-            if value is not None:
-                grouped.setdefault(str(value), []).append(str(participant_id))
+            relationship_id = _optional_relationship_id(value)
+            if relationship_id is not None:
+                grouped.setdefault(relationship_id, []).append(str(participant_id))
         for members in grouped.values():
             anchor = min(members)
             for member in members:

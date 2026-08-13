@@ -356,7 +356,11 @@ def _testing_only_tables() -> tuple[pd.DataFrame, pd.DataFrame]:
                     "meal_id": meal_id,
                     "food_id": food_id,
                     "family_id": f"testing-family-{family_number:02d}",
-                    "twin_id": f"testing-twin-{family_number:02d}",
+                    "twin_id": (
+                        f"testing-twin-{family_number:02d}"
+                        if participant_number < 4
+                        else None
+                    ),
                     "cohort_id": f"testing-cohort-{family_number:02d}",
                     "age": age,
                     "diet_score": diet_score,

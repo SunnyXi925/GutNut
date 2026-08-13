@@ -5,6 +5,7 @@ controlled, aggregate, or repository outcome values.
 """
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -20,7 +21,11 @@ def _testing_only_participant_meals() -> pd.DataFrame:
         participant_id = f"testing-p{participant_number:02d}"
         pair_number = (participant_number - 1) // 2
         family_id = f"testing-family-{pair_number:02d}"
-        twin_id = f"testing-twin-{pair_number:02d}"
+        twin_id = (
+            f"testing-twin-{pair_number:02d}"
+            if participant_number <= 4
+            else None
+        )
         cohort_id = f"testing-cohort-{pair_number % 4}"
         for meal_number in range(4):
             rows.append(
@@ -179,19 +184,62 @@ def test_family_and_twin_links_are_closed_transitively():
         assert linked.isdisjoint(test) or linked.issubset(test)
 
 
-def test_family_twin_component_ids_expose_the_transitive_inference_unit():
-    frame = _testing_only_participant_meals()
-    frame.loc[frame["participant_id"].eq("testing-p02"), "twin_id"] = "testing-bridge"
-    frame.loc[frame["participant_id"].eq("testing-p03"), "twin_id"] = "testing-bridge"
+def test_missing_twin_ids_do_not_link_families_but_transitive_links_still_connect():
+    frame = pd.DataFrame(
+        [
+            {
+                "participant_id": "testing-a1",
+                "family_id": "testing-family-a",
+                "twin_id": None,
+            },
+            {
+                "participant_id": "testing-a2",
+                "family_id": "testing-family-a",
+                "twin_id": pd.NA,
+            },
+            {
+                "participant_id": "testing-b1",
+                "family_id": "testing-family-b",
+                "twin_id": np.nan,
+            },
+            {
+                "participant_id": "testing-b2",
+                "family_id": "testing-family-b",
+                "twin_id": "",
+            },
+            {
+                "participant_id": "testing-c1",
+                "family_id": "testing-family-c",
+                "twin_id": "testing-bridge",
+            },
+            {
+                "participant_id": "testing-d1",
+                "family_id": "testing-family-d",
+                "twin_id": "testing-bridge",
+            },
+            {
+                "participant_id": "testing-d2",
+                "family_id": "testing-family-d",
+                "twin_id": "testing-other",
+            },
+        ]
+    )
 
     observed = family_twin_component_ids(frame)
+    by_participant = dict(zip(frame["participant_id"], observed))
 
-    linked = frame["participant_id"].isin(
-        {"testing-p01", "testing-p02", "testing-p03", "testing-p04"}
-    )
-    assert observed.loc[linked].nunique() == 1
-    assert observed.loc[~linked].notna().all()
     assert observed.index.equals(frame.index)
+    assert observed.notna().all()
+    assert by_participant["testing-a1"] == by_participant["testing-a2"]
+    assert by_participant["testing-b1"] == by_participant["testing-b2"]
+    assert by_participant["testing-a1"] != by_participant["testing-b1"]
+    assert len(
+        {
+            by_participant["testing-c1"],
+            by_participant["testing-d1"],
+            by_participant["testing-d2"],
+        }
+    ) == 1
 
 
 def test_split_plan_is_deterministic_and_rejects_inconsistent_participant_metadata():
