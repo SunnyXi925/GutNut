@@ -1,0 +1,29 @@
+code/src/gmnps/validation/person_meal_benchmark.py
+  s_4d75bbbcc79dac::t_81b9f809426c8a 1-1144
+code/src/gmnps/validation/cohort_split.py
+  s_4d75bbbcc79dac::t_0c23962c2b2db5 5,203-225
+  s_4d75bbbcc79dac::t_6c0087365953e6 1-4,6-202,226-307
+code/src/tests/test_cohort_split.py
+  s_4d75bbbcc79dac::t_dd906579053409 1-174
+code/src/tests/test_person_meal_benchmark.py
+  s_4d75bbbcc79dac::t_091f8c83072e24 45
+  s_4d75bbbcc79dac::t_1d6dac4104ebdc 1-44,46-444
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "e18db08d69672b95d0208a0328b9743b597466c0",
+  "prompts": {},
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 2074,
+      "accepted_lines": 2074
+    }
+  }
+}
