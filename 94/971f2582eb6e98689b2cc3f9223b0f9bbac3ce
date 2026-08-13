@@ -1,0 +1,45 @@
+code/src/tests/test_method_lock_gate.py
+  s_4d75bbbcc79dac::t_dc62450c1507e9 44-63,252,273,290,303,324,333,352,365,373,392,395,403,408,413,431,447,456
+  s_4d75bbbcc79dac::t_c9b096e517057b 508-510
+  s_4d75bbbcc79dac::t_23052caa42c786 5,458-507,511-525,527
+  s_4d75bbbcc79dac::t_76b307da6e1981 457
+code/src/gmnps/validation/method_lock_gate.py
+  s_4d75bbbcc79dac::t_c9b096e517057b 640,658-664,696-702
+  s_4d75bbbcc79dac::t_de0c5b60f859e8 13,16,429-434,458,464-467,491-495,580,584-588,594-595,610,634-639,641-657,665-695,703-714,722
+code/src/scripts/fetch_official_predict_zoe.py
+  s_4d75bbbcc79dac::t_b9c667f6259d69 1-11,13-334,336-337,344,350-351,366,375-380,385-387,390-396,398-407,409-418,421-426,428-445
+  s_4d75bbbcc79dac::t_9a3ca54262c1aa 12,335,338-343,345-349,352-365,367-374,381-384,388-389,397,408,419-420,427
+docs/data/predict_zoe_reconstruction_log.md
+  s_4d75bbbcc79dac::t_ef628b4c197502 1-165
+code/src/configs/person_meal_validation.yaml
+  s_4d75bbbcc79dac::t_9bfbe04ebfd6b7 1-57
+code/src/tests/test_predict_zoe_loader.py
+  s_4d75bbbcc79dac::t_7aa226a05ef8d1 1-250,285-318,320-364,366-413,415-432
+  s_4d75bbbcc79dac::t_93957222fb25c8 251-284,319,365,414
+code/src/gmnps/data_sources/predict_zoe_loader.py
+  s_4d75bbbcc79dac::t_5619d828263e69 21,29,354-409,469
+  s_4d75bbbcc79dac::t_9bfbe04ebfd6b7 1-20,22-28,30-353,410-468,470-533
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "94971f2582eb6e98689b2cc3f9223b0f9bbac3ce",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  },
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 1,
+      "accepted_lines": 1
+    }
+  }
+}
