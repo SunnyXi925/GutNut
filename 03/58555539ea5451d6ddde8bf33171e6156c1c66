@@ -1,0 +1,47 @@
+code/src/gmnps/scoring/attribute_gmnps.py
+  s_4d75bbbcc79dac::t_aa7b9f4aa27186 4,216
+docs/methods/attribute_level_gmnps_spec.md
+  s_4d75bbbcc79dac::t_0ee2a8d8d07c28 100,108-122,196-202,241-247,303,306,312-323
+docs/superpowers/plans/2026-08-13-predict-zoe-data-validation.md
+  s_4d75bbbcc79dac::t_0ee2a8d8d07c28 1-116
+code/src/gmnps/scoring/fcs2_attribute_mapping.py
+  s_4d75bbbcc79dac::t_aa7b9f4aa27186 162
+  s_4d75bbbcc79dac::t_34abf06911658b 616,618-619,622-623,644-647,671
+code/src/tests/test_fcs2_attribute_mapping.py
+  s_4d75bbbcc79dac::t_34abf06911658b 500,509,514-517
+  s_4d75bbbcc79dac::t_4288fb02725128 88-96
+docs/methods/attribute_mapping_table.csv
+  s_4d75bbbcc79dac::t_0ee2a8d8d07c28 3
+docs/methods/method_lock_manifest.schema.json
+  s_4d75bbbcc79dac::t_ae2c10442d9b52 16-18,20,82-96,100-103,105-111
+  s_4d75bbbcc79dac::t_3bc8121e980ff6 104
+code/src/tests/test_attribute_method_lock.py
+  s_4d75bbbcc79dac::t_8554a566430116 48
+  s_4d75bbbcc79dac::t_44f1803491bf76 264,302,313
+  s_4d75bbbcc79dac::t_4288fb02725128 3,6,8-13,16,19-25,32-36,38-46,49-84,101-103,105,112-114,118,138-146,150-165,226-228,259-262,269-283,285-301,303-311,314
+  s_4d75bbbcc79dac::t_45531f917aa7ec 89,115-116
+  s_4d75bbbcc79dac::t_c858b51794501a 47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "0358555539ea5451d6ddde8bf33171e6156c1c66",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  },
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 1,
+      "accepted_lines": 1
+    }
+  }
+}
