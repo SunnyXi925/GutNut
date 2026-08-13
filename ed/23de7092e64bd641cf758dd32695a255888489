@@ -1,0 +1,89 @@
+code/src/tests/test_attribute_recomposition.py
+  s_4d75bbbcc79dac::t_4e323ddd1c23d9 29,215-254
+  s_4d75bbbcc79dac::t_bfdfc02ec7dfb5 255-256
+docs/superpowers/plans/2026-08-13-attribute-level-gmnps-method.md
+  s_4d75bbbcc79dac::t_1985b653d93995 1-184
+docs/superpowers/plans/2026-08-13-predict-zoe-data-validation.md
+  s_4d75bbbcc79dac::t_1985b653d93995 45,49,66-68,80
+docs/methods/method_lock_manifest.schema.json
+  s_4d75bbbcc79dac::t_6c86ff28ba4083 201-204,206
+  s_4d75bbbcc79dac::t_867fc15b87552c 205,207
+  s_4d75bbbcc79dac::t_e788632912a100 10,15,24,32-36,48,50,57,59,76-107,117-118,158-160,210-214,223-224
+  s_4d75bbbcc79dac::t_22fa28c2fd234f 108-116,119-157
+docs/methods/attribute_level_gmnps_spec.md
+  s_4d75bbbcc79dac::t_1985b653d93995 8-11,89-103,252-256,286-307,353-359,362-363,378-387
+code/src/gmnps/scoring/__init__.py
+  s_4d75bbbcc79dac::t_e1227155e542df 32-36,62-64
+  s_4d75bbbcc79dac::t_0ea872893d4f35 73-74,76-77,88-89,91-92
+code/src/gmnps/scoring/attribute_calibration.py
+  s_4d75bbbcc79dac::t_3404cc9a52b555 111-112,226-227,241-244,614-616,627-650,769-770,791,814-838,923-924,935-936
+code/src/tests/test_phase1_final_fixes.py
+  s_4d75bbbcc79dac::t_9827058b49ab52 14,69,74
+  s_4d75bbbcc79dac::t_8893b4327540db 201-205,207-211
+  s_4d75bbbcc79dac::t_fba7b2ef1847af 1-13,15-68,70-73,75-200,206,212-219,227-258
+  s_4d75bbbcc79dac::t_ae3fdbfe2638bc 220-226
+code/src/gmnps/scoring/attribute_recomposition.py
+  s_4d75bbbcc79dac::t_5771bc51e835f4 683-685,687-696,720-731,773,787-794,800-802,804,810
+  s_4d75bbbcc79dac::t_8f047f2ae15b8d 29,141,153,175,220-228,268,298,307-311,327-335,362,380,442-467,469,478-485,487,498,512
+code/src/tests/test_attribute_gmnps.py
+  s_4d75bbbcc79dac::t_d896a1cbcc3add 2-4,67,90,101,104-115,120,130-133
+  s_4d75bbbcc79dac::t_9fb541dbfa8e56 370
+  s_4d75bbbcc79dac::t_815aaf73771317 357,361,377,487-495
+code/src/gmnps/scoring/attribute_gmnps.py
+  s_4d75bbbcc79dac::t_0ea872893d4f35 1610-1611,1613-1614
+  s_4d75bbbcc79dac::t_59a13c9d2f06f9 403-437,439-448,450-457,459-462,464-475,481-488,493-494
+  s_4d75bbbcc79dac::t_55623cc8b27f50 438,449,458,495-503,932,1015-1025,1040,1047
+  s_4d75bbbcc79dac::t_85603b9eebf239 513,522-523,525,527,544-546,555-560,562-566,570-573,587,607,611,617-618,634-639,651-702,720-721
+  s_4d75bbbcc79dac::t_d4fec7817a69f1 731-884,896-905,917-923,925-931,933-944,946-951,966-1014,1026-1039,1041-1046,1048-1070
+  s_4d75bbbcc79dac::t_1e895846abb090 1150,1161-1163,1445,1462-1463,1471-1479,1481,1486-1488
+  s_4d75bbbcc79dac::t_cfb9ff2301b4e8 4,6,35-40,68,105,111-131,134-138,141-142,144,153-155,157-158,161,165-177,180-184,186,188,190-208
+  s_4d75bbbcc79dac::t_8f7136ce10f870 1480,1482-1485
+  s_4d75bbbcc79dac::t_3b8d92a4cb149e 885-895
+  s_4d75bbbcc79dac::t_5f1a7a38d96eaa 945,952-965
+  s_4d75bbbcc79dac::t_f4ca69a986f0cb 906-916,924
+code/src/scripts/run_attribute_gmnps.py
+  s_4d75bbbcc79dac::t_08e40a4643fad3 38,53,66-67,243-253,280-282,578,633
+  s_4d75bbbcc79dac::t_226dc4a334de5b 255-262
+  s_4d75bbbcc79dac::t_bfdfc02ec7dfb5 254
+code/src/configs/fcs2_fndds_release_registry.json
+  s_4d75bbbcc79dac::t_ae60a0cf732957 28-29
+code/src/gmnps/scoring/fcs2_attribute_rules.py
+  s_4d75bbbcc79dac::t_d43ff3c6feda25 314-322
+  s_4d75bbbcc79dac::t_3248b84b257257 38-46,263-268,290-313,323-325,361,423-427,435-438,451-523,532,547-559,563-564
+code/src/tests/test_run_attribute_gmnps.py
+  s_4d75bbbcc79dac::t_260fc3588267e6 172-175
+  s_4d75bbbcc79dac::t_f859dc6a995ffd 44,61-67,69,80,122-123,155-156,362
+  s_4d75bbbcc79dac::t_f4893aacbc0bdb 429-455
+code/src/configs/attribute_gmnps.yaml
+  s_4d75bbbcc79dac::t_ae60a0cf732957 12-13
+.superpowers/sdd/phase1-final-fix-report.md
+  s_4d75bbbcc79dac::t_1985b653d93995 1-139
+code/src/tests/test_attribute_method_lock.py
+  s_4d75bbbcc79dac::t_fad09e5ce3e54e 100,105,114,123,135,159-174
+  s_4d75bbbcc79dac::t_b2af1366431310 305-310
+  s_4d75bbbcc79dac::t_bc75b35447398e 342-351
+  s_4d75bbbcc79dac::t_04272833f3a085 437-444
+  s_4d75bbbcc79dac::t_e0d93efb243da2 45,62-63
+  s_4d75bbbcc79dac::t_eeeaa3bd2327cb 175-184
+  s_4d75bbbcc79dac::t_bfdfc02ec7dfb5 352-353
+code/src/gmnps/scoring/fcs2_attribute_mapping.py
+  s_4d75bbbcc79dac::t_435a3a12e145e4 12-15,472,481,487
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "ed23de7092e64bd641cf758dd32695a255888489",
+  "prompts": {},
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 5,
+      "accepted_lines": 5
+    }
+  }
+}
