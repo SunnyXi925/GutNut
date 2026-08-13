@@ -1,0 +1,301 @@
+# Attribute-level GMNPS method lock
+
+## Status and scope
+
+This document freezes Phase 1 method version `attribute-gmnps-v1`. The primary
+method is `attribute_recomposition`, the primary mapping is
+`expert_reviewed_attribute_mapping_v1`, and the recomposition implementation is
+`native_domain_fixed_residual_v1`. This specification describes the approved
+implementation at baseline commit `f136f45`; it does not authorize fitting,
+mapping revision, or parameter selection on validation outcomes.
+
+Food Compass 2.0 (FCS2) contains 54 conceptual attributes represented by 56 operational rows
+because fruits and non-starchy vegetables each have separate
+dried and non-dried rows. Of those rows, 54 are active in the reported USDA
+analysis. The exact source values and all mapping registries are exported in
+`docs/methods/attribute_mapping_table.csv`.
+
+## Frozen versions and parameters
+
+| Item | Primary value | Named sensitivity values |
+| --- | --- | --- |
+| Scoring version | `attribute-gmnps-v1` | none |
+| Primary method | `attribute_recomposition` | `legacy_final_score_offset` (restricted comparator) |
+| Mapping | `expert_reviewed_attribute_mapping_v1` | `fiber_all_ratio`, `fiber_all_absolute`, `potassium_all_ratio`, `potassium_all_absolute`, `carbohydrate_proxy` |
+| Beta normalization | `median_mad_iqr_sd_v1` | none |
+| Beta temperature | 2.0 | none |
+| Attribute point fraction | 0.20 (`primary`) | 0.10 (`low`), 0.30 (`high`) |
+| Final FCS2-relative cap | 12 points (`primary`) | 8 (`low`), 15 (`high`) |
+| Mask | `expert_revised_v4_dual_channel` | none in this method lock |
+| Nitrite threshold rule | `footnote_50` | `table_25` |
+| FCS unscaled bounds | -12.1, 35.0 | none |
+| FCS score bounds | 1.0, 100.0 | none |
+
+The primary recomputed domains are `nutrient_ratios`, `vitamins`, `minerals`,
+`specific_lipids`, `fiber_and_protein`, and `phytochemicals`. Other domains are
+held in the food-specific fixed residual.
+
+## Published FCS2 attribute rules
+
+All composition exposures are per 100 kcal unless a rule explicitly uses a
+percentage, ratio, binary presence indicator, or NOVA class. For an ordinary
+linear rule with exposure `x`, low/high targets `(t0, t1)` and low/high points
+`(p0, p1)`, the implementation is:
+
+```text
+p(x) = clip(p0 + ((x - t0) / (t1 - t0)) * (p1 - p0), min(p0,p1), max(p0,p1)).
+```
+
+Negative linear exposures are invalid. Ratio rules apply the same interpolation
+to `log(x)` and require `x > 0`. They are `NOT_CALCULATED`, and are removed from
+the domain denominator, when their published exposure gates fail:
+
+- unsaturated:saturated fat requires at least 10% energy from fat;
+- fiber:carbohydrate requires at least 10% energy from carbohydrate;
+- potassium:sodium requires at least 10 mg each of potassium and sodium per
+  100 kcal.
+
+For dairy, the effective weight of the unsaturated:saturated fat ratio is 0.5.
+Added sugar uses the discrete cut points 2.5, 5, 10, 15, 20, 30, 40, 50, and
+60 percent energy, producing 0 at zero exposure and -1 through -10 thereafter.
+The primary nitrite rule `footnote_50` interpolates from -10 at 50% calories
+from processed meat to 0 at zero. The contradictory Table S10 value is retained
+as the `table_25` sensitivity rule and is never silently substituted.
+
+Binary additive attributes score their low point when present and high point
+when absent. NOVA classes interpolate through `(1,10)`, `(2,7.5)`, `(3,5)`, and
+`(4,-10)`. Other fermented products force fermentation to its high point. The
+published attribute weights are retained, including the 0.5 weights for
+fermentation, frying, cholesterol, medium-chain fatty acids,
+alpha-linolenic acid, and total protein.
+
+For a domain with calculated attribute points `p_a` and effective weights
+`v_a`, aggregation is frozen as follows:
+
+```text
+weighted_mean(A) = sum(a in A, p_a * v_a) / sum(a in A, v_a)
+```
+
+- `food_ingredients` is the weighted sum, not a mean.
+- `vitamins` and `minerals` use the five attributes with largest absolute
+  points; `specific_lipids` uses the three with largest absolute points.
+- Top-k ties are resolved by immutable registry order.
+- Other domains use the weighted mean of calculated active attributes.
+- Final `specific_lipids` and `phytochemicals` domain contributions are each
+  multiplied by 0.5.
+
+The unscaled-to-FCS transform clips `U` to `[-12.1,35.0]` and maps it linearly
+to `[1,100]`:
+
+```text
+FCS(U) = 1 + (clip(U,-12.1,35.0) + 12.1) * 99 / 47.1.
+```
+
+The inverse used for an official FCS2 anchor is:
+
+```text
+fcs_to_unscaled(F) = -12.1 + (F - 1) * 47.1 / 99.
+```
+
+## Unavailable and residualized attributes
+
+`iodine` and `trans_fat_percent_calories` are inactive because Table S9 reports
+that they were unavailable in FNDDS, FPED, and the flavonoid database. They are
+not scored, imputed, or treated as zero. The mapping CSV preserves their source
+values and unavailability reason.
+
+An active attribute can still require data not present in a particular input
+bundle. `alpha_linolenic_acid` remains in the fixed residual when local 18:3 is
+not verified as ALA, and `total_flavonoids` remains there when the separate
+flavonoid source is absent. Food-ingredient attributes require FPED equivalents;
+additives require ingredient/additive records; processing attributes require
+processing or recipe records. Total sugar cannot stand in for added sugar, and
+rounded NOVA cannot stand in for the original energy-weighted mixed-dish value.
+Missing required data are therefore unavailable or fixed-residual inputs, never
+zero-filled substitutes.
+
+## Beta normalization and attribute response
+
+Let `b_in` be raw beta for individual `i` and nutrient `n`, fitted only on the
+development cohort. For each nutrient, define the development median `m_n` and
+select the first positive scale in this order:
+
+```text
+s_n = 1.4826 * median(|b_dn - m_n|)
+      else (q75_n - q25_n) / 1.349
+      else population standard deviation (ddof=0)
+      else 1.0.
+z_in = tanh(((b_in - m_n) / s_n) / 2.0).
+```
+
+The nutrient order, medians, scales, selected scale methods, fit count, fit-ID
+SHA-256, method version, and temperature are immutable normalization state. The
+fit-ID hash is SHA-256 of sorted development IDs joined by a newline.
+
+For food `j`, reviewed mapping row `n -> a`, allocation `w_na`, and normalized
+per-100-kcal exposure `e_jna`, the uncapped attribute response is:
+
+```text
+r_ija = sum(n mapped to a, z_in * e_jna * w_na).
+```
+
+Effect allocations for one nutrient sum exactly to 1. A nutrient mapped to
+multiple native attributes is divided by allocation weights, never assigned
+full weight to every representation. Zero component totals produce zero effect
+and an explicit `zero_total_component` diagnostic.
+
+Direct exposures divide by the largest nonzero absolute published target.
+Composite components each divide by the target after a verified zero-total
+check. Folate-food and retinol component fractions algebraically preserve their
+component exposure while requiring the DFE or RAE total. Ratio-side policies are:
+
+- fiber contributes `fiber / 9.5` when the carbohydrate gate passes;
+- potassium contributes `potassium / 1175` when both ratio sides pass;
+- saturated fat contributes the negative saturated fraction of saturated plus
+  mono- and polyunsaturated fat when the fat gate passes;
+- the `carbohydrate_proxy` sensitivity contributes negative carbohydrate
+  energy fraction clipped to `[0,1]` in magnitude.
+
+The complete primary roles (`effect`, `applicability_only`, `explanatory_only`,
+`sensitivity_proxy_only`, and `excluded`) and component policies are in the
+mapping CSV.
+
+## Native point calibration
+
+For attribute `a`, let `[l_a,h_a]` be its published point range and let
+`c=0.20` in the primary mode. The point movement and calibrated point are:
+
+```text
+lambda_a = c * (h_a - l_a)
+raw_delta_ija = lambda_a * tanh(r_ija / 2.0)
+p_ija = clip(p_ja + raw_delta_ija, l_a, h_a).
+```
+
+The low/high sensitivity values for `c` are 0.10 and 0.30. A canonical
+`NOT_CALCULATED` baseline remains `NOT_CALCULATED`. Attributes outside reviewed
+mapping targets have zero response and zero point movement.
+
+## Fixed-residual native recomposition
+
+For food `j`, invert the supplied official score and aggregate the selected
+baseline attribute points:
+
+```text
+U0_j = fcs_to_unscaled(FCS2_j)
+L0_j = sum(d in recomputed domains, D0_jd)
+Q_j = U0_j - L0_j
+```
+
+`Q_j` is fixed for that food. If the official S5 score is a rounded integer,
+`U0_j` is the score-implied latent anchor; it is not a claim about an unpublished
+raw FCS2 domain sum.
+
+After calibration, every selected domain is reaggregated from personalized
+native attribute points. Top-five/top-three membership is recalculated after
+point movement. Let `D_ijd` be those contributions:
+
+```text
+U_ij = Q_j + sum(d in recomputed domains, D_ijd)
+F_native_ij = unscaled_to_fcs(U_ij)
+delta_uncapped_ij = F_native_ij - FCS2_j
+delta_ij = clip(delta_uncapped_ij, -12, 12)
+GMNPS_ij = clip(FCS2_j + delta_ij, 1, 100).
+```
+
+There is no population centering and no candidate selection. At zero effect,
+`z_in=0`, hence every `r_ija=0`, every calibrated point equals baseline, every
+recomputed domain equals baseline, and `U_ij=U0_j`. Therefore the exact locked
+identity is:
+
+```text
+GMNPS_ij = FCS2_j
+```
+
+The implementation tests this identity to absolute tolerance `1e-8`.
+
+MAC and LIPID output deltas are frozen counterfactuals. MAC delta scores with
+LIPID effect nutrients replaced by their development medians; LIPID delta does
+the converse. The channel interaction is total delta minus those two deltas.
+Drivers are ranked by native attribute point delta, not raw nutrient products.
+
+## Development-only fit boundary and validation embargo
+
+The development-only fit boundary permits only `fit_beta_normalization` to
+estimate medians and fallback scales from the declared beta fit cohort. Mapping
+roles, attribute rules, allocation weights, temperatures, point fractions,
+domain set, and final caps are fixed before validation. Held-out and validation
+beta are transformed with the frozen state and exact nutrient order; they are
+never appended to or used to refit that state.
+
+The method-lock manifest records the beta cohort ID, fit count, and calibration
+fit IDs hash. Its `validation_embargo` flag must be `true`: validation data,
+labels, responses, and derived summaries cannot be used to choose mappings,
+parameters, sensitivity modes, or revisions to this method lock. Validation is
+reserved for a later phase after this lock is signed.
+
+## FNDDS release and source boundary
+
+Production composition must use the exact FCS2-aligned canonical sequence
+`FNDDS 2001-2002` through `FNDDS 2017-2018`, as declared by registry
+`fcs2-fndds-release-registry-v1`. A production bundle must match one approved
+registry entry for official FCS, metadata, baseline points, exposures, food
+linkage, nutrient units, and exposure basis. The approved-artifact list is
+currently empty, so no production bundle is currently authorized.
+
+`FNDDS 2021-2023` is recognized only as a non-production development smoke
+input and requires `development_smoke_test=true`. It cannot support a production
+result or replace release-aligned reconstruction.
+
+## Sensitivity variants
+
+Sensitivity analyses must be named and labelled `sensitivity`:
+
+- `fiber_all_ratio` allocates all fiber effect to the ratio; `fiber_all_absolute`
+  allocates it all to total fiber.
+- `potassium_all_ratio` allocates all potassium effect to the ratio;
+  `potassium_all_absolute` allocates it all to potassium.
+- `carbohydrate_proxy` activates carbohydrate only as the reviewed ratio-side
+  proxy; primary carbohydrate remains `sensitivity_proxy_only` with zero
+  allocation.
+- Attribute fraction modes `low` and `high` use 0.10 and 0.30.
+- Final cap modes `low` and `high` use 8 and 15 FCS points.
+- `table_25` is the nitrite threshold sensitivity; `footnote_50` is primary.
+
+No sensitivity mode can be relabelled primary by caller choice.
+
+## Migration from the legacy offset
+
+`legacy_final_score_offset` computes a raw nutrient response, centers and scales
+it, and then adds an offset to final FCS2. It is a sensitivity comparator only
+because the perturbation occurs after published attribute scoring and domain
+aggregation. It cannot express native attribute bounds, ratio applicability,
+dynamic top-k membership, fixed-domain invariance, or attribute-point drivers,
+and its centering makes one individual's score depend on the comparison
+population.
+
+The legacy route is rejected for production and is available only with an
+explicit sensitivity role in development smoke mode. Existing legacy exports
+remain for migration comparisons; primary scientific claims and attribution
+must use `attribute_recomposition`.
+
+## Reproducibility audit
+
+SHA-256 values below bind this document to the approved implementation read for
+Task 6. Run data hashes remain run-specific and are required by
+`method_lock_manifest.schema.json`.
+
+| Approved source | SHA-256 |
+| --- | --- |
+| `code/src/gmnps/scoring/fcs2_attribute_rules.py` | `60dcc7deb872d404700303aa01deec0dea344d6069e0fed14ae2bc4ceb3bdae0` |
+| `code/src/gmnps/scoring/fcs2_attribute_mapping.py` | `a31c412f4ccdff196801b8ca72575864d17d18ef5d92674d9f8ffca9c3391a61` |
+| `code/src/gmnps/scoring/attribute_calibration.py` | `daf129b39f900e7693da09d16ae422fb82e9e4d27b5d065059a5e20af00b27a1` |
+| `code/src/gmnps/scoring/attribute_recomposition.py` | `f0db2e8febdd48ef2421a1286f84b2758d87e6d75250dbd6383ef8e3701d6ea1` |
+| `code/src/gmnps/scoring/attribute_gmnps.py` | `47797b1a5304757111a6a1a755194d05dc0bf57d9ca21e7b3c2b890ca546a1f5` |
+| `code/src/configs/attribute_gmnps.yaml` | `f450453811653e074ee4143cf6d9a21b9e68a5512924490fe9c64bc5f402e390` |
+| `code/src/configs/fcs2_fndds_release_registry.json` | `621834bb75d91574bc8b408c21cd05ffb7adf15bd64241633c1cf3fff6481d13` |
+
+Every run must additionally record method and mapping versions, all input and
+linkage SHA-256 values, FNDDS releases and registry version, beta fit cohort,
+fit-ID hash, fixed parameters, and the validation embargo flag. The schema is a
+contract; Task 6 does not create an instance manifest because no instance path
+is within its authorized file ownership.

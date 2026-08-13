@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gmnps.local/schemas/attribute-gmnps-method-lock-v1.json",
+  "title": "Attribute-level GMNPS method lock manifest",
+  "description": "Reproducibility contract for the frozen attribute-level GMNPS primary method.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifest_schema_version",
+    "method_version",
+    "source_hashes",
+    "fndds_releases",
+    "fndds_registry_version",
+    "beta_fit_cohort",
+    "calibration_fit_ids_sha256",
+    "mapping_version",
+    "fixed_parameters",
+    "validation_embargo"
+  ],
+  "properties": {
+    "manifest_schema_version": {
+      "const": "attribute-gmnps-method-lock-v1"
+    },
+    "method_version": {
+      "const": "attribute-gmnps-v1"
+    },
+    "source_hashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "official_fcs",
+        "food_metadata",
+        "baseline_attribute_points",
+        "food_exposures",
+        "input_manifest",
+        "food_source_linkage",
+        "fcs2_fndds_release_registry"
+      ],
+      "properties": {
+        "official_fcs": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "food_metadata": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "baseline_attribute_points": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "food_exposures": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "input_manifest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "food_source_linkage": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "fcs2_fndds_release_registry": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "fndds_releases": {
+      "const": [
+        "FNDDS 2001-2002",
+        "FNDDS 2003-2004",
+        "FNDDS 2005-2006",
+        "FNDDS 2007-2008",
+        "FNDDS 2009-2010",
+        "FNDDS 2011-2012",
+        "FNDDS 2013-2014",
+        "FNDDS 2015-2016",
+        "FNDDS 2017-2018"
+      ]
+    },
+    "fndds_registry_version": {
+      "const": "fcs2-fndds-release-registry-v1"
+    },
+    "beta_fit_cohort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cohort_id", "fit_n"],
+      "properties": {
+        "cohort_id": {"type": "string", "minLength": 1},
+        "fit_n": {"type": "integer", "minimum": 1}
+      }
+    },
+    "calibration_fit_ids_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "mapping_version": {
+      "const": "expert_reviewed_attribute_mapping_v1"
+    },
+    "fixed_parameters": {
+      "const": {
+        "baseline": "FoodCompass2.0",
+        "primary_method": "attribute_recomposition",
+        "beta_normalization_method": "median_mad_iqr_sd_v1",
+        "beta_mad_normal_consistency": 1.4826,
+        "beta_iqr_normal_consistency": 1.349,
+        "beta_temperature": 2.0,
+        "attribute_response_temperature": 2.0,
+        "attribute_point_mode": "primary",
+        "attribute_point_fraction_cap": 0.2,
+        "attribute_point_fraction_sensitivity": [0.1, 0.3],
+        "final_cap_mode": "primary",
+        "final_delta_cap": 12.0,
+        "final_delta_cap_sensitivity": [8.0, 15.0],
+        "carbohydrate_policy": "sensitivity_proxy_only",
+        "clinical_experiment": false,
+        "recomputed_domains": [
+          "nutrient_ratios",
+          "vitamins",
+          "minerals",
+          "specific_lipids",
+          "fiber_and_protein",
+          "phytochemicals"
+        ],
+        "recomposition_method": "native_domain_fixed_residual_v1",
+        "mask_version": "expert_revised_v4_dual_channel",
+        "nitrite_primary_rule": "footnote_50",
+        "nitrite_sensitivity_rule": "table_25",
+        "fcs_unscaled_min": -12.1,
+        "fcs_unscaled_max": 35.0,
+        "fcs_min": 1.0,
+        "fcs_max": 100.0,
+        "top_k_vitamins": 5,
+        "top_k_minerals": 5,
+        "top_k_specific_lipids": 3,
+        "specific_lipids_domain_weight": 0.5,
+        "phytochemicals_domain_weight": 0.5
+      }
+    },
+    "validation_embargo": {
+      "description": "True means validation data and outcomes remain unavailable for fitting, mapping, parameter choice, or method revision.",
+      "const": true
+    }
+  }
+}
