@@ -1,0 +1,52 @@
+code/src/gmnps/scoring/attribute_gmnps.py
+  s_4d75bbbcc79dac::t_1335e6d24306ef 284-290
+  s_4d75bbbcc79dac::t_75b99aca10f529 4,8,35,39-40,66,79,85-144
+  s_4d75bbbcc79dac::t_eca8ae15aa1bd9 730,738-740,742-744,746-749,876-882,927-936
+  s_4d75bbbcc79dac::t_1705c726cf7398 201-211,216,219,221-248,346,348,351-352,357-384,399-400,425-426,492-495,522-523
+  s_4d75bbbcc79dac::t_cb31b94ec1c3ba 635,637-640,642-643,777,783,813,820,837-839,849-851,919-926,961-975
+  s_4d75bbbcc79dac::t_3e2b4c3aefa3ee 220
+  s_4d75bbbcc79dac::t_b158363aa210f0 524
+code/src/configs/fcs2_fndds_release_registry.json
+  s_4d75bbbcc79dac::t_75b99aca10f529 1-33
+code/src/tests/test_attribute_gmnps.py
+  s_4d75bbbcc79dac::t_aff6831da2b3d0 10-11,14,21,24,72-79,91-97,104-106,110-111,119-126,172,195,223,249,270,294,318,322-419,425-428,430,438-440,448-457,461-491
+  s_4d75bbbcc79dac::t_1335e6d24306ef 458-460
+  s_4d75bbbcc79dac::t_edd191dab320f6 420-424,429,431-437,441-447
+code/src/tests/test_run_attribute_gmnps.py
+  s_4d75bbbcc79dac::t_c7924d3a34485a 2,21,27-29,36,51-53,55-57,63-65,68-71,84-90,98-99,119-128,130-131,157,170-176,206-211,213,220,252-398
+  s_4d75bbbcc79dac::t_9c01939143b929 54,129
+code/src/scripts/run_attribute_gmnps.py
+  s_4d75bbbcc79dac::t_cf15ded5b8cd2e 614,622,624-627,642,658
+  s_4d75bbbcc79dac::t_ede792950296cb 33-36
+  s_4d75bbbcc79dac::t_6735670c016ff4 349-409,423,444,450-452,470-482,518-525,529
+  s_4d75bbbcc79dac::t_3e2b4c3aefa3ee 410-422,424-425,428-443
+  s_4d75bbbcc79dac::t_3d6895388c1dc1 426-427,445-449
+  s_4d75bbbcc79dac::t_53f6cc9d80a694 494-517
+  s_4d75bbbcc79dac::t_a912b1f13919f9 536-537,539,544,547-548,550-578,583-589,591-592,594-610
+  s_4d75bbbcc79dac::t_2fbb8b567b17a6 6,8,13,25,27-28,45,80-82,84-87,89-108,110-114,120,123,153,163,171,193-210
+  s_4d75bbbcc79dac::t_eb6eb35ac072fb 213,215,217,219,221-223,229-279,281,284-299,306-312,325-326
+  s_4d75bbbcc79dac::t_b158363aa210f0 211-212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "591bab04d3de4cbaab9e0b25fb5089f0ecebe2da",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  },
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 3,
+      "accepted_lines": 3
+    }
+  }
+}
