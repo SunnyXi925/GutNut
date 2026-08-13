@@ -1,6 +1,7 @@
 {
   "schema_version": "fcs2-fndds-release-registry-schema-v1",
   "registry_version": "fcs2-fndds-release-registry-v1",
+  "digest_algorithm": "sha256",
   "canonical_release_set": [
     "FNDDS 2001-2002",
     "FNDDS 2003-2004",

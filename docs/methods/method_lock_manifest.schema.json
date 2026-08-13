@@ -73,8 +73,7 @@
       ]
     },
     "fndds_registry_version": {
-      "type": "string",
-      "minLength": 1
+      "const": "fcs2-fndds-release-registry-v1"
     },
     "release_registry_snapshot": {
       "description": "Run-level data-registry provenance, separate from the frozen implementation lock.",
@@ -82,13 +81,17 @@
       "additionalProperties": false,
       "required": [
         "snapshot_sha256",
+        "schema_version",
         "registry_version",
+        "digest_algorithm",
         "canonical_release_set",
         "approved_entry"
       ],
       "properties": {
         "snapshot_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-        "registry_version": {"type": "string", "minLength": 1},
+        "schema_version": {"const": "fcs2-fndds-release-registry-schema-v1"},
+        "registry_version": {"const": "fcs2-fndds-release-registry-v1"},
+        "digest_algorithm": {"const": "sha256"},
         "canonical_release_set": {
           "const": [
             "FNDDS 2001-2002",
@@ -202,9 +205,9 @@
         "code/src/gmnps/scoring/fcs2_attribute_mapping.py": "d885be53736d020c6797b8b8f6d470c185ca0b1e13bf7b07752b32ec0de200d1",
         "code/src/gmnps/scoring/attribute_calibration.py": "2dcc803e46f07f2a1c7ca11e31bced942df84bd66496afabd61ec8b86e8585c6",
         "code/src/gmnps/scoring/attribute_recomposition.py": "806306099b1d398fce1777c3b5714e1465fcc5949c4cf9a8f6fc2d1b1bf3119e",
-        "code/src/gmnps/scoring/attribute_gmnps.py": "968c356eb60e3674517bec8c43d672260a059e06f56e9dec5a64067f48dbda48",
+        "code/src/gmnps/scoring/attribute_gmnps.py": "b1ac1465f69f968232d1e9b07854a96a29675dbd6516c60a359df7868d83a728",
         "code/src/configs/attribute_gmnps.yaml": "37a46a0cb0d24da374698dd4f900946efb8f581f89d843c27e35ce54fb39d2f2",
-        "code/src/scripts/run_attribute_gmnps.py": "62faa607e688f391cb3483b952a9657d48ea5ffa1a774533a41ecdbdfa9d00fc"
+        "code/src/scripts/run_attribute_gmnps.py": "3771af05eb598d59658e9edd3d9838a1260c9397df4b4af659c2d2404ed601ad"
       }
     },
     "method_lock_gate_implementation_sha256": {

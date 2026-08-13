@@ -8,6 +8,8 @@ import re
 from gmnps.scoring import attribute_calibration, attribute_recomposition
 from gmnps.scoring.attribute_gmnps import (
     ATTRIBUTE_GMNPS_SCORING_VERSION,
+    FCS2_FNDDS_REGISTRY_DIGEST_ALGORITHM,
+    FCS2_FNDDS_REGISTRY_SCHEMA_VERSION,
     FCS2_FNDDS_REGISTRY_VERSION,
     _mapping_rows,
 )
@@ -120,7 +122,7 @@ def test_lock_manifest_schema_requires_complete_frozen_provenance():
     assert properties["manifest_schema_version"]["const"] == "attribute-gmnps-method-lock-v1"
     assert properties["method_version"]["const"] == ATTRIBUTE_GMNPS_SCORING_VERSION
     assert properties["mapping_version"]["const"] == PRIMARY_MAPPING_VERSION
-    assert properties["fndds_registry_version"]["type"] == "string"
+    assert properties["fndds_registry_version"]["const"] == FCS2_FNDDS_REGISTRY_VERSION
     assert properties["fndds_releases"]["const"] == release_registry["canonical_release_set"]
     assert properties["validation_embargo"]["const"] is True
     assert properties["fixed_parameters"]["const"] == _runtime_fixed_parameters()
@@ -165,10 +167,21 @@ def test_lock_manifest_schema_requires_complete_frozen_provenance():
     assert registry_snapshot["additionalProperties"] is False
     assert set(registry_snapshot["required"]) == {
         "snapshot_sha256",
+        "schema_version",
         "registry_version",
+        "digest_algorithm",
         "canonical_release_set",
         "approved_entry",
     }
+    assert registry_snapshot["properties"]["schema_version"]["const"] == (
+        FCS2_FNDDS_REGISTRY_SCHEMA_VERSION
+    )
+    assert registry_snapshot["properties"]["registry_version"]["const"] == (
+        FCS2_FNDDS_REGISTRY_VERSION
+    )
+    assert registry_snapshot["properties"]["digest_algorithm"]["const"] == (
+        FCS2_FNDDS_REGISTRY_DIGEST_ALGORITHM
+    )
     assert registry_snapshot["properties"]["canonical_release_set"]["const"] == (
         release_registry["canonical_release_set"]
     )

@@ -344,6 +344,63 @@ def test_all_tables_and_aggregate_manifest_are_chunk_size_invariant(tmp_path):
     ).all()
 
 
+def test_nonzero_dairy_attribution_is_public_and_chunk_invariant(tmp_path):
+    paths = write_inputs(tmp_path)
+    metadata = pd.read_csv(paths["food_metadata"])
+    metadata.loc[metadata["food_id"] == "food_1", "is_dairy"] = True
+    metadata.to_csv(paths["food_metadata"], index=False)
+    weights = pd.read_csv(paths["effective_attribute_weights"])
+    weights.loc[
+        weights["food_id"] == "food_1",
+        "unsaturated_to_saturated_fat_ratio",
+    ] = 0.5
+    weights.to_csv(paths["effective_attribute_weights"], index=False)
+    beta = pd.read_csv(paths["score_beta"])
+    beta.loc[:, "Fatty acids, total saturated (g)"] = 4.0
+    beta.to_csv(paths["score_beta"], index=False)
+    manifest = json.loads(paths["input_manifest"].read_text(encoding="utf-8"))
+    for name in ("food_metadata", "effective_attribute_weights", "score_beta"):
+        manifest["files"][name]["sha256"] = sha256(paths[name])
+    paths["input_manifest"].write_text(
+        json.dumps(manifest, sort_keys=True), encoding="utf-8"
+    )
+
+    outputs = [tmp_path / "dairy_one", tmp_path / "dairy_full"]
+    for output, sizes in zip(outputs, (("1", "1"), ("99", "99")), strict=True):
+        completed = subprocess.run(
+            command(
+                paths,
+                output,
+                "--individual-chunk-size",
+                sizes[0],
+                "--food-chunk-size",
+                sizes[1],
+            ),
+            text=True,
+            capture_output=True,
+        )
+        assert completed.returncode == 0, completed.stderr
+
+    for name in ("attribute_attribution.csv", "domain_attribution.csv"):
+        assert (outputs[0] / name).read_bytes() == (outputs[1] / name).read_bytes()
+    attribute = pd.read_csv(outputs[0] / "attribute_attribution.csv")
+    dairy_ratio = attribute.query(
+        "food_id == 'food_1' and attribute == 'unsaturated_to_saturated_fat_ratio'"
+    )
+    assert set(dairy_ratio["effective_attribute_weight"]) == {0.5}
+    assert set(dairy_ratio["active_domain_denominator"]) == {2.5}
+    assert dairy_ratio["calculated"].all()
+    assert dairy_ratio["active"].all()
+    assert dairy_ratio["baseline_selected"].all()
+    assert dairy_ratio["personalized_selected"].all()
+    assert (dairy_ratio["attribute_point_delta"].abs() > 0.0).all()
+    domain = pd.read_csv(outputs[0] / "domain_attribution.csv")
+    dairy_domain = domain.query(
+        "food_id == 'food_1' and domain == 'nutrient_ratios'"
+    )
+    assert set(dairy_domain["active_domain_denominator"]) == {2.5}
+
+
 def test_inputs_are_parsed_from_one_immutable_byte_snapshot(tmp_path, monkeypatch):
     paths = write_inputs(tmp_path)
     module = load_runner_module()

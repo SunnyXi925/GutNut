@@ -95,6 +95,14 @@ fingerprint, baseline decomposition, personalized recomposition, API and CLI.
 They cannot be absorbed into the fixed residual because that would preserve
 zero-effect identity while producing an incorrect non-zero ratio delta.
 
+Primary attribute attribution exposes `effective_attribute_weight`,
+`calculated`, `active`, `baseline_selected`, `personalized_selected`, and the
+baseline and personalized active-domain denominators. Domain attribution
+exposes the same denominators together with calculated and selected attribute
+counts. These fields are retained by CLI serialization and are invariant to
+individual and food chunking, making the dairy weight 0.5 and denominator 2.5
+directly auditable in non-zero runs.
+
 Bundle validation recomputes every ratio gate from the same per-100-kcal
 exposure row used for calibration. Gate failure is valid only with the
 canonical `NOT_CALCULATED` sentinel, and gate passage is valid only with a
@@ -288,6 +296,12 @@ provenance, not an implementation source whose current empty bytes are frozen
 as the method. Each run binds the real registry snapshot SHA-256, canonical
 release set and one complete approved entry. The entry SHA-256 is computed from
 canonical JSON of that complete entry with sorted keys and compact separators.
+A registry snapshot is accepted only when its top-level schema version is
+`fcs2-fndds-release-registry-schema-v1`, its registry version is
+`fcs2-fndds-release-registry-v1`, and its digest algorithm is `sha256`; these
+values are constants in the method-lock schema rather than caller-defined
+strings.
+
 A production bundle must match
 that entry for official FCS, metadata, baseline points, exposures, per-food
 effective attribute weights, food linkage, nutrient units, and exposure basis.
@@ -301,10 +315,25 @@ canonical parsed tables, and matches the trusted registry before minting an
 attestation. The attestation retains immutable source bytes and binds both byte
 digests and parsed-content fingerprints. Direct DataFrame construction is
 restricted to development/non-production; caller-supplied digest strings cannot
-authorize production. Production registry bytes must come from the configured
-trusted registry path; alternate caller-supplied registry bytes are rejected.
-The CLI invokes this same loader, so path replacement or
-post-hash byte changes cannot create a time-of-check/time-of-use gap.
+authorize production. A production configuration must explicitly carry
+`expected_release_registry_sha256` from the pre-label/method-lock gate. Every
+production bundle validation, model fit/validation, and score call independently
+reads immutable bytes from the configured repository trusted-registry path,
+validates the fixed registry schema/version/digest algorithm, recomputes the
+snapshot SHA-256, and compares it with the bundle attestation, input manifest,
+and model expectation. Bundle validation then relocates exactly one approved
+entry in that live snapshot and rechecks source-byte digests, canonical parsed
+content fingerprints, food/source linkage, nutrient units, and exposure basis.
+An imported private loader token, a caller-constructed attestation, or alternate
+self-consistent registry bytes therefore cannot authorize production. The CLI
+uses the same path, and registry modification after a gate or model fit is
+detected by the next validation boundary.
+
+The current trust root is the repository trusted-registry snapshot bound by the
+pre-label method lock. This threat model rejects untrusted callers and
+post-gate file changes while the repository and host trust root remain intact;
+it does not claim resistance to complete repository or host compromise. An
+external signature is outside the Phase 1 threat model.
 
 `FNDDS 2021-2023` is recognized only as a non-production development smoke
 input and requires `development_smoke_test=true`. It cannot support a production
@@ -354,9 +383,9 @@ Task 6. Run data hashes remain run-specific and are required by
 | `code/src/gmnps/scoring/fcs2_attribute_mapping.py` | `d885be53736d020c6797b8b8f6d470c185ca0b1e13bf7b07752b32ec0de200d1` |
 | `code/src/gmnps/scoring/attribute_calibration.py` | `2dcc803e46f07f2a1c7ca11e31bced942df84bd66496afabd61ec8b86e8585c6` |
 | `code/src/gmnps/scoring/attribute_recomposition.py` | `806306099b1d398fce1777c3b5714e1465fcc5949c4cf9a8f6fc2d1b1bf3119e` |
-| `code/src/gmnps/scoring/attribute_gmnps.py` | `968c356eb60e3674517bec8c43d672260a059e06f56e9dec5a64067f48dbda48` |
+| `code/src/gmnps/scoring/attribute_gmnps.py` | `b1ac1465f69f968232d1e9b07854a96a29675dbd6516c60a359df7868d83a728` |
 | `code/src/configs/attribute_gmnps.yaml` | `37a46a0cb0d24da374698dd4f900946efb8f581f89d843c27e35ce54fb39d2f2` |
-| `code/src/scripts/run_attribute_gmnps.py` | `62faa607e688f391cb3483b952a9657d48ea5ffa1a774533a41ecdbdfa9d00fc` |
+| `code/src/scripts/run_attribute_gmnps.py` | `3771af05eb598d59658e9edd3d9838a1260c9397df4b4af659c2d2404ed601ad` |
 
 Every run must additionally record method and mapping versions, all input and
 linkage SHA-256 values, FNDDS releases, the real registry snapshot SHA-256,

@@ -2,6 +2,7 @@
 
 Date: 2026-08-13
 Baseline reviewed: `e76e12a0cc10b3e903c4843bca7f24ca5fc88519`
+Final re-review starting HEAD: `c9de4290366fa1f2711b154f50771eaf5b8d8f`
 
 ## Outcome
 
@@ -11,6 +12,12 @@ altering the primary attribute-level calibration design. No main-controller
 design decision is required. The empty production registry remains
 intentionally fail-closed; Phase 2 must populate it only with verified artifact
 digests.
+
+The subsequent final re-review's remaining one major and two minor findings are
+also closed. Production trust no longer depends on an importable token or a
+caller-constructible attestation; attribution now exposes effective weights,
+selection/activity and active denominators; and registry schema/version/digest
+identifiers are fixed constants.
 
 ## RED-to-GREEN record
 
@@ -43,6 +50,69 @@ The focused zero-effect and dairy oracle run passed:
 ```text
 4 passed, 62 deselected in 1.94s
 ```
+
+For the final re-review delta, the new tests were again written first. The RED
+run was:
+
+```text
+.venv/bin/pytest -q code/src/tests/test_phase1_final_fixes.py \
+  code/src/tests/test_attribute_method_lock.py::test_lock_manifest_schema_requires_complete_frozen_provenance \
+  code/src/tests/test_run_attribute_gmnps.py::test_nonzero_dairy_attribution_is_public_and_chunk_invariant
+
+ImportError: cannot import name 'FCS2_FNDDS_REGISTRY_DIGEST_ALGORITHM'
+1 error in 0.55s
+```
+
+The same focused scope passed after implementation (`10 passed in 2.98s`). The
+current GREEN state is `227 passed in 22.16s` for Task 1-6 plus final-review
+oracles, `431 passed in 24.76s` for the complete test suite, and `8 passed in
+3.91s` for the explicit zero-effect/dairy oracle set.
+
+No main-controller design decision is blocked. Phase 2 population of verified
+registry entries remains an expected operational prerequisite, not an open
+method-design question.
+
+## Final re-review closure
+
+### Major M1 — live repository trust root at every production boundary
+
+- Added explicit `expected_release_registry_sha256` to production model config;
+  absence or mismatch fails closed.
+- Every production bundle validation, model fit/validation and score call now
+  independently rereads immutable bytes from the configured repository trusted
+  registry, validates constant schema/version/`sha256` identifiers, recomputes
+  the snapshot digest and compares it with attestation, manifest and model
+  expectations.
+- Bundle validation relocates exactly one approved live-registry entry and
+  rechecks source-byte digests, canonical parsed-content fingerprints,
+  food/source linkage, nutrient units and exposure basis.
+- Regression tests cover the reviewer capability bypass (imported private token
+  plus public constructor and self-authored attestation), alternate registry
+  bytes under an empty trust root, registry mutation after bundle gating, and
+  registry mutation after model fit.
+- The specified threat model is explicit: the pre-label method-lock-bound
+  repository snapshot is the trust root. Phase 1 does not claim resistance to
+  complete repository/host compromise or provide an external signature.
+
+### Minor m1 — auditable attribution state
+
+- Attribute output now includes `effective_attribute_weight`, `calculated`,
+  `active`, baseline/personalized selection flags and baseline/personalized
+  active-domain denominators.
+- Domain output now includes both denominators and calculated/baseline-selected/
+  active attribute counts.
+- CLI serialization preserves these columns. A non-zero dairy chunk oracle
+  verifies weight 0.5, denominator 2.5 and byte-identical chunked outputs.
+
+### Minor m2 — fixed registry identifiers
+
+- The registry parser requires top-level
+  `fcs2-fndds-release-registry-schema-v1`,
+  `fcs2-fndds-release-registry-v1` and `digest_algorithm: sha256`, and validates
+  the approved-entry digest schema consistently.
+- The method-lock schema uses constants for registry version, snapshot schema,
+  snapshot version and digest algorithm; these fields are no longer arbitrary
+  strings.
 
 ## Finding resolution
 
@@ -113,9 +183,10 @@ The focused zero-effect and dairy oracle run passed:
 
 ## Verification commands
 
-- Task 1-6 plus final oracles: 222 passed.
-- Full suite: 426 passed.
-- Zero-effect/dairy focused run: 4 passed.
+- Final re-review focused tests: 10 passed.
+- Task 1-6 plus final oracles: 227 passed.
+- Full suite: 431 passed.
+- Zero-effect/dairy focused run: 8 passed.
 - Python compilation: passed.
 - JSON schema parse: passed.
 - `git diff --check`: passed.

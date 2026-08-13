@@ -108,7 +108,9 @@ _TRUSTED_REGISTRY_PATH = (
     Path(__file__).resolve().parents[2]
     / "configs/fcs2_fndds_release_registry.json"
 )
+FCS2_FNDDS_REGISTRY_SCHEMA_VERSION = "fcs2-fndds-release-registry-schema-v1"
 FCS2_FNDDS_REGISTRY_VERSION = "fcs2-fndds-release-registry-v1"
+FCS2_FNDDS_REGISTRY_DIGEST_ALGORITHM = "sha256"
 _CANONICAL_PRODUCTION_RELEASES = tuple(
     f"FNDDS {start}-{start + 1}" for start in range(2001, 2018, 2)
 )
@@ -123,6 +125,7 @@ class ReleaseRegistrySnapshot:
     snapshot_sha256: str
     schema_version: str
     registry_version: str
+    digest_algorithm: str
     canonical_release_set: tuple[str, ...]
     approved_artifacts_json: str
 
@@ -145,23 +148,46 @@ def load_release_registry_snapshot(raw: bytes) -> ReleaseRegistrySnapshot:
     required = {
         "schema_version",
         "registry_version",
+        "digest_algorithm",
         "canonical_release_set",
         "approved_artifact_entry_schema",
         "approved_artifacts",
     }
     if set(registry) != required:
         raise ValueError("release registry snapshot schema is invalid")
+    if registry["schema_version"] != FCS2_FNDDS_REGISTRY_SCHEMA_VERSION:
+        raise ValueError("release registry schema version is not supported by this method")
     if registry["registry_version"] != FCS2_FNDDS_REGISTRY_VERSION:
         raise ValueError("release registry version is not supported by this method")
+    if registry["digest_algorithm"] != FCS2_FNDDS_REGISTRY_DIGEST_ALGORITHM:
+        raise ValueError("release registry digest algorithm must be sha256")
     canonical = registry["canonical_release_set"]
-    if tuple(canonical) != _CANONICAL_PRODUCTION_RELEASES:
+    if (
+        not isinstance(canonical, list)
+        or tuple(canonical) != _CANONICAL_PRODUCTION_RELEASES
+    ):
         raise ValueError("release registry canonical release set is invalid")
     entries = registry["approved_artifacts"]
     if not isinstance(entries, list):
         raise ValueError("release registry approved_artifacts must be a list")
-    required_entry_fields = set(
-        registry["approved_artifact_entry_schema"]["required_fields"]
-    )
+    entry_schema = registry["approved_artifact_entry_schema"]
+    if not isinstance(entry_schema, dict) or set(entry_schema) != {
+        "required_fields",
+        "artifact_sha256_keys",
+        "digest_algorithm",
+    }:
+        raise ValueError("release registry approved entry schema is invalid")
+    if entry_schema["digest_algorithm"] != FCS2_FNDDS_REGISTRY_DIGEST_ALGORITHM:
+        raise ValueError("release registry approved entry digest algorithm must be sha256")
+    required_fields_value = entry_schema["required_fields"]
+    artifact_keys_value = entry_schema["artifact_sha256_keys"]
+    if not isinstance(required_fields_value, list) or not isinstance(
+        artifact_keys_value, list
+    ):
+        raise ValueError("release registry approved entry schema is invalid")
+    required_entry_fields = set(required_fields_value)
+    if len(required_entry_fields) != len(required_fields_value):
+        raise ValueError("release registry approved entry schema is invalid")
     if required_entry_fields != {
         "bundle_id",
         "fndds_releases",
@@ -171,24 +197,38 @@ def load_release_registry_snapshot(raw: bytes) -> ReleaseRegistrySnapshot:
         "exposure_basis",
     }:
         raise ValueError("release registry approved entry schema is invalid")
-    if set(registry["approved_artifact_entry_schema"]["artifact_sha256_keys"]) != set(
-        _PRODUCTION_ARTIFACT_HASH_KEYS
-    ):
+    if len(set(artifact_keys_value)) != len(artifact_keys_value) or set(
+        artifact_keys_value
+    ) != set(_PRODUCTION_ARTIFACT_HASH_KEYS):
         raise ValueError("release registry artifact digest schema is invalid")
     for entry in entries:
         if not isinstance(entry, dict) or set(entry) != required_entry_fields:
             raise ValueError("release registry contains an invalid approved artifact entry")
         if not isinstance(entry["bundle_id"], str) or not entry["bundle_id"]:
             raise ValueError("release registry bundle_id is invalid")
-        if tuple(entry["fndds_releases"]) != _CANONICAL_PRODUCTION_RELEASES:
+        if not isinstance(entry["fndds_releases"], list) or tuple(
+            entry["fndds_releases"]
+        ) != _CANONICAL_PRODUCTION_RELEASES:
             raise ValueError("release registry approved release set is invalid")
-        if set(entry["artifact_sha256"]) != set(_PRODUCTION_ARTIFACT_HASH_KEYS):
+        if not isinstance(entry["artifact_sha256"], dict) or set(
+            entry["artifact_sha256"]
+        ) != set(_PRODUCTION_ARTIFACT_HASH_KEYS):
             raise ValueError("release registry artifact digest keys are invalid")
         if any(not _is_sha256(value) for value in entry["artifact_sha256"].values()):
             raise ValueError("release registry contains an invalid artifact digest")
         if not _is_sha256(entry["food_source_linkage_sha256"]):
             raise ValueError("release registry contains an invalid linkage digest")
-        if not isinstance(entry["nutrient_units"], dict):
+        if not isinstance(entry["nutrient_units"], dict) or not entry[
+            "nutrient_units"
+        ]:
+            raise ValueError("release registry nutrient units are invalid")
+        if any(
+            not isinstance(name, str)
+            or not name
+            or not isinstance(unit, str)
+            or not unit
+            for name, unit in entry["nutrient_units"].items()
+        ):
             raise ValueError("release registry nutrient units are invalid")
         if entry["exposure_basis"] != "per_100_kcal":
             raise ValueError("release registry exposure basis is invalid")
@@ -197,6 +237,7 @@ def load_release_registry_snapshot(raw: bytes) -> ReleaseRegistrySnapshot:
         snapshot_sha256=sha256(raw).hexdigest(),
         schema_version=str(registry["schema_version"]),
         registry_version=str(registry["registry_version"]),
+        digest_algorithm=str(registry["digest_algorithm"]),
         canonical_release_set=tuple(canonical),
         approved_artifacts_json=json.dumps(
             entries,
@@ -206,6 +247,35 @@ def load_release_registry_snapshot(raw: bytes) -> ReleaseRegistrySnapshot:
             separators=(",", ":"),
         ),
     )
+
+
+def _read_trusted_release_registry_snapshot(
+    *,
+    expected_sha256: str,
+    require_approved_entry: bool,
+) -> ReleaseRegistrySnapshot:
+    """Read and validate the repository trust root for this single operation."""
+
+    if not _is_sha256(expected_sha256):
+        raise ValueError(
+            "expected_release_registry_sha256 must be a lowercase SHA-256 digest"
+        )
+    try:
+        trusted_bytes = _TRUSTED_REGISTRY_PATH.read_bytes()
+    except OSError as error:
+        raise ValueError("trusted release registry is missing or unreadable") from error
+    snapshot = load_release_registry_snapshot(trusted_bytes)
+    if snapshot.snapshot_sha256 != expected_sha256:
+        raise ValueError(
+            "trusted release registry snapshot does not match the pre-label/method-lock "
+            "expected SHA-256"
+        )
+    if require_approved_entry and not snapshot.approved_artifacts:
+        raise ValueError(
+            "no approved production bundle is registered; Phase 2 must verify official "
+            "FNDDS 2001-2018 digests and food/source linkage"
+        )
+    return snapshot
 
 
 def _json_scalar(value: object) -> object:
@@ -316,6 +386,7 @@ class AttributeGMNPSConfig:
     mask_version: str = PRIMARY_MASK_VERSION
     method_role: str | None = None
     development_smoke_test: bool = False
+    expected_release_registry_sha256: str | None = None
 
     def __post_init__(self) -> None:
         if self.method not in _ALLOWED_METHODS:
@@ -343,6 +414,13 @@ class AttributeGMNPSConfig:
             raise ValueError("mask_version is not the locked expert-reviewed mask")
         if not isinstance(self.development_smoke_test, bool):
             raise ValueError("development_smoke_test must be boolean")
+        if (
+            self.expected_release_registry_sha256 is not None
+            and not _is_sha256(self.expected_release_registry_sha256)
+        ):
+            raise ValueError(
+                "expected_release_registry_sha256 must be a lowercase SHA-256 digest"
+            )
         if self.method == LEGACY_METHOD:
             if self.method_role != "sensitivity":
                 raise ValueError("legacy_final_score_offset is available only as sensitivity")
@@ -460,24 +538,24 @@ def _attestation_fingerprint(
     )
 
 
-def _validate_approved_production_bundle(bundle: "FoodAttributeBundle") -> None:
+def _validate_approved_production_bundle(
+    bundle: "FoodAttributeBundle",
+) -> ReleaseRegistrySnapshot:
+    snapshot = _read_trusted_release_registry_snapshot(
+        expected_sha256=bundle.release_registry_snapshot_sha256,
+        require_approved_entry=True,
+    )
     if bundle._factory_token is not _VERIFIED_BYTE_LOADER_TOKEN:
         raise ValueError(
             "production FoodAttributeBundle must be created by the verified byte loader"
         )
     if bundle.production_attestation is None:
         raise ValueError("production bundle is missing verified byte attestation")
-    snapshot = load_release_registry_snapshot(
-        bundle.production_attestation.release_registry_bytes
-    )
-    if snapshot.snapshot_sha256 != bundle.release_registry_snapshot_sha256:
-        raise ValueError("production release registry snapshot hash mismatch")
-    entries = snapshot.approved_artifacts
-    if not entries:
-        raise ValueError(
-            "no approved production bundle is registered; Phase 2 must verify official "
-            "FNDDS 2001-2018 digests and food/source linkage"
-        )
+    if (
+        bundle.production_attestation.release_registry_snapshot_sha256
+        != snapshot.snapshot_sha256
+    ):
+        raise ValueError("production attestation trusted registry snapshot hash mismatch")
     matches = _matching_registry_entries(
         snapshot=snapshot,
         fndds_releases=bundle.fndds_releases,
@@ -501,6 +579,7 @@ def _validate_approved_production_bundle(bundle: "FoodAttributeBundle") -> None:
     )
     if bundle.production_attestation.approved_entry_json != canonical_entry:
         raise ValueError("production attestation approved registry entry mismatch")
+    return snapshot
 
 
 @dataclass(frozen=True)
@@ -717,10 +796,11 @@ class FoodAttributeBundle:
         except AssertionError as error:
             raise ValueError("reconstruction_status must match the locked Task 2 table") from error
 
-        if self.production_attestation is not None:
-            _validate_bundle_attestation(self)
+        trusted_snapshot = None
         if release_kind == "production":
-            _validate_approved_production_bundle(self)
+            trusted_snapshot = _validate_approved_production_bundle(self)
+        if self.production_attestation is not None:
+            _validate_bundle_attestation(self, trusted_snapshot=trusted_snapshot)
 
         if check_fingerprint:
             expected = self.compute_fingerprint()
@@ -872,7 +952,11 @@ def _parsed_bundle_fingerprints(
     )
 
 
-def _validate_bundle_attestation(bundle: FoodAttributeBundle) -> None:
+def _validate_bundle_attestation(
+    bundle: FoodAttributeBundle,
+    *,
+    trusted_snapshot: ReleaseRegistrySnapshot | None,
+) -> None:
     attestation = bundle.production_attestation
     if attestation is None:
         raise ValueError("bundle attestation is missing")
@@ -895,10 +979,53 @@ def _validate_bundle_attestation(bundle: FoodAttributeBundle) -> None:
         raise ValueError("bundle source hashes do not match attested immutable bytes")
     if sha256(attestation.input_manifest_bytes).hexdigest() != attestation.input_manifest_sha256:
         raise ValueError("attestation input manifest bytes are inconsistent")
-    snapshot = load_release_registry_snapshot(attestation.release_registry_bytes)
-    if snapshot.snapshot_sha256 != attestation.release_registry_snapshot_sha256:
+    attested_snapshot = load_release_registry_snapshot(attestation.release_registry_bytes)
+    if (
+        attested_snapshot.snapshot_sha256
+        != attestation.release_registry_snapshot_sha256
+    ):
         raise ValueError("attestation release registry bytes are inconsistent")
+    if trusted_snapshot is not None:
+        if attestation.release_registry_bytes != trusted_snapshot.raw_bytes:
+            raise ValueError(
+                "attested release registry bytes do not match the live trusted registry"
+            )
+        if attested_snapshot.snapshot_sha256 != trusted_snapshot.snapshot_sha256:
+            raise ValueError("attestation trusted release registry snapshot mismatch")
+        snapshot = trusted_snapshot
+    else:
+        snapshot = attested_snapshot
     manifest = _parse_json_bytes(attestation.input_manifest_bytes, "input manifest")
+    if manifest.get("release_registry_snapshot_sha256") != snapshot.snapshot_sha256:
+        raise ValueError("attested input manifest release registry snapshot mismatch")
+    if manifest.get("registry_version") != snapshot.registry_version:
+        raise ValueError("attested input manifest release registry version mismatch")
+    if tuple(manifest.get("fndds_releases", ())) != bundle.fndds_releases:
+        raise ValueError("attested input manifest FNDDS releases mismatch")
+    if manifest.get("production_label") != bundle.production_label:
+        raise ValueError("attested input manifest production label mismatch")
+    if manifest.get("food_source_linkage_sha256") != bundle.food_source_linkage_sha256:
+        raise ValueError("attested input manifest food/source linkage mismatch")
+    if manifest.get("exposure_basis") != bundle.exposure_basis:
+        raise ValueError("attested input manifest exposure basis mismatch")
+    if manifest.get("nutrient_units") != dict(bundle.nutrient_units):
+        raise ValueError("attested input manifest nutrient units mismatch")
+    manifest_files = manifest.get("files")
+    if not isinstance(manifest_files, dict):
+        raise ValueError("attested input manifest files object is missing")
+    for name, digest in observed_source_hashes:
+        entry = manifest_files.get(name)
+        declared = (
+            entry
+            if isinstance(entry, str)
+            else entry.get("sha256")
+            if isinstance(entry, dict)
+            else None
+        )
+        if declared != digest:
+            raise ValueError(
+                "attested input manifest source digest does not match immutable bytes"
+            )
     parsed = _parse_bundle_source_bytes(source_bytes, manifest)
     observed_parsed = _parsed_bundle_fingerprints(*parsed)
     if observed_parsed != attestation.parsed_content_fingerprints:
@@ -1079,6 +1206,16 @@ class AttributeGMNPSModel:
     def validate(self) -> None:
         if not isinstance(self.config, AttributeGMNPSConfig):
             raise ValueError("model config must be AttributeGMNPSConfig")
+        if not self.config.development_smoke_test:
+            if self.config.expected_release_registry_sha256 is None:
+                raise ValueError(
+                    "production fit/score requires explicit "
+                    "expected_release_registry_sha256 from the pre-label/method lock"
+                )
+            _read_trusted_release_registry_snapshot(
+                expected_sha256=self.config.expected_release_registry_sha256,
+                require_approved_entry=True,
+            )
         if self.normalization_fingerprint != self.normalization_state.state_fingerprint:
             raise ValueError("model normalization fingerprint does not match state")
         expected_config = _fingerprint(asdict(self.config))
@@ -1261,8 +1398,9 @@ def summarize_attribute_gmnps_foods(individual_food: pd.DataFrame) -> pd.DataFra
     return summary.sort_values("food_id", kind="mergesort").reset_index(drop=True)
 
 
-def _attribution_tables(calibration, final, config: AttributeGMNPSConfig):
+def _attribution_tables(calibration, recomputed, final, config: AttributeGMNPSConfig):
     channels = _channel_for_attributes(config.mapping_version)
+    membership = recomputed.membership_audit
     attribute_rows = []
     for (individual_id, food_id), point_row in calibration.points.iterrows():
         for attribute in _ACTIVE_ATTRIBUTES:
@@ -1272,6 +1410,30 @@ def _attribution_tables(calibration, final, config: AttributeGMNPSConfig):
             personalized = point_row[attribute]
             delta = calibration.deltas.loc[(individual_id, food_id), attribute]
             not_calculated = personalized is NOT_CALCULATED
+            membership_key = (individual_id, food_id, attribute)
+            if membership_key in membership.index:
+                membership_row = membership.loc[membership_key]
+                calculated = bool(membership_row["calculated"])
+                baseline_selected = bool(membership_row["baseline_selected"])
+                personalized_selected = bool(
+                    membership_row["personalized_selected"]
+                )
+                effective_weight = float(membership_row["published_weight"])
+                baseline_denominator = float(
+                    membership_row["baseline_active_weight_denominator"]
+                )
+                active_denominator = float(
+                    membership_row["active_weight_denominator"]
+                )
+            else:
+                calculated = not not_calculated
+                baseline_selected = False
+                personalized_selected = False
+                effective_weight = float(
+                    calibration.effective_attribute_weights.loc[food_id, attribute]
+                )
+                baseline_denominator = 0.0
+                active_denominator = 0.0
             attribute_rows.append(
                 {
                     "individual_id": individual_id,
@@ -1291,6 +1453,13 @@ def _attribution_tables(calibration, final, config: AttributeGMNPSConfig):
                         NOT_CALCULATED_TOKEN if not_calculated else float(delta)
                     ),
                     "not_calculated": not_calculated,
+                    "effective_attribute_weight": effective_weight,
+                    "calculated": calculated,
+                    "active": personalized_selected,
+                    "baseline_selected": baseline_selected,
+                    "personalized_selected": personalized_selected,
+                    "baseline_active_domain_denominator": baseline_denominator,
+                    "active_domain_denominator": active_denominator,
                     "mapping_version": config.mapping_version,
                     "calibration_fingerprint": calibration.calibration_fingerprint,
                 }
@@ -1299,6 +1468,36 @@ def _attribution_tables(calibration, final, config: AttributeGMNPSConfig):
         ["individual_id", "food_id", "attribute"], kind="mergesort"
     ).reset_index(drop=True)
     domain = final.domain_audit.reset_index()
+    membership_rows = membership.reset_index()
+    domain_membership = (
+        membership_rows.groupby(
+            ["individual_id", "food_id", "domain"],
+            sort=False,
+            as_index=False,
+        )
+        .agg(
+            baseline_active_domain_denominator=(
+                "baseline_active_weight_denominator",
+                "first",
+            ),
+            active_domain_denominator=("active_weight_denominator", "first"),
+            calculated_attribute_count=("calculated", "sum"),
+            baseline_selected_attribute_count=("baseline_selected", "sum"),
+            active_attribute_count=("personalized_selected", "sum"),
+        )
+    )
+    domain = domain.merge(
+        domain_membership,
+        on=["individual_id", "food_id", "domain"],
+        how="left",
+        validate="one_to_one",
+    )
+    for column in (
+        "calculated_attribute_count",
+        "baseline_selected_attribute_count",
+        "active_attribute_count",
+    ):
+        domain[column] = domain[column].astype(int)
     domain["mapping_version"] = config.mapping_version
     domain["recomposition_fingerprint"] = final.recomposition_fingerprint
     domain = domain.sort_values(
@@ -1364,7 +1563,9 @@ def _primary_result(
     individual = pd.DataFrame(rows, columns=_PRIMARY_INDIVIDUAL_COLUMNS).sort_values(
         ["individual_id", "food_id"], kind="mergesort"
     ).reset_index(drop=True)
-    attribute, domain = _attribution_tables(calibration, final, model.config)
+    attribute, domain = _attribution_tables(
+        calibration, recomputed, final, model.config
+    )
     manifest = _base_manifest(model, bundle)
     manifest.update(
         {
@@ -1468,6 +1669,13 @@ def _base_manifest(
             else "attribute_point_delta"
         ),
         "trusted_registry_version": FCS2_FNDDS_REGISTRY_VERSION,
+        "trusted_registry_schema_version": FCS2_FNDDS_REGISTRY_SCHEMA_VERSION,
+        "trusted_registry_digest_algorithm": (
+            FCS2_FNDDS_REGISTRY_DIGEST_ALGORITHM
+        ),
+        "expected_release_registry_sha256": (
+            config.expected_release_registry_sha256
+        ),
         "release_registry_snapshot_sha256": (
             bundle.release_registry_snapshot_sha256
         ),
@@ -1591,6 +1799,15 @@ def score_attribute_gmnps(
     if not isinstance(food_bundle, FoodAttributeBundle):
         raise TypeError("food_bundle must be a FoodAttributeBundle")
     food_bundle.validate()
+    if food_bundle.production_label == "production":
+        if (
+            model.config.expected_release_registry_sha256
+            != food_bundle.release_registry_snapshot_sha256
+        ):
+            raise ValueError(
+                "production bundle registry snapshot does not match the model's "
+                "pre-label/method-lock expected snapshot"
+            )
     if food_bundle.production_label == "non-production" and not model.config.development_smoke_test:
         raise ValueError(
             "FNDDS 2021-2023 is non-production and requires development_smoke_test=true"
@@ -1602,6 +1819,9 @@ def score_attribute_gmnps(
 
 __all__ = [
     "ATTRIBUTE_GMNPS_SCORING_VERSION",
+    "FCS2_FNDDS_REGISTRY_DIGEST_ALGORITHM",
+    "FCS2_FNDDS_REGISTRY_SCHEMA_VERSION",
+    "FCS2_FNDDS_REGISTRY_VERSION",
     "PRIMARY_RECOMPUTED_DOMAINS",
     "AttributeGMNPSConfig",
     "AttributeGMNPSModel",

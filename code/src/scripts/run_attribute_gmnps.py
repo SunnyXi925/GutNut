@@ -596,6 +596,11 @@ def run(args: argparse.Namespace) -> AttributeGMNPSResult:
         scoring_version=str(locked["scoring_version"]),
         method_role=args.method_role,
         development_smoke_test=args.development_smoke_test,
+        expected_release_registry_sha256=(
+            str(manifest["release_registry_snapshot_sha256"])
+            if manifest.get("production_label") == "production"
+            else None
+        ),
     )
     development, scoring, bundle = load_inputs(blobs, manifest)
     if bundle.production_label == "non-production" and not args.development_smoke_test:

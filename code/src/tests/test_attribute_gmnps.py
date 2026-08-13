@@ -180,9 +180,10 @@ def test_primary_api_is_exported_without_removing_legacy_exports():
 
 def test_fit_binds_config_and_development_only_normalization_fingerprint():
     development = development_beta()
-    model = fit_attribute_gmnps(development)
+    config = smoke_config()
+    model = fit_attribute_gmnps(development, config)
 
-    assert model.config == AttributeGMNPSConfig()
+    assert model.config == config
     assert model.normalization_state.fit_n == len(development)
     assert model.normalization_fingerprint == model.normalization_state.state_fingerprint
     assert len(model.fingerprint) == 64
@@ -309,9 +310,8 @@ def test_production_rejects_2021_2023_and_smoke_mode_is_explicitly_nonproduction
     smoke_bundle = make_bundle(
         releases=("FNDDS 2021-2023",), production_label="non-production"
     )
-    production_model = fit_attribute_gmnps(development_beta())
-    with pytest.raises(ValueError, match="development_smoke_test"):
-        score_attribute_gmnps(production_model, score_beta(), smoke_bundle)
+    with pytest.raises(ValueError, match="expected_release_registry_sha256"):
+        fit_attribute_gmnps(development_beta())
 
     smoke_model = fit_attribute_gmnps(
         development_beta(), smoke_config()
@@ -354,11 +354,11 @@ def test_trusted_registry_is_committed_empty_and_all_production_is_rejected():
     assert registry["approved_artifacts"] == []
     canonical = tuple(registry["canonical_release_set"])
 
-    with pytest.raises(ValueError, match="verified byte loader"):
+    with pytest.raises(ValueError, match="no approved production bundle"):
         make_bundle(releases=canonical, production_label="production")
     with pytest.raises(ValueError, match="FNDDS 2001-2018"):
         make_bundle(releases=("FNDDS 2001-2099",), production_label="production")
-    with pytest.raises(ValueError, match="verified byte loader"):
+    with pytest.raises(ValueError, match="no approved production bundle"):
         make_bundle(
             releases=canonical,
             production_label="production",
@@ -374,7 +374,7 @@ def test_trusted_registry_is_committed_empty_and_all_production_is_rejected():
     wrong_units = {
         column: "wrong_unit" for column in food_exposures().columns
     }
-    with pytest.raises(ValueError, match="verified byte loader"):
+    with pytest.raises(ValueError, match="no approved production bundle"):
         make_bundle(
             releases=canonical,
             production_label="production",
