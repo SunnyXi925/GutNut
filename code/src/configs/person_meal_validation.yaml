@@ -1,0 +1,57 @@
+{
+  "schema_version": "person-meal-validation-v1",
+  "frozen_on": "2026-08-13",
+  "config_role": "pre-outcome-preregistration",
+  "validation_embargo": true,
+  "endpoints": [
+    {
+      "name": "glucose_iAUC_2h",
+      "role": "primary",
+      "unit": "mmol_L_hour",
+      "window_hours": [0, 2],
+      "summary": "incremental_area_under_curve"
+    },
+    {
+      "name": "tg_6h_rise",
+      "role": "primary",
+      "unit": "mmol_L",
+      "window_hours": [0, 6],
+      "summary": "rise_above_baseline"
+    },
+    {
+      "name": "c_peptide_iAUC_2h",
+      "role": "secondary",
+      "unit": "nmol_L_hour",
+      "window_hours": [0, 2],
+      "summary": "incremental_area_under_curve"
+    }
+  ],
+  "missingness": {
+    "analysis_set": "endpoint_specific_available_case_after_subject_split",
+    "outcome_imputation": "forbidden",
+    "predictor_imputation": "median_or_mode_with_missing_indicator",
+    "predictor_fit_scope": "development_fold_only",
+    "report_missingness_by": [
+      "endpoint",
+      "cohort",
+      "split"
+    ]
+  },
+  "split": {
+    "primary_unit": "participant",
+    "family_twin_grouping": true,
+    "outer_folds": 5,
+    "inner_folds": 5,
+    "secondary_generalization": [
+      "meal_or_food_held_out",
+      "cohort_held_out"
+    ],
+    "development_scoring_overlap": "forbidden"
+  },
+  "seeds": {
+    "outer_split": 1729,
+    "inner_cv": 2718,
+    "bootstrap": 31415,
+    "permutation": 16180
+  }
+}

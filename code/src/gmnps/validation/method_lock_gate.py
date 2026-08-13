@@ -10,8 +10,10 @@ from dataclasses import dataclass, fields
 from hashlib import sha256
 import json
 from math import isfinite
+import os
 from pathlib import Path
 import re
+import tempfile
 from typing import Mapping, Sequence
 
 import pandas as pd
@@ -424,6 +426,12 @@ def _artifact_sha256(path: Path, label: str) -> str:
     return sha256(_read_bytes(path, label)).hexdigest()
 
 
+def _require_sha256(value: object, label: str) -> str:
+    if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+        raise MethodLockError(f"{label} must be a lowercase SHA-256 digest")
+    return value
+
+
 def _matching_approved_entry(
     approved_entries: Sequence[Mapping[str, object]],
     *,
@@ -447,11 +455,16 @@ def _expected_manifest(
     paths: MethodLockArtifactPaths,
     *,
     beta_fit_cohort_id: str,
+    expected_release_registry_sha256: str,
 ) -> dict[str, object]:
     if not isinstance(paths, MethodLockArtifactPaths):
         raise TypeError("paths must be MethodLockArtifactPaths")
     if not isinstance(beta_fit_cohort_id, str) or not beta_fit_cohort_id.strip():
         raise MethodLockError("beta_fit_cohort_id must be a nonempty string")
+    expected_registry_sha256 = _require_sha256(
+        expected_release_registry_sha256,
+        "expected release-registry snapshot",
+    )
 
     schema_bytes, schema = _load_schema(paths.method_lock_schema)
     implementation_source_sha256 = _verify_locked_implementation_sources(schema)
@@ -475,6 +488,11 @@ def _expected_manifest(
         raise MethodLockError("trusted registry version is not constant")
     if registry.digest_algorithm != FCS2_FNDDS_REGISTRY_DIGEST_ALGORITHM:
         raise MethodLockError("trusted registry digest algorithm is not sha256")
+    if registry.snapshot_sha256 != expected_registry_sha256:
+        raise MethodLockError(
+            "trusted release-registry snapshot does not match the explicitly "
+            "expected pre-label SHA-256"
+        )
     if not registry.approved_artifacts:
         raise MethodLockError("trusted release registry has no approved entry")
     gate_bytes = _require_installed_gate(paths.gate_implementation)
@@ -559,15 +577,22 @@ def generate_method_lock_manifest(
     paths: MethodLockArtifactPaths,
     *,
     beta_fit_cohort_id: str,
+    expected_release_registry_sha256: str,
 ) -> dict[str, object]:
     """Build but do not write a real manifest from future explicit artifacts."""
 
-    return _expected_manifest(paths, beta_fit_cohort_id=beta_fit_cohort_id)
+    return _expected_manifest(
+        paths,
+        beta_fit_cohort_id=beta_fit_cohort_id,
+        expected_release_registry_sha256=expected_release_registry_sha256,
+    )
 
 
 def validate_method_lock_manifest(
     manifest: Mapping[str, object],
     paths: MethodLockArtifactPaths,
+    *,
+    expected_release_registry_sha256: str,
 ) -> None:
     """Recompute every bound proof and fail closed on any discrepancy."""
 
@@ -582,6 +607,7 @@ def validate_method_lock_manifest(
     expected = _expected_manifest(
         paths,
         beta_fit_cohort_id=cohort["cohort_id"],
+        expected_release_registry_sha256=expected_release_registry_sha256,
     )
     targeted = (
         ("method_lock_schema_sha256", "method-lock schema hash"),
@@ -605,6 +631,87 @@ def validate_method_lock_manifest(
         raise MethodLockError("method-lock manifest content does not match bound artifacts")
 
 
+def write_method_lock_manifest(
+    paths: MethodLockArtifactPaths,
+    *,
+    output_path: Path,
+    beta_fit_cohort_id: str,
+    expected_release_registry_sha256: str,
+    expected_person_meal_validation_config_sha256: str,
+) -> dict[str, object]:
+    """Atomically write a fully generated and revalidated real run manifest.
+
+    Parent directories are created only after all predictor-side proofs pass.
+    Existing output is never overwritten, and no output is left on failure.
+    """
+
+    if not isinstance(output_path, (str, Path)):
+        raise TypeError("output_path must be a filesystem path")
+    destination = Path(output_path)
+    if destination.exists():
+        raise MethodLockError("method-lock manifest output already exists")
+    manifest = generate_method_lock_manifest(
+        paths,
+        beta_fit_cohort_id=beta_fit_cohort_id,
+        expected_release_registry_sha256=expected_release_registry_sha256,
+    )
+    expected_config_sha256 = _require_sha256(
+        expected_person_meal_validation_config_sha256,
+        "expected person-meal validation config",
+    )
+    if manifest["person_meal_validation_config_sha256"] != expected_config_sha256:
+        raise MethodLockError(
+            "person-meal validation config does not match the explicitly frozen SHA-256"
+        )
+    validate_method_lock_manifest(
+        manifest,
+        paths,
+        expected_release_registry_sha256=expected_release_registry_sha256,
+    )
+
+    encoded = (
+        json.dumps(
+            manifest,
+            ensure_ascii=True,
+            allow_nan=False,
+            sort_keys=True,
+            indent=2,
+        )
+        + "\n"
+    ).encode("utf-8")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=destination.parent,
+            prefix=f".{destination.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+            temporary_path = Path(handle.name)
+        try:
+            os.link(temporary_path, destination)
+        except FileExistsError as error:
+            raise MethodLockError(
+                "method-lock manifest output appeared during write"
+            ) from error
+        temporary_path.unlink()
+        temporary_path = None
+    except OSError as error:
+        raise MethodLockError("method-lock manifest could not be written atomically") from error
+    finally:
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+    return manifest
+
+
 __all__ = [
     "MethodLockArtifactPaths",
     "MethodLockError",
@@ -612,4 +719,5 @@ __all__ = [
     "canonical_json_sha256",
     "generate_method_lock_manifest",
     "validate_method_lock_manifest",
+    "write_method_lock_manifest",
 ]

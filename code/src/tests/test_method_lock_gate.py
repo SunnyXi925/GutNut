@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import fields, replace
 from hashlib import sha256
+import inspect
 import json
 from pathlib import Path
 
@@ -38,6 +39,26 @@ IMPLEMENTATION_HASHES = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))[
 
 def _write_json(path: Path, payload: object) -> None:
     path.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _registry_sha256(paths: MethodLockArtifactPaths) -> str:
+    return sha256(paths.release_registry.read_bytes()).hexdigest()
+
+
+def _generate(paths: MethodLockArtifactPaths, *, cohort_id: str = "development-v1"):
+    return generate_method_lock_manifest(
+        paths,
+        beta_fit_cohort_id=cohort_id,
+        expected_release_registry_sha256=_registry_sha256(paths),
+    )
+
+
+def _validate(manifest, paths: MethodLockArtifactPaths) -> None:
+    validate_method_lock_manifest(
+        manifest,
+        paths,
+        expected_release_registry_sha256=_registry_sha256(paths),
+    )
 
 
 def _normalization_payload(
@@ -228,7 +249,7 @@ def test_generator_binds_external_schema_config_registry_gate_and_approved_entry
     monkeypatch,
 ):
     paths, entry = _fixture(tmp_path, monkeypatch=monkeypatch)
-    manifest = generate_method_lock_manifest(paths, beta_fit_cohort_id="development-v1")
+    manifest = _generate(paths)
     assert manifest["method_lock_schema_sha256"] == sha256(
         paths.method_lock_schema.read_bytes()
     ).hexdigest()
@@ -249,7 +270,7 @@ def test_generator_binds_external_schema_config_registry_gate_and_approved_entry
         "entry_sha256": canonical_json_sha256(entry),
     }
     assert manifest["validation_embargo"] is True
-    validate_method_lock_manifest(manifest, paths)
+    _validate(manifest, paths)
 
 
 def test_generator_rejects_self_consistent_state_not_fitted_from_development_beta(
@@ -266,7 +287,7 @@ def test_generator_rejects_self_consistent_state_not_fitted_from_development_bet
     )
 
     with pytest.raises(MethodLockError, match="normalization.*(median|scale|derived)"):
-        generate_method_lock_manifest(paths, beta_fit_cohort_id="development-v1")
+        _generate(paths)
 
 
 def test_normalization_fit_receives_development_beta_only(tmp_path, monkeypatch):
@@ -279,7 +300,7 @@ def test_normalization_fit_receives_development_beta_only(tmp_path, monkeypatch)
         return real_fit(frame)
 
     monkeypatch.setattr(gate_module, "fit_beta_normalization", recording_fit)
-    generate_method_lock_manifest(paths, beta_fit_cohort_id="development-v1")
+    _generate(paths)
 
     assert observed_indexes == [["development-2", "development-1"]]
     assert not any(identifier.startswith("held-out") for identifier in observed_indexes[0])
@@ -300,7 +321,7 @@ def test_generator_rehashes_every_locked_implementation_file(
     implementation_path.write_bytes(implementation_path.read_bytes() + b"tamper\n")
 
     with pytest.raises(MethodLockError, match="implementation.*(hash|mismatch)"):
-        generate_method_lock_manifest(paths, beta_fit_cohort_id="development-v1")
+        _generate(paths)
 
 
 def test_generator_rejects_missing_locked_implementation_file(tmp_path, monkeypatch):
@@ -309,7 +330,7 @@ def test_generator_rejects_missing_locked_implementation_file(tmp_path, monkeypa
     (gate_module._REPOSITORY_ROOT / relative_path).unlink()
 
     with pytest.raises(MethodLockError, match="implementation.*(missing|unreadable)"):
-        generate_method_lock_manifest(paths, beta_fit_cohort_id="development-v1")
+        _generate(paths)
 
 
 @pytest.mark.parametrize("mutation", ["missing_schema_entry", "extra_schema_entry"])
@@ -328,7 +349,7 @@ def test_generator_rejects_missing_or_extra_schema_implementation_entry(
     _write_json(paths.method_lock_schema, schema)
 
     with pytest.raises(MethodLockError, match="implementation.*(missing|extra|set)"):
-        generate_method_lock_manifest(paths, beta_fit_cohort_id="development-v1")
+        _generate(paths)
 
 
 def test_generator_fails_closed_on_overlap_or_missing_approved_entry(
@@ -341,7 +362,7 @@ def test_generator_fails_closed_on_overlap_or_missing_approved_entry(
         overlap=True,
     )
     with pytest.raises(MethodLockError, match="overlap"):
-        generate_method_lock_manifest(overlap_paths, beta_fit_cohort_id="development-v1")
+        _generate(overlap_paths)
 
     empty_paths, _ = _fixture(
         tmp_path / "empty",
@@ -349,7 +370,7 @@ def test_generator_fails_closed_on_overlap_or_missing_approved_entry(
         approved=False,
     )
     with pytest.raises(MethodLockError, match="approved"):
-        generate_method_lock_manifest(empty_paths, beta_fit_cohort_id="development-v1")
+        _generate(empty_paths)
 
 
 @pytest.mark.parametrize(
@@ -368,10 +389,10 @@ def test_validator_fails_closed_after_any_bound_artifact_is_modified(
     field,
 ):
     paths, _ = _fixture(tmp_path, monkeypatch=monkeypatch)
-    manifest = generate_method_lock_manifest(paths, beta_fit_cohort_id="development-v1")
+    manifest = _generate(paths)
     getattr(paths, field).write_bytes(getattr(paths, field).read_bytes() + b"tamper\n")
     with pytest.raises(MethodLockError):
-        validate_method_lock_manifest(manifest, paths)
+        _validate(manifest, paths)
 
 
 def test_validator_rejects_manifest_schema_failure_and_gate_hash_tampering(
@@ -379,17 +400,17 @@ def test_validator_rejects_manifest_schema_failure_and_gate_hash_tampering(
     monkeypatch,
 ):
     paths, _ = _fixture(tmp_path, monkeypatch=monkeypatch)
-    manifest = generate_method_lock_manifest(paths, beta_fit_cohort_id="development-v1")
+    manifest = _generate(paths)
 
     missing = dict(manifest)
     missing.pop("validation_embargo")
     with pytest.raises(MethodLockError, match="schema|required"):
-        validate_method_lock_manifest(missing, paths)
+        _validate(missing, paths)
 
     changed = dict(manifest)
     changed["method_lock_gate_implementation_sha256"] = "0" * 64
     with pytest.raises(MethodLockError, match="gate|implementation"):
-        validate_method_lock_manifest(changed, paths)
+        _validate(changed, paths)
 
 
 def test_generator_does_not_create_a_run_level_manifest_or_open_outcomes(
@@ -407,7 +428,7 @@ def test_generator_does_not_create_a_run_level_manifest_or_open_outcomes(
         return original_read_bytes(path)
 
     monkeypatch.setattr(Path, "read_bytes", guarded_read_bytes)
-    generated = generate_method_lock_manifest(paths, beta_fit_cohort_id="development-v1")
+    generated = _generate(paths)
     assert generated["manifest_schema_version"] == "attribute-gmnps-method-lock-v1"
     assert not (tmp_path / "method_lock_manifest.json").exists()
 
@@ -423,6 +444,7 @@ def test_alternate_self_consistent_schema_or_registry_path_is_rejected(
         generate_method_lock_manifest(
             replace(paths, release_registry=alternate_registry),
             beta_fit_cohort_id="development-v1",
+            expected_release_registry_sha256=_registry_sha256(paths),
         )
 
     alternate_schema = tmp_path / "alternate_schema.json"
@@ -431,4 +453,75 @@ def test_alternate_self_consistent_schema_or_registry_path_is_rejected(
         generate_method_lock_manifest(
             replace(paths, method_lock_schema=alternate_schema),
             beta_fit_cohort_id="development-v1",
+            expected_release_registry_sha256=_registry_sha256(paths),
         )
+
+
+def test_task2_generator_and_validator_require_explicit_registry_snapshot_hash(
+    tmp_path,
+    monkeypatch,
+):
+    paths, _ = _fixture(tmp_path, monkeypatch=monkeypatch)
+    expected_registry_sha256 = sha256(paths.release_registry.read_bytes()).hexdigest()
+
+    generate_parameter = inspect.signature(generate_method_lock_manifest).parameters[
+        "expected_release_registry_sha256"
+    ]
+    validate_parameter = inspect.signature(validate_method_lock_manifest).parameters[
+        "expected_release_registry_sha256"
+    ]
+    assert generate_parameter.default is inspect.Parameter.empty
+    assert validate_parameter.default is inspect.Parameter.empty
+
+    manifest = generate_method_lock_manifest(
+        paths,
+        beta_fit_cohort_id="development-v1",
+        expected_release_registry_sha256=expected_registry_sha256,
+    )
+    validate_method_lock_manifest(
+        manifest,
+        paths,
+        expected_release_registry_sha256=expected_registry_sha256,
+    )
+
+    with pytest.raises(MethodLockError, match="expected.*registry|snapshot"):
+        generate_method_lock_manifest(
+            paths,
+            beta_fit_cohort_id="development-v1",
+            expected_release_registry_sha256="0" * 64,
+        )
+
+
+def test_task2_manifest_writer_is_atomic_and_leaves_no_output_on_gate_failure(
+    tmp_path,
+    monkeypatch,
+):
+    paths, _ = _fixture(tmp_path / "inputs", monkeypatch=monkeypatch)
+    output = tmp_path / "results/phase2/method_lock_manifest.json"
+    expected_registry_sha256 = sha256(paths.release_registry.read_bytes()).hexdigest()
+
+    written = gate_module.write_method_lock_manifest(
+        paths,
+        output_path=output,
+        beta_fit_cohort_id="development-v1",
+        expected_release_registry_sha256=expected_registry_sha256,
+        expected_person_meal_validation_config_sha256=sha256(
+            paths.person_meal_validation_config.read_bytes()
+        ).hexdigest(),
+    )
+    assert output.is_file()
+    assert json.loads(output.read_text(encoding="utf-8")) == written
+
+    output.unlink()
+    paths.person_meal_validation_config.write_bytes(
+        paths.person_meal_validation_config.read_bytes() + b"tamper\n"
+    )
+    with pytest.raises(MethodLockError):
+        gate_module.write_method_lock_manifest(
+            paths,
+            output_path=output,
+            beta_fit_cohort_id="development-v1",
+            expected_release_registry_sha256=expected_registry_sha256,
+            expected_person_meal_validation_config_sha256="0" * 64,
+        )
+    assert not output.exists()
