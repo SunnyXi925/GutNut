@@ -59,8 +59,8 @@ The simulator defines truth before any GMNPS scoring call:
 
 1. A universal FCS2 food-quality component.
 2. Individual MAC and LIPID capacities generated from an explicit independent RNG stream.
-3. Prespecified per-attribute effects from physical exposure normalization, the locked 20% attribute-range perturbation, and published Food Compass domain aggregation, including top-k membership.
-4. A leave-one-attribute-out decomposition that allocates top-k interaction residuals while preserving the exact prespecified total effect.
+3. Programmed per-attribute effects from physical exposure normalization, the locked 20% attribute-range perturbation, and published Food Compass domain aggregation, including top-k membership.
+4. A leave-one-attribute-out decomposition that allocates top-k interaction residuals while preserving the exact programmed total effect.
 5. Independent additive noise from a separate RNG stream.
 
 Excluded carbohydrate, zinc, copper and vitamin A proxies are generated but do not enter truth. They are available only to the original-mask sensitivity comparator. The simulator records separate stream seeds for food quality, exposures, capacities, excluded proxies, noise, random microbiome, Sattolo derangement and bootstrap sampling.
@@ -75,8 +75,8 @@ Formal frozen configuration:
 | Person-food observations per replicate | 288 |
 | Noise standard deviation | 0.35 |
 | Bootstrap replicates per comparator and seed | 200 |
-| Attribute cap modes tested | 10%, 20% primary, 30% |
-| Final cap modes tested | +/-8, +/-12 primary, +/-15 |
+| Formal attribute cap mode | 20% primary |
+| Formal final cap mode | +/-12 primary |
 
 The stress test uses no observed participant outcome, GMrepo label, ZOE rank or knowledge-graph label. No real validation directory was created or modified.
 
@@ -93,13 +93,13 @@ Intervals below are empirical 2.5th-97.5th percentiles across the five independe
 | Expert-mask legacy offset form | 3.931 (3.446-4.546) | 0.912 (0.887-0.935) |
 | Original-mask legacy offset form | 5.272 (4.835-5.625) | 0.502 (0.346-0.646) |
 
-Locked universal-rank preservation was 0.999 (0.994-1.000). The excluded-proxy contribution fraction was exactly 0 under the expert mask and 0.749 (0.636-0.869) under the original mask. All five prespecified success criteria passed. Sattolo permutations were deterministic, complete permutations with no fixed points.
+Locked universal-rank preservation was 0.999 (0.994-1.000). The excluded-proxy contribution fraction was exactly 0 under the expert mask and 0.749 (0.636-0.869) under the original mask. All five code-fixed checks passed. Sattolo permutations were deterministic, complete permutations with no fixed points.
 
-These results establish identifiability and pipeline behavior only under the stated synthetic data-generating process. They are not clinical, construct or external validation.
+The locked implementation recovered the programmed mapping in this correctly specified synthetic positive-control and lost recovery after random or Sattolo-deranged assignment. This is not clinical, construct or external validation.
 
 ## Frozen outputs
 
-All files are under `results/phase2/source-data/synthetic_identifiability_stress_test/` and carry `evidence_role=synthetic_identifiability_stress_test`, `data_class=synthetic`, seeds and payload hashes.
+The following hashes record the historical files produced by the original Task 5 commit; those files were deleted and replaced by the review-closure outputs below.
 
 | File | SHA-256 |
 | --- | --- |
@@ -124,8 +124,148 @@ Synthetic, aggregate ZOE, GMrepo, knowledge-graph and predictor-only evidence ca
 
 ## Limitations and concerns
 
-1. The synthetic DGP deliberately shares the locked mapping and published domain aggregation structure with the evaluated model. This is appropriate for an identifiability stress test but creates a correctly specified setting and cannot establish robustness to biological model misspecification.
+1. The synthetic DGP deliberately shares the locked mapping and published domain aggregation structure with the evaluated model. This creates a correctly specified positive-control and cannot establish robustness to biological model misspecification.
 2. Five replicate seeds yield coarse across-replicate percentile intervals. They are reported transparently and must not be interpreted as clinical uncertainty intervals.
 3. The no-centering legacy comparator preserves the requested final-offset form but is not numerically identical to the prohibited historical centered implementation.
 4. The full repository suite is not green because of 13 out-of-scope Task 3 fixture/fold incompatibilities. Task 5 focused and related suites are green.
 5. The SciPy/scikit-learn import path emits an environment warning because installed NumPy 2.4.6 is outside SciPy's declared `<2.3.0` range. Task 5 focused tests nevertheless pass; environment pinning should be repaired separately.
+
+## Review closure (2026-08-14; supersedes the status, wording and test counts above)
+
+### Closure status
+
+**DONE.** All Task 5 review findings are closed on top of `9d3da7a`. The
+historical implementation record above is retained for auditability, but its
+former evidence-role wording, source-data paths, gate API and full-suite result
+are superseded by this section. The parallel grouped-split fixture files were not
+modified.
+
+The deliberate plan-safe divergence remains in force:
+`code/src/gmnps/validation/synthetic_twin.py` still contains user work and was not
+edited, staged or committed. The review changes remain in
+`attribute_synthetic_twin.py`. The manuscript and `scoring/__init__.py` were not
+edited, staged or committed.
+
+### Review RED and GREEN
+
+Review RED was captured with:
+
+```text
+uv run pytest -q code/src/tests/test_evidence_gate.py --maxfail=1
+```
+
+Collection failed because the required `gmnps.validation.claim_policy` module did
+not exist. After implementation, the final test results were:
+
+| Scope | Result | Time |
+| --- | ---: | ---: |
+| Task 5 focused (`test_attribute_synthetic_twin.py`, `test_evidence_gate.py`) | 24 passed | 36.62 s |
+| Related attribute and method-lock tests before four final negative gate cases were added | 189 passed | 45.54 s |
+| Full `code/src/tests` suite after all final cases | 654 passed | 193.85 s |
+
+All three runs emitted one environment warning: installed NumPy 2.4.6 is outside
+SciPy 1.13.1's declared `<2.3.0` range. No test failed.
+
+A subsequent related-only rerun was intentionally stopped at the coordinator's
+request after 192 passing tests and no failures; the complete final full-suite run
+above includes and passes every related test.
+
+### Critical gate closure
+
+The production API now accepts only `EvidenceGateArtifactPaths`. It no longer
+accepts a caller mapping or data frame. In one fail-closed call it rereads regular
+non-symlink artifacts, invokes the Task 3 trusted method-lock/outcome loader (which
+revalidates Task 1/2/3 contracts), verifies the independently approved result-run
+manifest digest from the repository-fixed registry, and verifies hashes for paired
+results, detailed split audit, analysis status, outcome source, predictor frame,
+feature contract, validation config, Task 3 implementations and benchmark
+specification.
+
+The gate independently recomputes the run binding, requires all result and audit
+rows to share it, requires exactly the two frozen subject-held-out primary RMSE
+rows, recomputes Holm adjustment from raw paired permutation P values, enforces the
+exact paired family/twin-component bootstrap method, 2,000 bootstrap and
+permutation replicates, and at least 90% valid replicates. Participant and
+family/twin-component disjointness is recomputed from the hashed detailed split
+audit, not accepted from manifest lists.
+
+The lower-level in-memory evaluator always returns
+`testing_only_no_claim_upgrade`. Tests cover self-signing, fake digests, supporting
+evidence relabelling, byte tamper, mismatched run bindings, forged Holm values, and
+participant/component leakage. Synthetic and supporting evidence cannot upgrade
+the production gate.
+
+The fixed registry currently has no approved runs. The deterministically generated
+decision is therefore `computational_feasibility` with these blockers:
+
+```text
+eligible observed participant-by-meal outcomes are unavailable: predict_controlled_clinical_zenodo access_status=controlled_not_granted
+run-level method-lock manifest path is missing
+result-run manifest path is missing
+paired primary results path is missing
+hashed detailed split audit path is missing
+analysis status path is missing
+```
+
+`results/phase2/evidence-gate/current_gate_decision.json` is bound by SHA-256 to
+`claim_policy.json`. `code/src/scripts/check_claim_policy.py` exits nonzero for a
+forbidden phrase or tampered decision/policy. Phase 3 must run it against every
+manuscript/build input. Task 5 did not check or revise the current manuscript.
+
+### Correctly specified synthetic positive-control
+
+The former general-role synthetic files were deleted and replaced by
+`results/phase2/source-data/correctly_specified_synthetic_positive_control/` with
+`evidence_role=correctly_specified_synthetic_positive_control`.
+
+Locked implementation recovered the programmed mapping in a correctly specified
+synthetic positive-control and lost recovery after random or Sattolo-deranged
+assignment.
+
+The checks are code-fixed for reproducibility in the same release and were not
+independently preregistered. The formal five-seed run uses only the primary 20%
+attribute cap and +/-12 final cap. The 10/30% and +/-8/15 cap cases are unit
+boundary tests only and are not formal-run sensitivity results. The bundle retains
+raw Gaussian noise, effective post-clipping noise and a clipping indicator; stream
+independence is asserted for the raw noise, without claiming independence after
+clipping.
+
+Formal configuration remained five seeds (1701-1705), 24 individuals, 12 foods,
+noise SD 0.35 and 200 participant bootstraps per comparator/seed. No parameter was
+changed after observing results. Selected five-replicate means and empirical
+2.5th-97.5th percentiles are:
+
+| Comparator/metric | Estimate (interval) |
+| --- | ---: |
+| Locked attribute GMNPS residual RMSE | 0.3522 (0.3461-0.3647) |
+| FCS residual RMSE | 3.5411 (3.0619-3.8431) |
+| Random assignment residual RMSE | 2.8253 (2.5182-3.2532) |
+| Sattolo assignment residual RMSE | 3.6541 (3.1163-4.4582) |
+| Locked residual Spearman | 0.9876 (0.9848-0.9896) |
+| Locked universal-rank Spearman | 0.9986 (0.9937-1.0000) |
+| Expert-mask legacy-form residual RMSE | 3.9315 (3.4457-4.5456) |
+| Original-mask legacy-form residual RMSE | 5.2724 (4.8346-5.6255) |
+
+This is a correctly specified synthetic positive-control only. It does not support
+general model superiority, biological validity of either mask, clinical validity,
+external validity or a precision-ready claim.
+
+The manifest records simulator and concrete scorer source hashes, all RNG streams,
+CPython 3.11.15, NumPy 2.4.6, pandas 3.0.5, SciPy 1.13.1 and scikit-learn 1.5.2.
+Frozen file SHA-256 values are:
+
+| File | SHA-256 |
+| --- | --- |
+| `synthetic_attribute_twin_config.json` | `fd5a21d815406225f3fe5a6222cd39dafed7b98014dbc25190b61399fdb97c35` |
+| `synthetic_attribute_twin_manifest.json` | `7e765b23bfc2aaeb3f6e04cac7cbd7da36855f2a31af8a744c8283aeb6b610a4` |
+| `synthetic_attribute_twin_replicate_metrics.csv` | `b0a0e379e8654ef1c370d614abe932a2a7cd0cedb4ad13ccf52ef6db0a7e70e6` |
+| `synthetic_attribute_twin_success_checks.csv` | `091bea04c4baed04fa4f4898d8c980cac081e3bc7dfb58435b5799fdfac32719` |
+| `synthetic_attribute_twin_summary.csv` | `b78ab05011a7c5f9bb150b22d50d72ff84797721c6a5c1d3bc8c37a3edbf9bdd` |
+
+### Remaining limitations
+
+The positive-control deliberately shares the programmed mapping with the locked
+implementation and cannot establish robustness to misspecification. Five seeds
+give coarse replicate intervals. Direct observed-response validation remains
+blocked by controlled access and absent immutable production artifacts; this is an
+expected gate outcome, not evidence that a real validation run was completed.

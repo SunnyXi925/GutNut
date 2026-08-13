@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from hashlib import sha256
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -16,6 +19,7 @@ from gmnps.validation.attribute_synthetic_twin import (
     sattolo_derangement,
     simulate_attribute_synthetic_twin,
 )
+from gmnps.validation import attribute_synthetic_twin as twin_module
 
 
 def _config(**changes: object) -> AttributeSyntheticTwinConfig:
@@ -41,7 +45,7 @@ def default_benchmark(default_bundle):
     )
 
 
-def test_truth_is_predefined_at_attribute_level_and_noise_has_an_independent_stream():
+def test_truth_is_programmed_at_attribute_level_and_raw_noise_has_an_independent_stream():
     noisy = simulate_attribute_synthetic_twin(
         _config(n_individuals=20, n_foods=10)
     )
@@ -62,9 +66,19 @@ def test_truth_is_predefined_at_attribute_level_and_noise_has_an_independent_str
         noisy.noiseless_truth["response"], expected.rename("response")
     )
     observed_noise = noisy.observed_response["response"] - noisy.noiseless_truth["response"]
-    assert np.array_equal(observed_noise.to_numpy(), noisy.noise["noise"].to_numpy())
-    assert abs(np.corrcoef(observed_noise, noisy.pair_design["capacity_MAC"])[0, 1]) < 0.25
-    assert abs(np.corrcoef(observed_noise, noisy.pair_design["capacity_LIPID"])[0, 1]) < 0.25
+    assert np.array_equal(
+        observed_noise.to_numpy(), noisy.effective_noise["effective_noise"].to_numpy()
+    )
+    unclipped = ~noisy.clipping_indicator["was_clipped"]
+    np.testing.assert_allclose(
+        noisy.raw_gaussian_noise.loc[unclipped, "raw_gaussian_noise"].to_numpy(),
+        noisy.effective_noise.loc[unclipped, "effective_noise"].to_numpy(),
+        rtol=0.0,
+        atol=1e-14,
+    )
+    raw = noisy.raw_gaussian_noise["raw_gaussian_noise"]
+    assert abs(np.corrcoef(raw, noisy.pair_design["capacity_MAC"])[0, 1]) < 0.25
+    assert abs(np.corrcoef(raw, noisy.pair_design["capacity_LIPID"])[0, 1]) < 0.25
     assert noisy.rng_streams["noise"] != noisy.rng_streams["capacities"]
     assert noisy.truth_definition_sha256 == noiseless.truth_definition_sha256
 
@@ -135,7 +149,7 @@ def test_sattolo_derangement_has_no_fixed_points_and_is_deterministic():
         sattolo_derangement(1, seed=1)
 
 
-def test_random_and_deranged_controls_lose_individual_advantage_and_expert_mask_resists_proxies(
+def test_random_and_deranged_controls_lose_recovery_and_expert_mask_excludes_proxies(
     default_benchmark,
 ):
     metrics = default_benchmark.metrics.set_index("comparator")
@@ -158,7 +172,7 @@ def test_random_and_deranged_controls_lose_individual_advantage_and_expert_mask_
     ] > 0.0
 
 
-def test_multiseed_experiment_reports_ci_valid_n_and_predefined_success_criteria(tmp_path):
+def test_multiseed_experiment_reports_ci_valid_n_and_code_fixed_checks(tmp_path):
     experiment = run_attribute_synthetic_experiment(
         AttributeSyntheticExperimentConfig(
             seeds=(1701, 1702, 1703),
@@ -172,15 +186,38 @@ def test_multiseed_experiment_reports_ci_valid_n_and_predefined_success_criteria
     assert experiment.summary["replicates_requested"].eq(3).all()
     assert experiment.summary["replicates_valid"].eq(3).all()
     assert experiment.summary[["ci_lower", "ci_upper"]].notna().all().all()
-    assert experiment.manifest["evidence_role"] == "synthetic_identifiability_stress_test"
+    assert (
+        experiment.manifest["evidence_role"]
+        == "correctly_specified_synthetic_positive_control"
+    )
     assert experiment.manifest["data_class"] == "synthetic"
-    assert experiment.manifest["success_criteria_frozen_before_run"] is True
+    assert experiment.manifest["checks_code_fixed_in_same_release"] is True
+    assert experiment.manifest["independently_preregistered"] is False
+    assert experiment.manifest["formal_run_cap_modes"] == {
+        "attribute_point_fraction": "primary_20_percent",
+        "final_deviation": "primary_plus_or_minus_12",
+    }
+    assert experiment.manifest["cap_sensitivities"] == (
+        "10/30 percent attribute and +/-8/15 final caps are unit boundary tests only; "
+        "they are not part of the frozen formal run"
+    )
+    assert set(experiment.manifest["source_sha256"]) >= {
+        "simulator",
+        "attribute_calibration",
+        "attribute_gmnps",
+        "attribute_recomposition",
+    }
+    assert experiment.manifest["source_sha256"]["simulator"] == sha256(
+        Path(twin_module.__file__).read_bytes()
+    ).hexdigest()
+    assert experiment.manifest["environment"]["python_version"]
+    assert experiment.manifest["environment"]["packages"]["numpy"]
     assert set(experiment.success_checks["criterion_id"]) == {
-        "locked_beats_fcs_rmse",
-        "locked_beats_random_rmse",
-        "locked_beats_deranged_rmse",
+        "programmed_mapping_recovery_vs_fcs",
+        "random_assignment_loses_recovery",
+        "sattolo_assignment_loses_recovery",
         "locked_preserves_universal_rank",
-        "expert_mask_resists_excluded_proxies",
+        "expert_mask_excludes_programmed_proxies",
     }
     first = freeze_attribute_synthetic_experiment(experiment, tmp_path / "first")
     second = freeze_attribute_synthetic_experiment(experiment, tmp_path / "second")
@@ -188,7 +225,14 @@ def test_multiseed_experiment_reports_ci_valid_n_and_predefined_success_criteria
     for name in first:
         assert first[name].read_bytes() == second[name].read_bytes()
         text = first[name].read_text()
-        assert "synthetic_identifiability_stress_test" in text
+        assert "correctly_specified_synthetic_positive_control" in text
         assert "synthetic" in text
         assert "sha256" in text
     assert '"seeds"' in first["manifest"].read_text()
+    manifest_text = first["manifest"].read_text()
+    assert "identifiability" not in manifest_text
+    assert (
+        "Locked implementation recovered the programmed mapping in a correctly "
+        "specified synthetic positive-control and lost recovery after random or "
+        "Sattolo-deranged assignment."
+    ) in manifest_text

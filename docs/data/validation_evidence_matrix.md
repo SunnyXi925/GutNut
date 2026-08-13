@@ -17,7 +17,7 @@ accessible.
 | Knowledge-graph paths | Curated mechanistic supporting evidence | Repository-local/public-source dependent | Mechanistic consistency | Separate supporting analysis; not a direct response test | Plausibility of nutrient–microbiome–host paths | Construct, clinical or external response validity |
 | Controlled clinical archive (`10.5281/zenodo.17236382`; version `10.5281/zenodo.17236383`) | Controlled real participant clinical resource | Access not granted; encrypted payload; endpoint schema, meal keys, units and microbiome linkage remain unverified | Controlled eligibility assessment; future direct validation only after approval and verification | Metadata audited; outcomes not opened; direct benchmark not executed | Existence of a controlled access route | Any observed endpoint performance or completed external validation |
 | Local `glucose_iAUC_2h`, `tg_6h_rise` and `c_peptide_iAUC_2h` fields | Synthetic local response data | Local | Synthetic stress testing only | Classified in the prior provenance audit; not used as real outcomes | Computational pipeline stress testing | Observed PREDICT response validity, retrospective external validation or clinical validity |
-| Attribute-level digital gut twin generated in Task 5 | Synthetic data with prespecified truth | Deterministically generated in `results/phase2/source-data/synthetic_identifiability_stress_test/` | `synthetic_identifiability_stress_test` | Executed after implementation and test review; metrics and seeds are frozen in the accompanying manifest | Identifiability under the stated data-generating process, cap enforcement, comparator behavior and pipeline reproducibility | Clinical validity, external validity, precision readiness, real-world transformation of postprandial responses |
+| Attribute-level digital gut twin generated in Task 5 | Correctly specified synthetic positive-control with programmed truth | Deterministically generated in `results/phase2/source-data/correctly_specified_synthetic_positive_control/` | `correctly_specified_synthetic_positive_control` | Executed; code-fixed checks, metrics, seeds, source hashes and environment versions are frozen in the accompanying manifest | The locked implementation recovered the programmed mapping in this correctly specified synthetic positive-control and lost recovery after random or Sattolo-deranged assignment; cap and pipeline reproducibility checks | General model superiority, biological validity of a mask, clinical validity, external validity, precision readiness, or real-world transformation of postprandial responses |
 | Task 1 method-lock contract and Task 3 benchmark implementation | Method/provenance infrastructure | Repository-local implementation | Computational feasibility | Implementation exists; no eligible real run-level outcome manifest and paired primary result table are available | Fail-closed readiness and reproducible analysis design | Completed external validation or empirical endpoint improvement |
 
 ## Frozen direct-validity requirements
@@ -26,12 +26,14 @@ The gate returns `direct_external_validity` only when one eligible run jointly
 establishes all of the following:
 
 1. Observed participant-by-meal outcomes with verified provenance and microbiome linkage.
-2. A passed run-level method lock and lowercase SHA-256 digests for the method-lock and outcome manifests.
-3. Disjoint development and test subject identifiers.
-4. Subject-held-out primary analyses for both `glucose_iAUC_2h` and `tg_6h_rise`.
-5. Locked attribute GMNPS versus `fcs_microbiome` RMSE improvements in the favourable direction, with 95% paired confidence intervals excluding zero.
-6. Completed Holm-adjusted tests at adjusted *P* <= 0.05 within the frozen two-endpoint family.
-7. Exactly 2,000 bootstrap and 2,000 permutation replicates, with at least 90% valid replicates for each procedure and endpoint.
+2. A production call using only `EvidenceGateArtifactPaths`; no caller-provided mapping or data frame can upgrade claims.
+3. Live Task 1/2/3 method-lock and trusted outcome-loader revalidation, plus an independently reviewed result-run manifest whose exact digest appears in the repository-fixed registry.
+4. Result-manifest hashes for paired results, detailed split audit, analysis status, outcome source, predictor frame, feature contract, validation config, Task 3 implementations and benchmark specification; all rows must bind to one run and one independently recomputed run binding.
+5. Disjoint development/test participant and transitive family/twin component sets recomputed from the hashed detailed split audit, with the audited participant universe matching the loaded outcomes.
+6. Exactly two subject-held-out primary RMSE rows, one each for `glucose_iAUC_2h` and `tg_6h_rise`, comparing locked attribute GMNPS with `fcs_microbiome`.
+7. RMSE differences in the favourable direction and the exact paired family/twin-component bootstrap method, with 95% intervals excluding zero.
+8. Holm values recomputed from raw paired permutation *P* values, passing at 0.05 in the frozen two-endpoint family; supplied adjusted values are cross-checked but never trusted.
+9. Exactly 2,000 bootstrap and 2,000 permutation replicates, with at least 90% valid replicates for each procedure and endpoint.
 
 GMrepo, ZOE ranks, knowledge graphs, simulations and predictor-only resources are
 supporting evidence and cannot satisfy or upgrade any of these requirements.
@@ -40,11 +42,20 @@ supporting evidence and cannot satisfy or upgrade any of these requirements.
 
 **Tier: `computational_feasibility` (fail closed).**
 
-The executable gate reports the following blockers:
+The machine-readable decision at
+`results/phase2/evidence-gate/current_gate_decision.json` was generated from the
+absence of real production artifacts and reports these blockers:
 
-- `eligible real observed participant-by-meal outcome manifest is missing`
-- `locked subject-held-out primary paired-results table is missing`
+- `eligible observed participant-by-meal outcomes are unavailable: predict_controlled_clinical_zenodo access_status=controlled_not_granted`
+- `run-level method-lock manifest path is missing`
+- `result-run manifest path is missing`
+- `paired primary results path is missing`
+- `hashed detailed split audit path is missing`
+- `analysis status path is missing`
 
 Therefore, no claim of transformation of postprandial response, precision readiness,
 clinical validity, direct response validity or external validity is permitted. No real
-participant-by-meal validation experiment is represented as completed.
+participant-by-meal validation experiment is represented as completed. Phase 3 must
+run `code/src/scripts/check_claim_policy.py` against every manuscript/build input using
+the bound decision and `claim_policy.json`; a violation or artifact-hash mismatch fails
+the check. Task 5 did not check or revise the current manuscript.
