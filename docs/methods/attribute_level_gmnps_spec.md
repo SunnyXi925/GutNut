@@ -97,7 +97,7 @@ The inverse used for an official FCS2 anchor is:
 fcs_to_unscaled(F) = -12.1 + (F - 1) * 47.1 / 99.
 ```
 
-## Unavailable and residualized attributes
+## Unavailable and fixed baseline attributes
 
 `iodine` and `trans_fat_percent_calories` are inactive because Table S9 reports
 that they were unavailable in FNDDS, FPED, and the flavonoid database. They are
@@ -105,14 +105,21 @@ not scored, imputed, or treated as zero. The mapping CSV preserves their source
 values and unavailability reason.
 
 An active attribute can still require data not present in a particular input
-bundle. `alpha_linolenic_acid` remains in the fixed residual when local 18:3 is
-not verified as ALA, and `total_flavonoids` remains there when the separate
-flavonoid source is absent. Food-ingredient attributes require FPED equivalents;
-additives require ingredient/additive records; processing attributes require
-processing or recipe records. Total sugar cannot stand in for added sugar, and
-rounded NOVA cannot stand in for the original energy-weighted mixed-dish value.
-Missing required data are therefore unavailable or fixed-residual inputs, never
-zero-filled substitutes.
+bundle. When local 18:3 is not verified as ALA, `alpha_linolenic_acid` is a
+fixed baseline attribute within a recomputed domain. It retains its supplied
+baseline point and still competes in the dynamically selected
+`specific_lipids` top three after other lipid points move. When the separate
+flavonoid source is absent, `total_flavonoids` is likewise a fixed baseline
+attribute within a recomputed domain: its fixed point remains in the
+`phytochemicals` weighted mean while mapped `total_carotenoids` may move. Neither
+attribute is assigned to `Q_j`.
+
+Food-ingredient attributes require FPED equivalents; additives require
+ingredient/additive records; processing attributes require processing or recipe
+records. Total sugar cannot stand in for added sugar, and rounded NOVA cannot
+stand in for the original energy-weighted mixed-dish value. Missing required
+data are therefore unavailable or fixed-baseline inputs, never zero-filled
+substitutes.
 
 ## Beta normalization and attribute response
 
@@ -186,9 +193,13 @@ L0_j = sum(d in recomputed domains, D0_jd)
 Q_j = U0_j - L0_j
 ```
 
-`Q_j` is fixed for that food. If the official S5 score is a rounded integer,
-`U0_j` is the score-implied latent anchor; it is not a claim about an unpublished
-raw FCS2 domain sum.
+`Q_j` is fixed for that food and contains the official-anchor contribution not
+represented by the selected recomputed domains, including whole domains held
+outside that set and any anchor discrepancy. It does not contain fixed baseline
+attributes inside a recomputed domain: those points are already included in
+`L0_j` and remain present when that domain is recomputed. If the official S5
+score is a rounded integer, `U0_j` is the score-implied latent anchor; it is not
+a claim about an unpublished raw FCS2 domain sum.
 
 After calibration, every selected domain is reaggregated from personalized
 native attribute points. Top-five/top-three membership is recalculated after
@@ -227,11 +238,13 @@ domain set, and final caps are fixed before validation. Held-out and validation
 beta are transformed with the frozen state and exact nutrient order; they are
 never appended to or used to refit that state.
 
-The method-lock manifest records the beta cohort ID, fit count, and calibration
-fit IDs hash. Its `validation_embargo` flag must be `true`: validation data,
-labels, responses, and derived summaries cannot be used to choose mappings,
-parameters, sensitivity modes, or revisions to this method lock. Validation is
-reserved for a later phase after this lock is signed.
+The method-lock manifest records the beta cohort ID, fit count, calibration fit
+IDs hash, `development_beta_sha256`, and `normalization_state_fingerprint` as
+the frozen fit state. Each scoring run separately records
+`scoring_beta_sha256` as run-instance provenance. Its `validation_embargo` flag
+must be `true`: validation data, labels, responses, and derived summaries cannot
+be used to choose mappings, parameters, sensitivity modes, or revisions to this
+method lock. Validation is reserved for a later phase after this lock is signed.
 
 ## FNDDS release and source boundary
 
@@ -287,15 +300,24 @@ Task 6. Run data hashes remain run-specific and are required by
 | Approved source | SHA-256 |
 | --- | --- |
 | `code/src/gmnps/scoring/fcs2_attribute_rules.py` | `60dcc7deb872d404700303aa01deec0dea344d6069e0fed14ae2bc4ceb3bdae0` |
-| `code/src/gmnps/scoring/fcs2_attribute_mapping.py` | `a31c412f4ccdff196801b8ca72575864d17d18ef5d92674d9f8ffca9c3391a61` |
+| `code/src/gmnps/scoring/fcs2_attribute_mapping.py` | `efaff176113d6db1d0d746230f60b8d82e0dc10e4aac842c1403921976823b9d` |
 | `code/src/gmnps/scoring/attribute_calibration.py` | `daf129b39f900e7693da09d16ae422fb82e9e4d27b5d065059a5e20af00b27a1` |
 | `code/src/gmnps/scoring/attribute_recomposition.py` | `f0db2e8febdd48ef2421a1286f84b2758d87e6d75250dbd6383ef8e3701d6ea1` |
-| `code/src/gmnps/scoring/attribute_gmnps.py` | `47797b1a5304757111a6a1a755194d05dc0bf57d9ca21e7b3c2b890ca546a1f5` |
+| `code/src/gmnps/scoring/attribute_gmnps.py` | `b2bb1ca5663c2f737c58de3a7d85c4d37c2ae43c99f9b8f4dd5f8179690eddd5` |
 | `code/src/configs/attribute_gmnps.yaml` | `f450453811653e074ee4143cf6d9a21b9e68a5512924490fe9c64bc5f402e390` |
 | `code/src/configs/fcs2_fndds_release_registry.json` | `621834bb75d91574bc8b408c21cd05ffb7adf15bd64241633c1cf3fff6481d13` |
 
 Every run must additionally record method and mapping versions, all input and
 linkage SHA-256 values, FNDDS releases and registry version, beta fit cohort,
-fit-ID hash, fixed parameters, and the validation embargo flag. The schema is a
-contract; Task 6 does not create an instance manifest because no instance path
-is within its authorized file ownership.
+fit-ID hash, development beta hash, normalization-state fingerprint, scoring
+beta hash, fixed parameters, and the validation embargo flag.
+
+## Phase 2 handoff gate
+
+Task 6 defines the contract but does not invent an instance without real run
+inputs. Phase 2 Task 1 must generate `method_lock_manifest.json` from the actual
+development beta, frozen normalization state, scoring beta, food bundle, and
+implementation bytes. Before any validation endpoint or label is read, its
+validator must recompute every applicable hash and fingerprint, validate the
+instance against `method_lock_manifest.schema.json`, and confirm the embargo.
+Any missing field or mismatch must fail closed and stop the validation run.

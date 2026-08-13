@@ -1,74 +1,92 @@
 import csv
 from dataclasses import asdict
+from hashlib import sha256
 import json
 from pathlib import Path
+import re
 
+from gmnps.scoring import attribute_calibration, attribute_recomposition
+from gmnps.scoring.attribute_gmnps import (
+    ATTRIBUTE_GMNPS_SCORING_VERSION,
+    FCS2_FNDDS_REGISTRY_VERSION,
+    _mapping_rows,
+)
 from gmnps.scoring.fcs2_attribute_mapping import (
     PRIMARY_ATTRIBUTE_MAPPINGS,
+    PRIMARY_MAPPING_VERSION,
     SENSITIVITY_ATTRIBUTE_MAPPINGS,
 )
-from gmnps.scoring.fcs2_attribute_rules import FCS2_RULES
+from gmnps.scoring import fcs2_attribute_rules
+from gmnps.scoring.fcs2_attribute_rules import (
+    FCS2_RULES,
+    NITRITE_RULE_PRIMARY_VERSION,
+    NITRITE_RULE_TABLE_SENSITIVITY_VERSION,
+)
+from gmnps.scoring.masks import PRIMARY_MASK_VERSION
 
 
 ROOT = Path(__file__).resolve().parents[3]
 SCHEMA_PATH = ROOT / "docs/methods/method_lock_manifest.schema.json"
 MAPPING_PATH = ROOT / "docs/methods/attribute_mapping_table.csv"
 SPEC_PATH = ROOT / "docs/methods/attribute_level_gmnps_spec.md"
+PHASE_2_PLAN_PATH = (
+    ROOT / "docs/superpowers/plans/2026-08-13-predict-zoe-data-validation.md"
+)
+CONFIG_PATH = ROOT / "code/src/configs/attribute_gmnps.yaml"
+RELEASE_REGISTRY_PATH = ROOT / "code/src/configs/fcs2_fndds_release_registry.json"
 
-CANONICAL_FNDDS_RELEASES = [
-    "FNDDS 2001-2002",
-    "FNDDS 2003-2004",
-    "FNDDS 2005-2006",
-    "FNDDS 2007-2008",
-    "FNDDS 2009-2010",
-    "FNDDS 2011-2012",
-    "FNDDS 2013-2014",
-    "FNDDS 2015-2016",
-    "FNDDS 2017-2018",
-]
+APPROVED_IMPLEMENTATION_SOURCES = (
+    "code/src/gmnps/scoring/fcs2_attribute_rules.py",
+    "code/src/gmnps/scoring/fcs2_attribute_mapping.py",
+    "code/src/gmnps/scoring/attribute_calibration.py",
+    "code/src/gmnps/scoring/attribute_recomposition.py",
+    "code/src/gmnps/scoring/attribute_gmnps.py",
+    "code/src/configs/attribute_gmnps.yaml",
+    "code/src/configs/fcs2_fndds_release_registry.json",
+)
 
-LOCKED_FIXED_PARAMETERS = {
-    "baseline": "FoodCompass2.0",
-    "primary_method": "attribute_recomposition",
-    "beta_normalization_method": "median_mad_iqr_sd_v1",
-    "beta_mad_normal_consistency": 1.4826,
-    "beta_iqr_normal_consistency": 1.349,
-    "beta_temperature": 2.0,
-    "attribute_response_temperature": 2.0,
-    "attribute_point_mode": "primary",
-    "attribute_point_fraction_cap": 0.20,
-    "attribute_point_fraction_sensitivity": [0.10, 0.30],
-    "final_cap_mode": "primary",
-    "final_delta_cap": 12.0,
-    "final_delta_cap_sensitivity": [8.0, 15.0],
-    "carbohydrate_policy": "sensitivity_proxy_only",
-    "clinical_experiment": False,
-    "recomputed_domains": [
-        "nutrient_ratios",
-        "vitamins",
-        "minerals",
-        "specific_lipids",
-        "fiber_and_protein",
-        "phytochemicals",
-    ],
-    "recomposition_method": "native_domain_fixed_residual_v1",
-    "mask_version": "expert_revised_v4_dual_channel",
-    "nitrite_primary_rule": "footnote_50",
-    "nitrite_sensitivity_rule": "table_25",
-    "fcs_unscaled_min": -12.1,
-    "fcs_unscaled_max": 35.0,
-    "fcs_min": 1.0,
-    "fcs_max": 100.0,
-    "top_k_vitamins": 5,
-    "top_k_minerals": 5,
-    "top_k_specific_lipids": 3,
-    "specific_lipids_domain_weight": 0.5,
-    "phytochemicals_domain_weight": 0.5,
-}
+
+def _runtime_fixed_parameters():
+    config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    point_modes = attribute_calibration.ATTRIBUTE_POINT_FRACTION_MODES
+    cap_modes = attribute_recomposition.FINAL_DEVIATION_CAP_MODES
+    top_k = fcs2_attribute_rules._TOP_K
+    domain_weights = fcs2_attribute_rules._DOMAIN_WEIGHTS
+    return {
+        "baseline": config["baseline"],
+        "primary_method": config["primary_method"],
+        "beta_normalization_method": attribute_calibration.BETA_NORMALIZATION_METHOD_VERSION,
+        "beta_mad_normal_consistency": attribute_calibration._MAD_NORMAL_CONSISTENCY,
+        "beta_iqr_normal_consistency": attribute_calibration._IQR_NORMAL_CONSISTENCY,
+        "beta_temperature": attribute_calibration.LOCKED_BETA_TEMPERATURE,
+        "attribute_point_mode": config["attribute_point_mode"],
+        "attribute_point_fraction_cap": point_modes["primary"],
+        "attribute_point_fraction_sensitivity": [point_modes["low"], point_modes["high"]],
+        "final_cap_mode": config["final_cap_mode"],
+        "final_delta_cap": cap_modes["primary"],
+        "final_delta_cap_sensitivity": [cap_modes["low"], cap_modes["high"]],
+        "carbohydrate_policy": config["carbohydrate_policy"],
+        "clinical_experiment": config["clinical_experiment"],
+        "recomputed_domains": config["recomputed_domains"],
+        "recomposition_method": attribute_recomposition.RECOMPOSITION_METHOD_VERSION,
+        "mask_version": PRIMARY_MASK_VERSION,
+        "nitrite_primary_rule": NITRITE_RULE_PRIMARY_VERSION,
+        "nitrite_sensitivity_rule": NITRITE_RULE_TABLE_SENSITIVITY_VERSION,
+        "fcs_unscaled_min": fcs2_attribute_rules.UNSCALED_MIN,
+        "fcs_unscaled_max": fcs2_attribute_rules.UNSCALED_MAX,
+        "fcs_min": fcs2_attribute_rules.FCS_MIN,
+        "fcs_max": fcs2_attribute_rules.FCS_MAX,
+        "top_k_vitamins": top_k["vitamins"],
+        "top_k_minerals": top_k["minerals"],
+        "top_k_specific_lipids": top_k["specific_lipids"],
+        "specific_lipids_domain_weight": domain_weights["specific_lipids"],
+        "phytochemicals_domain_weight": domain_weights["phytochemicals"],
+    }
 
 
 def test_lock_manifest_schema_requires_complete_frozen_provenance():
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    release_registry = json.loads(RELEASE_REGISTRY_PATH.read_text(encoding="utf-8"))
 
     assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
     assert schema["additionalProperties"] is False
@@ -80,19 +98,24 @@ def test_lock_manifest_schema_requires_complete_frozen_provenance():
         "fndds_registry_version",
         "beta_fit_cohort",
         "calibration_fit_ids_sha256",
+        "development_beta_sha256",
+        "normalization_state_fingerprint",
+        "scoring_beta_sha256",
         "mapping_version",
+        "implementation_source_sha256",
         "fixed_parameters",
         "validation_embargo",
     }
 
     properties = schema["properties"]
     assert properties["manifest_schema_version"]["const"] == "attribute-gmnps-method-lock-v1"
-    assert properties["method_version"]["const"] == "attribute-gmnps-v1"
-    assert properties["mapping_version"]["const"] == "expert_reviewed_attribute_mapping_v1"
-    assert properties["fndds_registry_version"]["const"] == "fcs2-fndds-release-registry-v1"
-    assert properties["fndds_releases"]["const"] == CANONICAL_FNDDS_RELEASES
+    assert properties["method_version"]["const"] == ATTRIBUTE_GMNPS_SCORING_VERSION
+    assert properties["mapping_version"]["const"] == PRIMARY_MAPPING_VERSION
+    assert properties["fndds_registry_version"]["const"] == FCS2_FNDDS_REGISTRY_VERSION
+    assert properties["fndds_registry_version"]["const"] == release_registry["registry_version"]
+    assert properties["fndds_releases"]["const"] == release_registry["canonical_release_set"]
     assert properties["validation_embargo"]["const"] is True
-    assert properties["fixed_parameters"]["const"] == LOCKED_FIXED_PARAMETERS
+    assert properties["fixed_parameters"]["const"] == _runtime_fixed_parameters()
 
     hashes = properties["source_hashes"]
     assert hashes["additionalProperties"] is False
@@ -112,19 +135,34 @@ def test_lock_manifest_schema_requires_complete_frozen_provenance():
     assert cohort["additionalProperties"] is False
     assert set(cohort["required"]) == {"cohort_id", "fit_n"}
     assert properties["calibration_fit_ids_sha256"]["pattern"] == "^[0-9a-f]{64}$"
+    for field in (
+        "development_beta_sha256",
+        "normalization_state_fingerprint",
+        "scoring_beta_sha256",
+    ):
+        assert properties[field]["pattern"] == "^[0-9a-f]{64}$"
+    assert "frozen fit state" in properties["development_beta_sha256"]["description"].lower()
+    assert "frozen fit state" in properties["normalization_state_fingerprint"]["description"].lower()
+    assert "run instance" in properties["scoring_beta_sha256"]["description"].lower()
 
 
 def test_schema_has_no_outcome_dependent_acceptance_criteria():
-    schema_text = SCHEMA_PATH.read_text(encoding="utf-8").lower()
-    forbidden = {
-        "target_rank_shift",
-        "target_mean_shift",
-        "response_advantage",
-        "minimum_auc",
-        "minimum_spearman",
-        "acceptance_threshold",
-    }
-    assert not any(term in schema_text for term in forbidden)
+    locked_text = "\n".join(
+        path.read_text(encoding="utf-8").lower() for path in (SCHEMA_PATH, SPEC_PATH)
+    )
+    forbidden_patterns = (
+        r"\baccuracy\b",
+        r"\bauroc\b",
+        r"\bauc\b",
+        r"rank[\s_-]*shift",
+        r"mean[\s_-]*shift",
+        r"response[\s_-]*advantage",
+        r"select[\s_-]*best",
+        r"minimum[\s_-]*performance",
+        r"minimum[\s_-]*(auc|auroc|accuracy|spearman)",
+        r"acceptance[\s_-]*threshold",
+    )
+    assert not any(re.search(pattern, locked_text) for pattern in forbidden_patterns)
 
 
 def _mapping_payload(rows, attribute):
@@ -185,9 +223,9 @@ def test_mapping_table_is_a_complete_runtime_registry_export():
             PRIMARY_ATTRIBUTE_MAPPINGS, rule.name
         )
         expected_sensitivity = {
-            version: _mapping_payload(mappings, rule.name)
-            for version, mappings in SENSITIVITY_ATTRIBUTE_MAPPINGS.items()
-            if _mapping_payload(mappings, rule.name)
+            version: _mapping_payload(_mapping_rows(version), rule.name)
+            for version in SENSITIVITY_ATTRIBUTE_MAPPINGS
+            if _mapping_payload(_mapping_rows(version), rule.name)
         }
         assert json.loads(row["sensitivity_mappings_json"]) == expected_sensitivity
 
@@ -218,31 +256,59 @@ def test_method_spec_covers_locked_science_and_migration_boundary():
         "sensitivity comparator only",
         "FNDDS 2021-2023",
         "non-production",
+        "fixed baseline attribute within a recomputed domain",
+        "Phase 2 Task 1",
+        "before any validation endpoint or label is read",
+        "fail closed",
     }
-    assert all(phrase in text for phrase in required_phrases)
+    assert all(phrase.lower() in text.lower() for phrase in required_phrases)
 
     for rule_name in FCS2_RULES:
         assert f"`{rule_name}`" in text or rule_name in MAPPING_PATH.read_text(encoding="utf-8")
 
-    approved_sources = {
-        "code/src/gmnps/scoring/fcs2_attribute_rules.py": "60dcc7deb872d404700303aa01deec0dea344d6069e0fed14ae2bc4ceb3bdae0",
-        "code/src/gmnps/scoring/fcs2_attribute_mapping.py": "a31c412f4ccdff196801b8ca72575864d17d18ef5d92674d9f8ffca9c3391a61",
-        "code/src/gmnps/scoring/attribute_calibration.py": "daf129b39f900e7693da09d16ae422fb82e9e4d27b5d065059a5e20af00b27a1",
-        "code/src/gmnps/scoring/attribute_recomposition.py": "f0db2e8febdd48ef2421a1286f84b2758d87e6d75250dbd6383ef8e3701d6ea1",
-        "code/src/gmnps/scoring/attribute_gmnps.py": "47797b1a5304757111a6a1a755194d05dc0bf57d9ca21e7b3c2b890ca546a1f5",
-        "code/src/configs/attribute_gmnps.yaml": "f450453811653e074ee4143cf6d9a21b9e68a5512924490fe9c64bc5f402e390",
-        "code/src/configs/fcs2_fndds_release_registry.json": "621834bb75d91574bc8b408c21cd05ffb7adf15bd64241633c1cf3fff6481d13",
-    }
-    for source, digest in approved_sources.items():
-        assert source in text
-        assert digest in text
+    assert "remains in the fixed residual" not in text
 
-    forbidden = {
-        "target rank shift",
-        "target mean shift",
-        "response advantage",
-        "minimum auc",
-        "minimum spearman",
-        "acceptance threshold",
+
+def test_recorded_implementation_hashes_match_real_source_bytes():
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    schema_hashes = schema["properties"]["implementation_source_sha256"]["const"]
+    spec_hashes = dict(
+        re.findall(
+            r"\| `([^`]+)` \| `([0-9a-f]{64})` \|",
+            SPEC_PATH.read_text(encoding="utf-8"),
+        )
+    )
+    actual_hashes = {
+        source: sha256((ROOT / source).read_bytes()).hexdigest()
+        for source in APPROVED_IMPLEMENTATION_SOURCES
     }
-    assert not any(term in text.lower() for term in forbidden)
+
+    assert schema_hashes == actual_hashes
+    assert {source: spec_hashes[source] for source in actual_hashes} == actual_hashes
+
+
+def test_runtime_carbohydrate_proxy_is_single_mac_definition():
+    static_rows = SENSITIVITY_ATTRIBUTE_MAPPINGS["carbohydrate_proxy"]
+    runtime_rows = _mapping_rows("carbohydrate_proxy")
+    assert runtime_rows is static_rows
+    carbohydrate = [row for row in runtime_rows if row.nutrient == "Carbohydrate (g)"]
+    assert len(carbohydrate) == 1
+    assert carbohydrate[0].role == "effect"
+    assert carbohydrate[0].channel == "MAC"
+
+
+def test_phase_2_plan_requires_manifest_gate_before_label_inspection():
+    plan = PHASE_2_PLAN_PATH.read_text(encoding="utf-8")
+    task_1 = plan.split("### Task 1:", 1)[1].split("### Task 2:", 1)[0].lower()
+    required = {
+        "method_lock_manifest.json",
+        "development_beta_sha256",
+        "normalization_state_fingerprint",
+        "scoring_beta_sha256",
+        "before any validation endpoint or label is read",
+        "recompute",
+        "fail closed",
+        "stop",
+    }
+    assert all(phrase.lower() in task_1 for phrase in required)
+    assert task_1.index("method_lock_manifest.json") < task_1.index("endpoint or label is read")

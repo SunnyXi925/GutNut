@@ -85,6 +85,15 @@ def test_primary_effect_allocations_sum_to_one_per_nutrient():
     validate_attribute_mappings(PRIMARY_ATTRIBUTE_MAPPINGS)
 
 
+def test_carbohydrate_proxy_registry_has_its_effective_mac_channel():
+    rows = SENSITIVITY_ATTRIBUTE_MAPPINGS["carbohydrate_proxy"]
+    carbohydrate = [row for row in rows if row.nutrient == "Carbohydrate (g)"]
+
+    assert len(carbohydrate) == 1
+    assert carbohydrate[0].role == "effect"
+    assert carbohydrate[0].channel == "MAC"
+
+
 def test_primary_exclusions_and_role_only_variables_have_zero_allocation():
     rows_by_nutrient: dict[str, list[AttributeCalibrationMapping]] = {}
     for row in PRIMARY_ATTRIBUTE_MAPPINGS:
@@ -488,7 +497,7 @@ def test_reconstruction_status_covers_every_active_operational_rule_once():
     assert status["attribute"].is_unique
     assert set(status["attribute"]) == active
     assert status.shape[0] == 54
-    assert status["missing_input_policy"].eq("unavailable_or_fixed_residual").all()
+    assert status["missing_input_policy"].eq("unavailable_or_fixed_baseline").all()
 
 
 def test_reconstruction_status_counts_and_scientific_non_substitution_labels():
@@ -497,9 +506,12 @@ def test_reconstruction_status_counts_and_scientific_non_substitution_labels():
     assert status["reconstruction_status"].value_counts().to_dict() == {
         "nutrient_derived": 30,
         "auxiliary_ingredient_or_processing_required": 22,
-        "fixed_residual": 2,
+        "fixed_baseline_in_recomputed_domain": 2,
     }
     assert "total sugars cannot substitute" in status.loc["added_sugar_percent_calories", "reason"]
     assert "rounded NOVA cannot substitute" in status.loc["nova_processing_level", "reason"]
     assert "18:3 is not verified ALA" in status.loc["alpha_linolenic_acid", "reason"]
-    assert status.loc["total_flavonoids", "reconstruction_status"] == "fixed_residual"
+    assert (
+        status.loc["total_flavonoids", "reconstruction_status"]
+        == "fixed_baseline_in_recomputed_domain"
+    )

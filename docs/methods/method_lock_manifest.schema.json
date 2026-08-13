@@ -13,7 +13,11 @@
     "fndds_registry_version",
     "beta_fit_cohort",
     "calibration_fit_ids_sha256",
+    "development_beta_sha256",
+    "normalization_state_fingerprint",
+    "scoring_beta_sha256",
     "mapping_version",
+    "implementation_source_sha256",
     "fixed_parameters",
     "validation_embargo"
   ],
@@ -75,8 +79,35 @@
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
     },
+    "development_beta_sha256": {
+      "description": "SHA-256 of the canonical development beta matrix bound into the frozen fit state.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "normalization_state_fingerprint": {
+      "description": "Content fingerprint of the complete frozen fit state produced from development beta only.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "scoring_beta_sha256": {
+      "description": "SHA-256 of the canonical held-out scoring beta matrix supplied by this run instance.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
     "mapping_version": {
       "const": "expert_reviewed_attribute_mapping_v1"
+    },
+    "implementation_source_sha256": {
+      "description": "Frozen implementation and configuration bytes used by this method version.",
+      "const": {
+        "code/src/gmnps/scoring/fcs2_attribute_rules.py": "60dcc7deb872d404700303aa01deec0dea344d6069e0fed14ae2bc4ceb3bdae0",
+        "code/src/gmnps/scoring/fcs2_attribute_mapping.py": "efaff176113d6db1d0d746230f60b8d82e0dc10e4aac842c1403921976823b9d",
+        "code/src/gmnps/scoring/attribute_calibration.py": "daf129b39f900e7693da09d16ae422fb82e9e4d27b5d065059a5e20af00b27a1",
+        "code/src/gmnps/scoring/attribute_recomposition.py": "f0db2e8febdd48ef2421a1286f84b2758d87e6d75250dbd6383ef8e3701d6ea1",
+        "code/src/gmnps/scoring/attribute_gmnps.py": "b2bb1ca5663c2f737c58de3a7d85c4d37c2ae43c99f9b8f4dd5f8179690eddd5",
+        "code/src/configs/attribute_gmnps.yaml": "f450453811653e074ee4143cf6d9a21b9e68a5512924490fe9c64bc5f402e390",
+        "code/src/configs/fcs2_fndds_release_registry.json": "621834bb75d91574bc8b408c21cd05ffb7adf15bd64241633c1cf3fff6481d13"
+      }
     },
     "fixed_parameters": {
       "const": {
@@ -86,7 +117,6 @@
         "beta_mad_normal_consistency": 1.4826,
         "beta_iqr_normal_consistency": 1.349,
         "beta_temperature": 2.0,
-        "attribute_response_temperature": 2.0,
         "attribute_point_mode": "primary",
         "attribute_point_fraction_cap": 0.2,
         "attribute_point_fraction_sensitivity": [0.1, 0.3],

@@ -159,6 +159,7 @@ def _carbohydrate_proxy_variant() -> tuple[AttributeCalibrationMapping, ...]:
                 replace(
                     row,
                     allocation_weight=1.0,
+                    channel="MAC",
                     role=_EFFECT_ROLE,
                     version=CARBOHYDRATE_PROXY_MAPPING_VERSION,
                 )
@@ -612,12 +613,14 @@ def build_food_specific_response(
     return FoodSpecificResponse(response=response, diagnostics=pd.DataFrame(diagnostic_rows))
 
 
-_FIXED_RESIDUAL_REASONS = {
+_FIXED_BASELINE_REASONS = {
     "alpha_linolenic_acid": (
-        "18:3 is not verified ALA in the local source, so alpha-linolenic acid remains in the fixed residual."
+        "18:3 is not verified ALA in the local source, so alpha-linolenic acid is a fixed "
+        "baseline attribute within a recomputed domain."
     ),
     "total_flavonoids": (
-        "Total flavonoids are absent from N_food_nutrient_full and require the separate source database."
+        "Total flavonoids are absent from N_food_nutrient_full and require the separate source "
+        "database, so they are a fixed baseline attribute within a recomputed domain."
     ),
 }
 _AUXILIARY_REASONS = {
@@ -638,10 +641,10 @@ def reconstruction_status_table() -> pd.DataFrame:
     for attribute, rule in FCS2_RULES.items():
         if not rule.active:
             continue
-        if attribute in _FIXED_RESIDUAL_REASONS:
-            status = "fixed_residual"
-            source = "official Food Compass baseline residual"
-            reason = _FIXED_RESIDUAL_REASONS[attribute]
+        if attribute in _FIXED_BASELINE_REASONS:
+            status = "fixed_baseline_in_recomputed_domain"
+            source = "official Food Compass baseline attribute points"
+            reason = _FIXED_BASELINE_REASONS[attribute]
         elif rule.domain in auxiliary_domains:
             status = "auxiliary_ingredient_or_processing_required"
             if rule.domain == "food_ingredients":
@@ -665,7 +668,7 @@ def reconstruction_status_table() -> pd.DataFrame:
                 "reconstruction_status": status,
                 "required_source": source,
                 "reason": reason,
-                "missing_input_policy": "unavailable_or_fixed_residual",
+                "missing_input_policy": "unavailable_or_fixed_baseline",
             }
         )
     return pd.DataFrame(rows)

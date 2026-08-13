@@ -1,7 +1,7 @@
 """Public, provenance-bound API for attribute-level GMNPS scoring."""
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, replace as dataclass_replace
+from dataclasses import asdict, dataclass
 from hashlib import sha256
 import json
 from math import isfinite
@@ -213,18 +213,9 @@ def _mapping_rows(version: str):
     if version == PRIMARY_MAPPING_VERSION:
         return PRIMARY_ATTRIBUTE_MAPPINGS
     try:
-        rows = SENSITIVITY_ATTRIBUTE_MAPPINGS[version]
+        return SENSITIVITY_ATTRIBUTE_MAPPINGS[version]
     except (KeyError, TypeError) as error:
         raise ValueError(f"unknown reviewed mapping version: {version}") from error
-    if version == "carbohydrate_proxy":
-        # The sensitivity activates the carbohydrate side of the reviewed MAC ratio.
-        rows = tuple(
-            dataclass_replace(row, channel="MAC")
-            if row.role == "effect" and row.nutrient == "Carbohydrate (g)"
-            else row
-            for row in rows
-        )
-    return rows
 
 
 def _effect_nutrients_by_channel(mapping_version: str) -> dict[str, tuple[str, ...]]:
