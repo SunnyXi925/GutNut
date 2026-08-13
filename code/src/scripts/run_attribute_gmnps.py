@@ -35,14 +35,13 @@ from gmnps.scoring.attribute_gmnps import (  # noqa: E402
     _fingerprint,
     _frame_payload,
     fit_attribute_gmnps,
+    load_food_attribute_bundle_from_bytes,
     score_attribute_gmnps,
     summarize_attribute_gmnps_foods,
 )
 from gmnps.scoring.fcs2_attribute_mapping import (  # noqa: E402
     PRIMARY_MAPPING_VERSION,
-    reconstruction_status_table,
 )
-from gmnps.scoring.fcs2_attribute_rules import FCS2_RULES, NOT_CALCULATED  # noqa: E402
 
 
 _INPUT_NAMES = (
@@ -51,6 +50,7 @@ _INPUT_NAMES = (
     "food_metadata",
     "baseline_attribute_points",
     "food_exposures",
+    "effective_attribute_weights",
 )
 _LOCKED_CONFIG = {
     "primary_method": PRIMARY_METHOD,
@@ -63,6 +63,8 @@ _LOCKED_CONFIG = {
     "final_delta_cap": 12,
     "final_delta_cap_sensitivity": [8, 15],
     "beta_temperature": 2,
+    "score_centering": "none",
+    "beta_centering": "development_median",
     "carbohydrate_policy": "sensitivity_proxy_only",
     "clinical_experiment": False,
     "recomputed_domains": [
@@ -226,104 +228,38 @@ def _read_indexed_csv(blob: InputBlob, index_name: str) -> pd.DataFrame:
     return frame.sort_index(kind="mergesort")
 
 
-def _restore_not_calculated(
-    baseline: pd.DataFrame,
-    serialization: dict[str, object],
-) -> pd.DataFrame:
-    mask_rows = serialization["baseline_attribute_points_mask"]
-    canonical_mask = []
-    seen = set()
-    for row in mask_rows:
-        if not isinstance(row, dict) or set(row) != {"food_id", "attribute"}:
-            raise ValueError("NOT_CALCULATED mask rows must name food_id and attribute")
-        key = (row["food_id"], row["attribute"])
-        if key in seen:
-            raise ValueError("NOT_CALCULATED mask contains duplicate rows")
-        seen.add(key)
-        canonical_mask.append(key)
-    if canonical_mask != sorted(canonical_mask):
-        raise ValueError("NOT_CALCULATED mask must use canonical sorted order")
-
-    token_positions = []
-    for food_id, row in baseline.iterrows():
-        for attribute, value in row.items():
-            if value == NOT_CALCULATED_TOKEN:
-                token_positions.append((food_id, attribute))
-    token_positions.sort()
-    if token_positions != canonical_mask:
-        raise ValueError(
-            "NOT_CALCULATED token positions must exactly match the explicit manifest mask"
-        )
-
-    restored = baseline.copy()
-    for food_id, attribute in token_positions:
-        if attribute not in FCS2_RULES or FCS2_RULES[attribute].kind != "log_ratio":
-            raise ValueError(
-                "NOT_CALCULATED token is allowed only for ratio attributes"
-            )
-        restored[attribute] = restored[attribute].astype(object)
-        restored.loc[food_id, attribute] = NOT_CALCULATED
-    for attribute in restored.columns:
-        for food_id, value in restored[attribute].items():
-            if value is NOT_CALCULATED:
-                continue
-            try:
-                restored.loc[food_id, attribute] = float(value)
-            except (TypeError, ValueError) as error:
-                raise ValueError(
-                    f"baseline_attribute_points[{food_id}, {attribute}] must be numeric "
-                    "or the declared NOT_CALCULATED token"
-                ) from error
-    return restored
-
-
 def load_inputs(
     blobs: dict[str, InputBlob],
     manifest: dict[str, object],
 ) -> tuple[pd.DataFrame, pd.DataFrame, FoodAttributeBundle]:
     development = _read_indexed_csv(blobs["development_beta"], "individual_id")
     scoring = _read_indexed_csv(blobs["score_beta"], "individual_id")
-    metadata = _read_indexed_csv(blobs["food_metadata"], "food_id")
-    baseline = _read_indexed_csv(blobs["baseline_attribute_points"], "food_id")
-    baseline = _restore_not_calculated(
-        baseline, manifest["not_calculated_serialization"]
-    )
-    exposures = _read_indexed_csv(blobs["food_exposures"], "food_id")
     for label, frame in (
         ("development_beta", development),
         ("score_beta", scoring),
-        ("food_metadata", metadata),
-        ("food_exposures", exposures),
     ):
         if frame.astype(str).eq(NOT_CALCULATED_TOKEN).any().any():
             raise ValueError(f"NOT_CALCULATED token is prohibited in {label}")
-    exposures.attrs["basis"] = "per_100_kcal"
-    if "FCS2" not in metadata:
-        raise ValueError("food_metadata must contain official FCS2")
-    official = metadata["FCS2"].copy()
-    official.name = "FCS2"
-    source_hashes = {
-        "official_fcs": blobs["food_metadata"].sha256,
-        "food_metadata": blobs["food_metadata"].sha256,
-        "baseline_attribute_points": blobs["baseline_attribute_points"].sha256,
-        "food_exposures": blobs["food_exposures"].sha256,
-        "input_manifest": blobs["input_manifest"].sha256,
-        "development_beta": blobs["development_beta"].sha256,
-        "score_beta": blobs["score_beta"].sha256,
-    }
-    bundle = FoodAttributeBundle(
-        official_fcs=official,
-        baseline_points=baseline,
-        food_exposures=exposures,
-        food_metadata=metadata,
-        fndds_releases=tuple(manifest["fndds_releases"]),
-        source_hashes=source_hashes,
-        nutrient_units=dict(manifest["nutrient_units"]),
-        exposure_basis=str(manifest["exposure_basis"]),
-        reconstruction_status=reconstruction_status_table(),
-        production_label=str(manifest["production_label"]),
-        registry_version=str(manifest["registry_version"]),
-        food_source_linkage_sha256=str(manifest["food_source_linkage_sha256"]),
+    bundle = load_food_attribute_bundle_from_bytes(
+        {
+            name: blobs[name].data
+            for name in (
+                "food_metadata",
+                "baseline_attribute_points",
+                "food_exposures",
+                "effective_attribute_weights",
+            )
+        },
+        input_manifest_bytes=blobs["input_manifest"].data,
+    )
+    bundle = replace(
+        bundle,
+        source_hashes={
+            **bundle.source_hashes,
+            "development_beta": blobs["development_beta"].sha256,
+            "score_beta": blobs["score_beta"].sha256,
+        },
+        fingerprint="",
     )
     return development, scoring, bundle
 
@@ -341,6 +277,9 @@ def _subset_bundle(bundle: FoodAttributeBundle, food_ids: list[str]) -> FoodAttr
         official_fcs=bundle.official_fcs.loc[food_ids].copy(),
         baseline_points=bundle.baseline_points.loc[food_ids].copy(),
         food_exposures=exposures,
+        effective_attribute_weights=bundle.effective_attribute_weights.loc[
+            food_ids
+        ].copy(),
         food_metadata=bundle.food_metadata.loc[food_ids].copy(),
         fingerprint="",
     )
@@ -636,6 +575,7 @@ def run(args: argparse.Namespace) -> AttributeGMNPSResult:
         "food_metadata": args.food_metadata,
         "baseline_attribute_points": args.baseline_attribute_points,
         "food_exposures": args.food_exposures,
+        "effective_attribute_weights": args.effective_attribute_weights,
         "input_manifest": args.input_manifest,
         "config": args.config,
     }
@@ -690,6 +630,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--food-metadata", type=Path, required=True)
     parser.add_argument("--baseline-attribute-points", type=Path, required=True)
     parser.add_argument("--food-exposures", type=Path, required=True)
+    parser.add_argument("--effective-attribute-weights", type=Path, required=True)
     parser.add_argument("--input-manifest", type=Path, required=True)
     parser.add_argument(
         "--config",

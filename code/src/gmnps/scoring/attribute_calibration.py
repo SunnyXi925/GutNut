@@ -108,6 +108,8 @@ class AttributeCalibrationResult:
 
     points: pd.DataFrame
     deltas: pd.DataFrame
+    effective_attribute_weights: pd.DataFrame
+    effective_weights_fingerprint: str
     diagnostics: pd.DataFrame
     normalization_fingerprint: str
     mapping_version: str
@@ -221,6 +223,8 @@ def _calibration_fingerprint(
     points: pd.DataFrame,
     deltas: pd.DataFrame,
     diagnostics: pd.DataFrame,
+    effective_attribute_weights: pd.DataFrame,
+    effective_weights_fingerprint: str,
     normalization_fingerprint: str,
     mapping_version: str,
     reviewed_targets: tuple[str, ...],
@@ -234,6 +238,10 @@ def _calibration_fingerprint(
             "calibration_mode": calibration_mode,
             "deltas": _frame_payload(deltas),
             "diagnostics": _frame_payload(diagnostics),
+            "effective_attribute_weights": _frame_payload(
+                effective_attribute_weights
+            ),
+            "effective_weights_fingerprint": effective_weights_fingerprint,
             "mapping_version": mapping_version,
             "normalization_fingerprint": normalization_fingerprint,
             "points": _frame_payload(points),
@@ -603,6 +611,9 @@ def validate_calibration_result(
     points = _require_frame(result.points, "calibration points")
     deltas = _require_frame(result.deltas, "calibration deltas")
     diagnostics = _require_frame(result.diagnostics, "calibration diagnostics")
+    effective_weights = _require_frame(
+        result.effective_attribute_weights, "effective_attribute_weights"
+    )
     if not isinstance(points.index, pd.MultiIndex) or points.index.nlevels != 2:
         raise ValueError("calibration points must use an individual_id, food_id index")
     if tuple(points.index.names) != ("individual_id", "food_id"):
@@ -613,6 +624,30 @@ def validate_calibration_result(
         raise ValueError("calibration points must contain the exact active attribute labels")
     if not points.columns.equals(deltas.columns):
         raise ValueError("calibration point and delta attribute labels must be identical")
+    expected_food_index = pd.Index(
+        tuple(dict.fromkeys(points.index.get_level_values("food_id"))),
+        name="food_id",
+    )
+    if (
+        tuple(effective_weights.columns) != _ACTIVE_ATTRIBUTES
+        or not effective_weights.index.equals(expected_food_index)
+    ):
+        raise ValueError(
+            "effective_attribute_weights must use canonical food and attribute labels"
+        )
+    numeric_effective_weights = _finite_numeric_frame(
+        effective_weights, "effective_attribute_weights"
+    )
+    if np.any(numeric_effective_weights <= 0.0):
+        raise ValueError("effective_attribute_weights must be greater than zero")
+    expected_weights_fingerprint = _sha256_payload(
+        _frame_payload(effective_weights)
+    )
+    if (
+        not _is_sha256(result.effective_weights_fingerprint)
+        or result.effective_weights_fingerprint != expected_weights_fingerprint
+    ):
+        raise ValueError("effective attribute weight fingerprint is inconsistent")
     for individual_id, food_id in points.index:
         if not isinstance(individual_id, str) or not individual_id:
             raise ValueError("calibration individual IDs must be nonempty strings")
@@ -731,6 +766,8 @@ def validate_calibration_result(
         points=points,
         deltas=deltas,
         diagnostics=diagnostics,
+        effective_attribute_weights=effective_weights,
+        effective_weights_fingerprint=result.effective_weights_fingerprint,
         normalization_fingerprint=result.normalization_fingerprint,
         mapping_version=result.mapping_version,
         reviewed_targets=result.reviewed_targets,
@@ -751,6 +788,7 @@ def calibrate_attribute_points(
     attribute_responses: AttributeResponseResult,
     *,
     mode: str = "primary",
+    effective_attribute_weights: pd.DataFrame | None = None,
 ) -> AttributeCalibrationResult:
     """Apply one locked range-based mode to native Food Compass points."""
 
@@ -773,6 +811,31 @@ def calibrate_attribute_points(
     response_foods = set(responses.index.get_level_values("food_id"))
     if baseline_foods != response_foods:
         raise ValueError("baseline_points must contain the exact response food IDs")
+    if effective_attribute_weights is None:
+        effective_attribute_weights = pd.DataFrame(
+            {
+                attribute: [float(FCS2_RULES[attribute].weight)]
+                * len(baseline_points)
+                for attribute in _ACTIVE_ATTRIBUTES
+            },
+            index=baseline_points.index.copy(),
+        )
+    else:
+        effective_attribute_weights = _require_frame(
+            effective_attribute_weights, "effective_attribute_weights"
+        ).reindex(index=baseline_points.index, columns=_ACTIVE_ATTRIBUTES)
+    if effective_attribute_weights.isna().any().any():
+        raise ValueError(
+            "effective_attribute_weights must exactly cover baseline foods and attributes"
+        )
+    numeric_effective_weights = _finite_numeric_frame(
+        effective_attribute_weights, "effective_attribute_weights"
+    )
+    if np.any(numeric_effective_weights <= 0.0):
+        raise ValueError("effective_attribute_weights must be greater than zero")
+    effective_weights_fingerprint = _sha256_payload(
+        _frame_payload(effective_attribute_weights)
+    )
 
     point_columns: dict[str, list[object]] = {column: [] for column in baseline_points.columns}
     delta_columns: dict[str, list[object]] = {column: [] for column in baseline_points.columns}
@@ -857,6 +920,8 @@ def calibrate_attribute_points(
         points=points,
         deltas=deltas,
         diagnostics=diagnostics,
+        effective_attribute_weights=effective_attribute_weights,
+        effective_weights_fingerprint=effective_weights_fingerprint,
         normalization_fingerprint=attribute_responses.normalization_fingerprint,
         mapping_version=attribute_responses.mapping_version,
         reviewed_targets=attribute_responses.reviewed_targets,
@@ -867,6 +932,8 @@ def calibrate_attribute_points(
     return AttributeCalibrationResult(
         points=points,
         deltas=deltas,
+        effective_attribute_weights=effective_attribute_weights,
+        effective_weights_fingerprint=effective_weights_fingerprint,
         diagnostics=diagnostics,
         normalization_fingerprint=attribute_responses.normalization_fingerprint,
         mapping_version=attribute_responses.mapping_version,

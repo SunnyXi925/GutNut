@@ -26,6 +26,7 @@ from gmnps.scoring.fcs2_attribute_rules import (
     NOT_CALCULATED,
     aggregate_domains,
     fcs_to_unscaled,
+    select_domain_attributes,
 )
 
 
@@ -209,6 +210,48 @@ def test_top_five_and_top_three_membership_are_reselected_after_calibration():
     assert vitamin["personalized_selected"]
     assert cholesterol["baseline_selected"]
     assert not cholesterol["personalized_selected"]
+
+
+def test_membership_audit_and_domain_score_match_the_shared_task1_selector():
+    baseline = _baseline()
+    vitamins = _domain_attributes("vitamins")
+    baseline.loc["food_1", vitamins] = np.arange(len(vitamins), dtype=float) % 11
+    decomposition = _decomposition(
+        pd.Series([50.0], index=baseline.index, name="FCS2"),
+        baseline,
+        ("vitamins",),
+    )
+    recomputed = recompute_personalized_domains(
+        decomposition, _calibration(baseline)
+    )
+    values = {
+        attribute: recomputed.attribute_audit.loc[
+            ("person_1", "food_1", attribute), "personalized_points"
+        ]
+        for attribute in vitamins
+    }
+    weights = {
+        attribute: decomposition.effective_attribute_weights.loc[
+            "food_1", attribute
+        ]
+        for attribute in vitamins
+    }
+    selection = select_domain_attributes(values, "vitamins", weights)
+    audit = recomputed.membership_audit.xs(("person_1", "food_1"))
+
+    assert set(audit.index[audit["personalized_selected"]]) == set(
+        selection.selected_attributes
+    )
+    assert audit["active_weight_denominator"].nunique() == 1
+    assert audit["active_weight_denominator"].iloc[0] == pytest.approx(
+        selection.active_weight_denominator
+    )
+    expected = aggregate_domains(
+        values, effective_attribute_weights=weights
+    )["vitamins"]
+    assert recomputed.domain_contributions.loc[
+        ("person_1", "food_1"), "vitamins"
+    ] == pytest.approx(expected)
 
 
 def test_fixed_residual_is_food_specific_but_identical_across_individuals():

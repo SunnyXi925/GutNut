@@ -42,7 +42,7 @@ APPROVED_IMPLEMENTATION_SOURCES = (
     "code/src/gmnps/scoring/attribute_recomposition.py",
     "code/src/gmnps/scoring/attribute_gmnps.py",
     "code/src/configs/attribute_gmnps.yaml",
-    "code/src/configs/fcs2_fndds_release_registry.json",
+    "code/src/scripts/run_attribute_gmnps.py",
 )
 
 
@@ -59,6 +59,8 @@ def _runtime_fixed_parameters():
         "beta_mad_normal_consistency": attribute_calibration._MAD_NORMAL_CONSISTENCY,
         "beta_iqr_normal_consistency": attribute_calibration._IQR_NORMAL_CONSISTENCY,
         "beta_temperature": attribute_calibration.LOCKED_BETA_TEMPERATURE,
+        "score_centering": config["score_centering"],
+        "beta_centering": config["beta_centering"],
         "attribute_response_temperature": getattr(
             attribute_calibration, "LOCKED_ATTRIBUTE_RESPONSE_TEMPERATURE", None
         ),
@@ -95,10 +97,12 @@ def test_lock_manifest_schema_requires_complete_frozen_provenance():
     assert schema["additionalProperties"] is False
     assert set(schema["required"]) == {
         "manifest_schema_version",
+        "method_lock_schema_sha256",
         "method_version",
         "source_hashes",
         "fndds_releases",
         "fndds_registry_version",
+        "release_registry_snapshot",
         "beta_fit_cohort",
         "calibration_fit_ids_sha256",
         "development_beta_sha256",
@@ -107,6 +111,7 @@ def test_lock_manifest_schema_requires_complete_frozen_provenance():
         "person_meal_validation_config_sha256",
         "mapping_version",
         "implementation_source_sha256",
+        "method_lock_gate_implementation_sha256",
         "fixed_parameters",
         "validation_embargo",
     }
@@ -115,8 +120,7 @@ def test_lock_manifest_schema_requires_complete_frozen_provenance():
     assert properties["manifest_schema_version"]["const"] == "attribute-gmnps-method-lock-v1"
     assert properties["method_version"]["const"] == ATTRIBUTE_GMNPS_SCORING_VERSION
     assert properties["mapping_version"]["const"] == PRIMARY_MAPPING_VERSION
-    assert properties["fndds_registry_version"]["const"] == FCS2_FNDDS_REGISTRY_VERSION
-    assert properties["fndds_registry_version"]["const"] == release_registry["registry_version"]
+    assert properties["fndds_registry_version"]["type"] == "string"
     assert properties["fndds_releases"]["const"] == release_registry["canonical_release_set"]
     assert properties["validation_embargo"]["const"] is True
     assert properties["fixed_parameters"]["const"] == _runtime_fixed_parameters()
@@ -128,9 +132,9 @@ def test_lock_manifest_schema_requires_complete_frozen_provenance():
         "food_metadata",
         "baseline_attribute_points",
         "food_exposures",
+        "effective_attribute_weights",
         "input_manifest",
         "food_source_linkage",
-        "fcs2_fndds_release_registry",
     }
     for field in hashes["required"]:
         assert hashes["properties"][field]["pattern"] == "^[0-9a-f]{64}$"
@@ -152,6 +156,32 @@ def test_lock_manifest_schema_requires_complete_frozen_provenance():
     assert config_hash["pattern"] == "^[0-9a-f]{64}$"
     assert "run instance" in config_hash["description"].lower()
     assert "person_meal_validation.yaml" in config_hash["description"]
+    schema_hash = properties["method_lock_schema_sha256"]
+    assert schema_hash["pattern"] == "^[0-9a-f]{64}$"
+    assert "const" not in schema_hash
+    gate_hash = properties["method_lock_gate_implementation_sha256"]
+    assert gate_hash["pattern"] == "^[0-9a-f]{64}$"
+    registry_snapshot = properties["release_registry_snapshot"]
+    assert registry_snapshot["additionalProperties"] is False
+    assert set(registry_snapshot["required"]) == {
+        "snapshot_sha256",
+        "registry_version",
+        "canonical_release_set",
+        "approved_entry",
+    }
+    assert registry_snapshot["properties"]["canonical_release_set"]["const"] == (
+        release_registry["canonical_release_set"]
+    )
+    approved_entry = registry_snapshot["properties"]["approved_entry"]
+    assert set(approved_entry["required"]) == {
+        "bundle_id",
+        "entry_sha256",
+        "fndds_releases",
+        "artifact_sha256",
+        "food_source_linkage_sha256",
+        "nutrient_units",
+        "exposure_basis",
+    }
 
 
 def test_schema_has_no_outcome_dependent_acceptance_criteria():
@@ -272,6 +302,12 @@ def test_method_spec_covers_locked_science_and_migration_boundary():
         "LOCKED_ATTRIBUTE_RESPONSE_TEMPERATURE",
         "independent runtime constant",
         "person_meal_validation_config_sha256",
+        "method_lock_schema_sha256",
+        "release-registry snapshot",
+        "method_lock_gate.py",
+        "same-immutable-bytes loader",
+        "score_centering: none",
+        "beta_centering: development_median",
     }
     normalized_text = " ".join(text.lower().split())
     assert all(
@@ -301,6 +337,18 @@ def test_recorded_implementation_hashes_match_real_source_bytes():
 
     assert schema_hashes == actual_hashes
     assert {source: spec_hashes[source] for source in actual_hashes} == actual_hashes
+
+
+def test_release_registry_is_run_provenance_not_a_fixed_implementation_hash():
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    implementation = schema["properties"]["implementation_source_sha256"]["const"]
+
+    assert "code/src/configs/fcs2_fndds_release_registry.json" not in implementation
+    assert "code/src/scripts/run_attribute_gmnps.py" in implementation
+    assert "release_registry_snapshot" in schema["required"]
+    assert schema["properties"]["method_version"]["const"] == (
+        ATTRIBUTE_GMNPS_SCORING_VERSION
+    )
 
 
 def test_runtime_carbohydrate_proxy_is_single_mac_definition():
@@ -386,6 +434,14 @@ def test_phase_2_plan_revalidates_config_hash_and_rejects_tampering_at_both_entr
     assert "compare" in stage_2d and "verified manifest" in stage_2d
     assert field in task_3 and "recompute" in task_3
     assert "compare" in task_3 and "verified manifest" in task_3
+    for run_hash in (
+        "method_lock_schema_sha256",
+        "release-registry snapshot",
+        "method_lock_gate.py",
+    ):
+        assert run_hash in stage_2c
+        assert run_hash in stage_2d
+        assert run_hash in task_3
 
     tamper_contract = {
         "missing config",

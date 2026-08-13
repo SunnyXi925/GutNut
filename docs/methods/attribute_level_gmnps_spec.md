@@ -5,9 +5,10 @@
 This document freezes Phase 1 method version `attribute-gmnps-v1`. The primary
 method is `attribute_recomposition`, the primary mapping is
 `expert_reviewed_attribute_mapping_v1`, and the recomposition implementation is
-`native_domain_fixed_residual_v1`. This specification describes the approved
-implementation at baseline commit `f136f45`; it does not authorize fitting,
-mapping revision, or parameter selection on validation outcomes.
+`native_domain_fixed_residual_v1`. The frozen state is defined by this method
+version and the implementation source digests in the reproducibility audit,
+not by a historical repository commit. It does not authorize fitting, mapping
+revision, or parameter selection on validation outcomes.
 
 Food Compass 2.0 (FCS2) contains 54 conceptual attributes represented by 56 operational rows
 because fruits and non-starchy vegetables each have separate
@@ -84,6 +85,21 @@ weighted_mean(A) = sum(a in A, p_a * v_a) / sum(a in A, v_a)
 - Other domains use the weighted mean of calculated active attributes.
 - Final `specific_lipids` and `phytochemicals` domain contributions are each
   multiplied by 0.5.
+
+Effective attribute weights are explicit per-food state. For non-dairy foods,
+the three calculated nutrient-ratio weights are 1.0 and their denominator is
+3.0. For dairy foods, only `unsaturated_to_saturated_fat_ratio` has effective
+weight 0.5; when all three ratios are calculated, the denominator is therefore
+2.5. These weights are carried through the food bundle, Task 3 calibration
+fingerprint, baseline decomposition, personalized recomposition, API and CLI.
+They cannot be absorbed into the fixed residual because that would preserve
+zero-effect identity while producing an incorrect non-zero ratio delta.
+
+Bundle validation recomputes every ratio gate from the same per-100-kcal
+exposure row used for calibration. Gate failure is valid only with the
+canonical `NOT_CALCULATED` sentinel, and gate passage is valid only with a
+finite baseline point. A serialization token or manifest mask records the
+sentinel but cannot determine biological applicability.
 
 The unscaled-to-FCS transform clips `U` to `[-12.1,35.0]` and maps it linearly
 to `[1,100]`:
@@ -233,6 +249,11 @@ GMNPS_ij = FCS2_j
 
 The implementation tests this identity to absolute tolerance `1e-8`.
 
+The manifest states the two distinct transformations explicitly as
+`score_centering: none` and `beta_centering: development_median`. The latter
+describes frozen nutrient-wise beta normalization and counterfactual
+replacement; it must not be misreported as uncentered beta.
+
 MAC and LIPID output deltas are frozen counterfactuals. MAC delta scores with
 LIPID effect nutrients replaced by their development medians; LIPID delta does
 the converse. The channel interaction is total delta minus those two deltas.
@@ -262,10 +283,28 @@ reserved for a later phase after this lock is signed.
 
 Production composition must use the exact FCS2-aligned canonical sequence
 `FNDDS 2001-2002` through `FNDDS 2017-2018`, as declared by registry
-`fcs2-fndds-release-registry-v1`. A production bundle must match one approved
-registry entry for official FCS, metadata, baseline points, exposures, food
-linkage, nutrient units, and exposure basis. The approved-artifact list is
-currently empty, so no production bundle is currently authorized.
+`fcs2-fndds-release-registry-v1`. The release registry is run-level data
+provenance, not an implementation source whose current empty bytes are frozen
+as the method. Each run binds the real registry snapshot SHA-256, canonical
+release set and one complete approved entry. The entry SHA-256 is computed from
+canonical JSON of that complete entry with sorted keys and compact separators.
+A production bundle must match
+that entry for official FCS, metadata, baseline points, exposures, per-food
+effective attribute weights, food linkage, nutrient units, and exposure basis.
+The committed approved-artifact list is currently empty, so no production
+bundle is currently authorized. Phase 2 can add verified digests without
+changing or disguising the method version.
+
+Production construction uses the verified same-immutable-bytes loader. It
+hashes each source byte snapshot, parses those exact bytes, fingerprints the
+canonical parsed tables, and matches the trusted registry before minting an
+attestation. The attestation retains immutable source bytes and binds both byte
+digests and parsed-content fingerprints. Direct DataFrame construction is
+restricted to development/non-production; caller-supplied digest strings cannot
+authorize production. Production registry bytes must come from the configured
+trusted registry path; alternate caller-supplied registry bytes are rejected.
+The CLI invokes this same loader, so path replacement or
+post-hash byte changes cannot create a time-of-check/time-of-use gap.
 
 `FNDDS 2021-2023` is recognized only as a non-production development smoke
 input and requires `development_smoke_test=true`. It cannot support a production
@@ -311,16 +350,17 @@ Task 6. Run data hashes remain run-specific and are required by
 
 | Approved source | SHA-256 |
 | --- | --- |
-| `code/src/gmnps/scoring/fcs2_attribute_rules.py` | `60dcc7deb872d404700303aa01deec0dea344d6069e0fed14ae2bc4ceb3bdae0` |
-| `code/src/gmnps/scoring/fcs2_attribute_mapping.py` | `efaff176113d6db1d0d746230f60b8d82e0dc10e4aac842c1403921976823b9d` |
-| `code/src/gmnps/scoring/attribute_calibration.py` | `d704ed033f648d7e110f540d13e22526b134b9b500ca77e61d523641abba26f9` |
-| `code/src/gmnps/scoring/attribute_recomposition.py` | `f0db2e8febdd48ef2421a1286f84b2758d87e6d75250dbd6383ef8e3701d6ea1` |
-| `code/src/gmnps/scoring/attribute_gmnps.py` | `b2bb1ca5663c2f737c58de3a7d85c4d37c2ae43c99f9b8f4dd5f8179690eddd5` |
-| `code/src/configs/attribute_gmnps.yaml` | `f450453811653e074ee4143cf6d9a21b9e68a5512924490fe9c64bc5f402e390` |
-| `code/src/configs/fcs2_fndds_release_registry.json` | `621834bb75d91574bc8b408c21cd05ffb7adf15bd64241633c1cf3fff6481d13` |
+| `code/src/gmnps/scoring/fcs2_attribute_rules.py` | `8758d245d2e4d7d23a71829893ddfcc7e4b12b120bf8cc2e1c20d4e1c6efba14` |
+| `code/src/gmnps/scoring/fcs2_attribute_mapping.py` | `d885be53736d020c6797b8b8f6d470c185ca0b1e13bf7b07752b32ec0de200d1` |
+| `code/src/gmnps/scoring/attribute_calibration.py` | `2dcc803e46f07f2a1c7ca11e31bced942df84bd66496afabd61ec8b86e8585c6` |
+| `code/src/gmnps/scoring/attribute_recomposition.py` | `806306099b1d398fce1777c3b5714e1465fcc5949c4cf9a8f6fc2d1b1bf3119e` |
+| `code/src/gmnps/scoring/attribute_gmnps.py` | `968c356eb60e3674517bec8c43d672260a059e06f56e9dec5a64067f48dbda48` |
+| `code/src/configs/attribute_gmnps.yaml` | `37a46a0cb0d24da374698dd4f900946efb8f581f89d843c27e35ce54fb39d2f2` |
+| `code/src/scripts/run_attribute_gmnps.py` | `62faa607e688f391cb3483b952a9657d48ea5ffa1a774533a41ecdbdfa9d00fc` |
 
 Every run must additionally record method and mapping versions, all input and
-linkage SHA-256 values, FNDDS releases and registry version, beta fit cohort,
+linkage SHA-256 values, FNDDS releases, the real registry snapshot SHA-256,
+canonical release set and approved entry, beta fit cohort,
 fit-ID hash, development beta hash, normalization-state fingerprint, scoring
 beta hash, fixed parameters, and the validation embargo flag.
 
@@ -335,9 +375,13 @@ It then generates and validates `method_lock_manifest.json` from those actual
 inputs and the frozen normalization state. Before any validation endpoint or
 label is read, the validator must recompute every applicable hash and
 fingerprint, including `person_meal_validation_config_sha256` from the config
-file's canonical bytes, validate the instance against
-`method_lock_manifest.schema.json`, and confirm the embargo. Any missing field
-or mismatch must fail closed and stop the validation run without loading
-outcomes. The Task 3 entry point independently recomputes the config hash and
-compares it with the already verified manifest before benchmark code can load
-outcomes, so post-gate config modification is rejected at both entries.
+file's canonical bytes, `method_lock_schema_sha256` from the external schema
+bytes, the release-registry snapshot hash, and the SHA-256 of the implemented
+`method_lock_gate.py`. The schema hash is a run-instance field computed by the
+external gate and is not embedded as a const in its own schema. The validator
+checks the instance against `method_lock_manifest.schema.json` and confirms the
+embargo. Any missing field or mismatch must fail closed and stop the validation
+run without loading outcomes. Both the outcome loader and the Task 3 entry
+independently recompute the schema, registry, gate implementation and config
+hashes and compare them with the already verified manifest, so post-gate
+modification is rejected at both boundaries.

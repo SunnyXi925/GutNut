@@ -1,4 +1,7 @@
 from dataclasses import FrozenInstanceError, fields, replace
+from hashlib import sha256
+import json
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -61,6 +64,7 @@ def food_exposures(food_ids=("food_1", "food_2")):
     frame = pd.DataFrame(0.0, index=pd.Index(food_ids, name="food_id"), columns=EXPOSURE_NUTRIENTS)
     frame.loc[:, "Carbohydrate (g)"] = 10.0
     frame.loc[:, "Sodium (mg)"] = 100.0
+    frame.loc[:, "Potassium (mg)"] = 100.0
     frame.loc[:, "Total Fat (g)"] = 10.0
     frame.loc[:, "Fatty acids, total saturated (g)"] = 1.0
     frame.loc[:, "Fatty acids, total monounsaturated (g)"] = 4.0
@@ -83,6 +87,7 @@ def make_bundle(
         {
             "food_name": ["Food one", "Food two"],
             "food_group": ["Group A", "Group B"],
+            "is_dairy": [False, False],
             "FCS2": official,
         },
         index=official.index,
@@ -93,12 +98,26 @@ def make_bundle(
         "food_metadata": "2" * 64,
         "baseline_attribute_points": "3" * 64,
         "food_exposures": "4" * 64,
+        "effective_attribute_weights": "7" * 64,
         "input_manifest": "5" * 64,
     }
+    effective_weights = pd.DataFrame(
+        {
+            attribute: [float(FCS2_RULES[attribute].weight)] * len(foods)
+            for attribute in ACTIVE_ATTRIBUTES
+        },
+        index=official.index,
+    )
+    registry_bytes = (
+        Path(__file__).resolve().parents[1]
+        / "configs/fcs2_fndds_release_registry.json"
+    ).read_bytes()
+    registry = json.loads(registry_bytes)
     return FoodAttributeBundle(
         official_fcs=official,
         baseline_points=baseline_points(foods),
         food_exposures=exposures,
+        effective_attribute_weights=effective_weights,
         food_metadata=metadata,
         fndds_releases=releases,
         source_hashes=source_hashes,
@@ -108,6 +127,10 @@ def make_bundle(
         reconstruction_status=reconstruction_status_table(),
         production_label=production_label,
         registry_version=registry_version,
+        release_registry_snapshot_sha256=sha256(registry_bytes).hexdigest(),
+        release_registry_canonical_release_set=tuple(
+            registry["canonical_release_set"]
+        ),
         food_source_linkage_sha256="6" * 64,
     )
 
@@ -331,11 +354,11 @@ def test_trusted_registry_is_committed_empty_and_all_production_is_rejected():
     assert registry["approved_artifacts"] == []
     canonical = tuple(registry["canonical_release_set"])
 
-    with pytest.raises(ValueError, match="no approved production bundle"):
+    with pytest.raises(ValueError, match="verified byte loader"):
         make_bundle(releases=canonical, production_label="production")
     with pytest.raises(ValueError, match="FNDDS 2001-2018"):
         make_bundle(releases=("FNDDS 2001-2099",), production_label="production")
-    with pytest.raises(ValueError, match="no approved production bundle"):
+    with pytest.raises(ValueError, match="verified byte loader"):
         make_bundle(
             releases=canonical,
             production_label="production",
@@ -344,13 +367,14 @@ def test_trusted_registry_is_committed_empty_and_all_production_is_rejected():
                 "food_metadata": "b" * 64,
                 "baseline_attribute_points": "c" * 64,
                 "food_exposures": "d" * 64,
+                "effective_attribute_weights": "f" * 64,
                 "input_manifest": "e" * 64,
             },
         )
     wrong_units = {
         column: "wrong_unit" for column in food_exposures().columns
     }
-    with pytest.raises(ValueError, match="no approved production bundle"):
+    with pytest.raises(ValueError, match="verified byte loader"):
         make_bundle(
             releases=canonical,
             production_label="production",
@@ -460,7 +484,15 @@ def test_not_calculated_token_is_stable_and_only_ratio_sentinel_is_accepted():
     ].astype(object)
     points.loc["food_1", "fiber_to_carbohydrate_ratio"] = NOT_CALCULATED
     bundle = make_bundle()
-    bundle = replace(bundle, baseline_points=points, fingerprint="")
+    exposures = bundle.food_exposures.copy()
+    exposures.loc["food_1", "Carbohydrate (g)"] = 0.0
+    exposures.attrs["basis"] = "per_100_kcal"
+    bundle = replace(
+        bundle,
+        baseline_points=points,
+        food_exposures=exposures,
+        fingerprint="",
+    )
     result = score_attribute_gmnps(fitted_smoke_model(), score_beta(), bundle)
     row = result.attribute_attribution.query(
         "food_id == 'food_1' and attribute == 'fiber_to_carbohydrate_ratio'"

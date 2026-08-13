@@ -29,6 +29,11 @@ from gmnps.scoring.calibration_objective import (
     calibration_objective,
     food_group_direction_pass_fraction,
 )
+from gmnps.scoring.calibration_search import (
+    CalibrationCandidate,
+    generate_candidate_grid,
+    select_calibration_candidate,
+)
 
 __all__ = [
     "AnchoredScoringConfig",
@@ -54,6 +59,9 @@ __all__ = [
     "apply_personalized_offset",
     "calibration_objective",
     "food_group_direction_pass_fraction",
+    "CalibrationCandidate",
+    "generate_candidate_grid",
+    "select_calibration_candidate",
 ]
 
 from gmnps.scoring.attribute_gmnps import (
@@ -62,7 +70,11 @@ from gmnps.scoring.attribute_gmnps import (
     AttributeGMNPSModel,
     AttributeGMNPSResult,
     FoodAttributeBundle,
+    ProductionBundleAttestation,
+    ReleaseRegistrySnapshot,
     fit_attribute_gmnps,
+    load_food_attribute_bundle_from_bytes,
+    load_release_registry_snapshot,
     score_attribute_gmnps,
     summarize_attribute_gmnps_foods,
 )
@@ -73,7 +85,11 @@ __all__ += [
     "AttributeGMNPSModel",
     "AttributeGMNPSResult",
     "FoodAttributeBundle",
+    "ProductionBundleAttestation",
+    "ReleaseRegistrySnapshot",
     "fit_attribute_gmnps",
+    "load_food_attribute_bundle_from_bytes",
+    "load_release_registry_snapshot",
     "score_attribute_gmnps",
     "summarize_attribute_gmnps_foods",
 ]

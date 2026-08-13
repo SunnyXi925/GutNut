@@ -9,7 +9,10 @@ from typing import Iterable, NamedTuple
 
 import pandas as pd
 
-from gmnps.scoring.fcs2_attribute_rules import FCS2_RULES
+from gmnps.scoring.fcs2_attribute_rules import (
+    FCS2_RULES,
+    ratio_gate_passes_from_exposures,
+)
 
 
 PRIMARY_MAPPING_VERSION = "expert_reviewed_attribute_mapping_v1"
@@ -466,7 +469,7 @@ def _ratio_component_exposure(
     if row.attribute == "fiber_to_carbohydrate_ratio":
         fiber = _finite_nonnegative(exposure["Fiber, total dietary (g)"], "Fiber, total dietary (g)")
         carbohydrate = _finite_nonnegative(exposure["Carbohydrate (g)"], "Carbohydrate (g)")
-        if carbohydrate * 4.0 < 10.0:
+        if not ratio_gate_passes_from_exposures(row.attribute, exposure):
             return 0.0, False, "applicability_gate_not_met"
         if row.nutrient == "Fiber, total dietary (g)":
             return fiber / _normalization_target("total_fiber"), False, "ok"
@@ -475,13 +478,13 @@ def _ratio_component_exposure(
     elif row.attribute == "potassium_to_sodium_ratio":
         potassium = _finite_nonnegative(exposure["Potassium (mg)"], "Potassium (mg)")
         sodium = _finite_nonnegative(exposure["Sodium (mg)"], "Sodium (mg)")
-        if potassium < 10.0 or sodium < 10.0:
+        if not ratio_gate_passes_from_exposures(row.attribute, exposure):
             return 0.0, False, "applicability_gate_not_met"
         if row.nutrient == "Potassium (mg)":
             return potassium / _normalization_target("potassium"), False, "ok"
     elif row.attribute == "unsaturated_to_saturated_fat_ratio":
         total_fat = _finite_nonnegative(exposure["Total Fat (g)"], "Total Fat (g)")
-        if total_fat * 9.0 < 10.0:
+        if not ratio_gate_passes_from_exposures(row.attribute, exposure):
             return 0.0, False, "applicability_gate_not_met"
         saturated = _finite_nonnegative(
             exposure["Fatty acids, total saturated (g)"],

@@ -9,6 +9,8 @@
   "final_delta_cap": 12,
   "final_delta_cap_sensitivity": [8, 15],
   "beta_temperature": 2,
+  "score_centering": "none",
+  "beta_centering": "development_median",
   "carbohydrate_policy": "sensitivity_proxy_only",
   "clinical_experiment": false,
   "recomputed_domains": [

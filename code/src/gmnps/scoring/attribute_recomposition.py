@@ -26,6 +26,7 @@ from gmnps.scoring.fcs2_attribute_rules import (
     NotCalculated,
     aggregate_domains,
     fcs_to_unscaled,
+    select_domain_attributes,
     unscaled_to_fcs,
 )
 
@@ -36,14 +37,12 @@ FINAL_DEVIATION_CAP_MODES: Mapping[str, float] = MappingProxyType(
 RECOMPOSITION_METHOD_VERSION = "native_domain_fixed_residual_v1"
 
 _ACTIVE_ATTRIBUTES = tuple(name for name, rule in FCS2_RULES.items() if rule.active)
-_RULE_ORDER = {name: position for position, name in enumerate(FCS2_RULES)}
 _DOMAIN_ATTRIBUTES: dict[str, tuple[str, ...]] = {}
 for _attribute in _ACTIVE_ATTRIBUTES:
     _domain = FCS2_RULES[_attribute].domain
     _DOMAIN_ATTRIBUTES.setdefault(_domain, tuple())
     _DOMAIN_ATTRIBUTES[_domain] += (_attribute,)
 _DOMAIN_ORDER = tuple(_DOMAIN_ATTRIBUTES)
-_TOP_K = {"vitamins": 5, "minerals": 5, "specific_lipids": 3}
 _ANCHOR_INTERPRETATION = "latent_anchor_from_supplied_official_fcs"
 _ANCHOR_KIND = "published_score_implied_latent_unscaled_anchor"
 _ANCHOR_NOTE = (
@@ -139,6 +138,7 @@ def _baseline_payload(
     inverse_unscaled_values: tuple[float, ...],
     attribute_labels: tuple[str, ...],
     baseline_attribute_point_values: tuple[tuple[object, ...], ...],
+    effective_attribute_weight_values: tuple[tuple[float, ...], ...],
     domain_labels: tuple[str, ...],
     baseline_domain_contribution_values: tuple[tuple[float, ...], ...],
     recomputed_domains: tuple[str, ...],
@@ -150,6 +150,7 @@ def _baseline_payload(
         "anchor_interpretation": anchor_interpretation,
         "attribute_labels": attribute_labels,
         "baseline_attribute_point_values": baseline_attribute_point_values,
+        "effective_attribute_weight_values": effective_attribute_weight_values,
         "baseline_domain_contribution_values": baseline_domain_contribution_values,
         "domain_labels": domain_labels,
         "fixed_residual_values": fixed_residual_values,
@@ -171,6 +172,7 @@ class BaselineDecomposition:
     inverse_unscaled_values: tuple[float, ...]
     attribute_labels: tuple[str, ...]
     baseline_attribute_point_values: tuple[tuple[object, ...], ...]
+    effective_attribute_weight_values: tuple[tuple[float, ...], ...]
     domain_labels: tuple[str, ...]
     baseline_domain_contribution_values: tuple[tuple[float, ...], ...]
     recomputed_domains: tuple[str, ...]
@@ -216,6 +218,15 @@ class BaselineDecomposition:
         )
 
     @property
+    def effective_attribute_weights(self) -> pd.DataFrame:
+        return pd.DataFrame(
+            self.effective_attribute_weight_values,
+            index=pd.Index(self.food_ids, name="food_id"),
+            columns=self.attribute_labels,
+            dtype=float,
+        )
+
+    @property
     def fixed_residual(self) -> pd.Series:
         return pd.Series(
             self.fixed_residual_values,
@@ -254,6 +265,7 @@ def _validate_baseline_decomposition(value: BaselineDecomposition) -> None:
         value.inverse_unscaled_values,
         value.attribute_labels,
         value.baseline_attribute_point_values,
+        value.effective_attribute_weight_values,
         value.domain_labels,
         value.baseline_domain_contribution_values,
         value.recomputed_domains,
@@ -283,6 +295,7 @@ def _validate_baseline_decomposition(value: BaselineDecomposition) -> None:
             value.official_fcs_values,
             value.inverse_unscaled_values,
             value.baseline_attribute_point_values,
+            value.effective_attribute_weight_values,
             value.baseline_domain_contribution_values,
             value.fixed_residual_values,
         )
@@ -291,6 +304,11 @@ def _validate_baseline_decomposition(value: BaselineDecomposition) -> None:
     for row in value.baseline_attribute_point_values:
         if not isinstance(row, tuple) or len(row) != len(value.attribute_labels):
             raise ValueError("baseline attribute point rows have inconsistent lengths")
+    for row in value.effective_attribute_weight_values:
+        if not isinstance(row, tuple) or len(row) != len(value.attribute_labels):
+            raise ValueError("effective attribute weight rows have inconsistent lengths")
+        if any(not isfinite(float(weight)) or float(weight) <= 0.0 for weight in row):
+            raise ValueError("effective attribute weights must be finite and positive")
     for row in value.baseline_domain_contribution_values:
         if not isinstance(row, tuple) or len(row) != len(value.domain_labels):
             raise ValueError("baseline domain rows have inconsistent lengths")
@@ -306,7 +324,15 @@ def _validate_baseline_decomposition(value: BaselineDecomposition) -> None:
             _point_value(point, attribute, "baseline decomposition")
     for food_position, row in enumerate(value.baseline_attribute_point_values):
         scores = dict(zip(value.attribute_labels, row))
-        expected_domains = aggregate_domains(scores)
+        weights = dict(
+            zip(
+                value.attribute_labels,
+                value.effective_attribute_weight_values[food_position],
+            )
+        )
+        expected_domains = aggregate_domains(
+            scores, effective_attribute_weights=weights
+        )
         actual_domains = dict(
             zip(value.domain_labels, value.baseline_domain_contribution_values[food_position])
         )
@@ -333,6 +359,7 @@ def _validate_baseline_decomposition(value: BaselineDecomposition) -> None:
             value.inverse_unscaled_values,
             value.attribute_labels,
             value.baseline_attribute_point_values,
+            value.effective_attribute_weight_values,
             value.domain_labels,
             value.baseline_domain_contribution_values,
             value.recomputed_domains,
@@ -350,6 +377,7 @@ def decompose_official_baseline(
     baseline_points: pd.DataFrame,
     *,
     recomputed_domains: tuple[str, ...] | list[str],
+    effective_attribute_weights: pd.DataFrame | None = None,
 ) -> BaselineDecomposition:
     """Bind selected native domains to a fixed residual from supplied official FCS2."""
 
@@ -411,7 +439,34 @@ def decompose_official_baseline(
         raise ValueError(f"baseline_points contains unknown or inactive labels: {extra}")
 
     aligned = baseline_points.reindex(index=food_ids, columns=expected_attributes)
+    if effective_attribute_weights is None:
+        aligned_weights = pd.DataFrame(
+            {
+                attribute: [float(FCS2_RULES[attribute].weight)] * len(food_ids)
+                for attribute in expected_attributes
+            },
+            index=pd.Index(food_ids, name="food_id"),
+        )
+    else:
+        if not isinstance(effective_attribute_weights, pd.DataFrame):
+            raise TypeError("effective_attribute_weights must be a pandas DataFrame")
+        if set(effective_attribute_weights.index) != set(food_ids):
+            raise ValueError("effective_attribute_weights must contain the exact food IDs")
+        if set(effective_attribute_weights.columns) != set(expected_attributes):
+            raise ValueError(
+                "effective_attribute_weights must contain the exact selected attributes"
+            )
+        aligned_weights = effective_attribute_weights.reindex(
+            index=food_ids, columns=expected_attributes
+        )
+    try:
+        numeric_weights = aligned_weights.to_numpy(dtype=float)
+    except (TypeError, ValueError) as error:
+        raise ValueError("effective_attribute_weights must be finite numbers") from error
+    if not np.isfinite(numeric_weights).all() or np.any(numeric_weights <= 0.0):
+        raise ValueError("effective_attribute_weights must be finite and positive")
     point_rows: list[tuple[object, ...]] = []
+    weight_rows: list[tuple[float, ...]] = []
     domain_rows: list[tuple[float, ...]] = []
     inverse_values = tuple(fcs_to_unscaled(score) for score in official_values)
     residual_values: list[float] = []
@@ -420,8 +475,16 @@ def decompose_official_baseline(
             _point_value(aligned.loc[food_id, attribute], attribute, f"baseline_points[{food_id}]")
             for attribute in expected_attributes
         )
-        contributions = aggregate_domains(dict(zip(expected_attributes, row)))
+        weight_row = tuple(
+            float(aligned_weights.loc[food_id, attribute])
+            for attribute in expected_attributes
+        )
+        contributions = aggregate_domains(
+            dict(zip(expected_attributes, row)),
+            effective_attribute_weights=dict(zip(expected_attributes, weight_row)),
+        )
         point_rows.append(row)
+        weight_rows.append(weight_row)
         domain_rows.append(tuple(float(contributions[domain]) for domain in ordered_domains))
         residual_values.append(float(inverse - sum(contributions.values())))
 
@@ -432,6 +495,7 @@ def decompose_official_baseline(
         inverse_values,
         expected_attributes,
         tuple(point_rows),
+        tuple(weight_rows),
         ordered_domains,
         tuple(domain_rows),
         ordered_domains,
@@ -445,6 +509,7 @@ def decompose_official_baseline(
         inverse_unscaled_values=inverse_values,
         attribute_labels=expected_attributes,
         baseline_attribute_point_values=tuple(point_rows),
+        effective_attribute_weight_values=tuple(weight_rows),
         domain_labels=ordered_domains,
         baseline_domain_contribution_values=tuple(domain_rows),
         recomputed_domains=ordered_domains,
@@ -615,21 +680,20 @@ def _validate_domain_recomposition(value: PersonalizedDomainRecomposition) -> No
 
 
 def _membership(
-    values: Mapping[str, object], domain: str
+    values: Mapping[str, object],
+    weights: Mapping[str, object],
+    domain: str,
 ) -> tuple[set[str], float]:
-    calculated: list[tuple[str, float, float]] = []
-    for attribute in _DOMAIN_ATTRIBUTES[domain]:
-        value = values[attribute]
-        if value is NOT_CALCULATED:
-            continue
-        calculated.append((attribute, float(value), float(FCS2_RULES[attribute].weight)))
-    if domain in _TOP_K:
-        selected = sorted(
-            calculated, key=lambda item: (-abs(item[1]), _RULE_ORDER[item[0]])
-        )[: _TOP_K[domain]]
-    else:
-        selected = calculated
-    return {item[0] for item in selected}, sum(item[2] for item in selected)
+    attributes = _DOMAIN_ATTRIBUTES[domain]
+    selection = select_domain_attributes(
+        {attribute: values[attribute] for attribute in attributes},
+        domain,
+        {attribute: weights[attribute] for attribute in attributes},
+    )
+    return (
+        set(selection.selected_attributes),
+        selection.active_weight_denominator,
+    )
 
 
 def _validate_calibration(
@@ -653,6 +717,18 @@ def _validate_calibration(
     if set(pairs) != expected_pairs:
         raise ValueError("calibration must contain every individual-food pair exactly once")
     selected_baseline = baseline.baseline_points
+    selected_weights = baseline.effective_attribute_weights
+    calibration_weights = calibration.effective_attribute_weights
+    try:
+        pd.testing.assert_frame_equal(
+            calibration_weights.loc[baseline.food_ids, baseline.attribute_labels],
+            selected_weights,
+            check_exact=True,
+        )
+    except AssertionError as error:
+        raise ValueError(
+            "calibration and decomposition effective weights do not align"
+        ) from error
     for individual_id, food_id in pairs:
         for attribute in _ACTIVE_ATTRIBUTES:
             point = points.loc[(individual_id, food_id), attribute]
@@ -694,6 +770,7 @@ def recompute_personalized_domains(
     _validate_baseline_decomposition(baseline)
     pairs = _validate_calibration(baseline, calibration)
     baseline_points = baseline.baseline_points
+    effective_weights = baseline.effective_attribute_weights
     point_frame = calibration.points
     contribution_rows: list[tuple[float, ...]] = []
     membership_rows: list[tuple[object, ...]] = []
@@ -707,21 +784,30 @@ def recompute_personalized_domains(
             attribute: point_frame.loc[(individual_id, food_id), attribute]
             for attribute in baseline.attribute_labels
         }
-        contributions = aggregate_domains(personalized_values)
+        food_weights = {
+            attribute: float(effective_weights.loc[food_id, attribute])
+            for attribute in baseline.attribute_labels
+        }
+        contributions = aggregate_domains(
+            personalized_values,
+            effective_attribute_weights=food_weights,
+        )
         contribution_rows.append(
             tuple(float(contributions[domain]) for domain in baseline.domain_labels)
         )
         for domain in baseline.domain_labels:
             domain_attributes = _DOMAIN_ATTRIBUTES[domain]
-            baseline_selected, baseline_denominator = _membership(baseline_values, domain)
+            baseline_selected, baseline_denominator = _membership(
+                baseline_values, food_weights, domain
+            )
             personalized_selected, personalized_denominator = _membership(
-                personalized_values, domain
+                personalized_values, food_weights, domain
             )
             for attribute in domain_attributes:
                 baseline_point = baseline_values[attribute]
                 personalized_point = personalized_values[attribute]
                 calculated = personalized_point is not NOT_CALCULATED
-                weight = float(FCS2_RULES[attribute].weight)
+                weight = food_weights[attribute]
                 membership_rows.append(
                     (
                         individual_id,

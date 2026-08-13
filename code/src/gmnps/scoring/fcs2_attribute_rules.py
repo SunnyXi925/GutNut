@@ -36,6 +36,15 @@ class AttributeScore(float):
 
 
 @dataclass(frozen=True)
+class DomainAttributeSelection:
+    """Canonical Task 1 membership and denominator for one complete domain."""
+
+    domain: str
+    selected_attributes: tuple[str, ...]
+    active_weight_denominator: float
+
+
+@dataclass(frozen=True)
 class NotCalculated:
     """Explicit result for a ratio below its Table S10 exposure gate."""
 
@@ -251,7 +260,12 @@ def to_per_100_kcal(value: float, energy_kcal: float) -> float:
     return numeric_value * 100.0 / calories
 
 
-def _ratio_gate_passes(rule: AttributeRule, context: Mapping[str, object]) -> bool:
+def ratio_gate_passes(rule: str | AttributeRule, context: Mapping[str, object]) -> bool:
+    """Evaluate the published ratio applicability gate from canonical context."""
+
+    rule = _resolve_rule(rule)
+    if rule.kind != "log_ratio":
+        raise ValueError(f"{rule.name} is not a ratio attribute")
     if rule.name == "unsaturated_to_saturated_fat_ratio":
         if "fat_energy_percent" in context:
             return _finite_number(context["fat_energy_percent"], "fat_energy_percent") >= 10.0
@@ -271,6 +285,42 @@ def _ratio_gate_passes(rule: AttributeRule, context: Mapping[str, object]) -> bo
             raise ValueError("potassium_to_sodium_ratio requires potassium_mg and sodium_mg")
         return all(_finite_number(context[name], name) >= 10.0 for name in required)
     raise ValueError(f"missing ratio gate for {rule.name}")
+
+
+def ratio_gate_passes_from_exposures(
+    rule: str | AttributeRule,
+    food_exposure: Mapping[str, object],
+) -> bool:
+    """Evaluate a ratio gate directly from the per-100-kcal food exposure row.
+
+    This is the single adapter used by Task 2 response construction and by the
+    FoodAttributeBundle biological validation boundary.
+    """
+
+    selected = _resolve_rule(rule)
+    if selected.name == "unsaturated_to_saturated_fat_ratio":
+        required = ("Total Fat (g)",)
+    elif selected.name == "fiber_to_carbohydrate_ratio":
+        required = ("Carbohydrate (g)",)
+    elif selected.name == "potassium_to_sodium_ratio":
+        required = ("Potassium (mg)", "Sodium (mg)")
+    else:
+        raise ValueError(f"{selected.name} is not a supported ratio attribute")
+    missing = [name for name in required if name not in food_exposure]
+    if missing:
+        raise ValueError(
+            f"{selected.name} ratio gate requires food exposures: {missing}"
+        )
+    if selected.name == "unsaturated_to_saturated_fat_ratio":
+        context = {"total_fat_g": food_exposure[required[0]]}
+    elif selected.name == "fiber_to_carbohydrate_ratio":
+        context = {"carbohydrate_g": food_exposure[required[0]]}
+    else:
+        context = {
+            "potassium_mg": food_exposure[required[0]],
+            "sodium_mg": food_exposure[required[1]],
+        }
+    return ratio_gate_passes(selected, context)
 
 
 def _linear_score(rule: AttributeRule, value: float) -> float:
@@ -308,7 +358,7 @@ def score_attribute(
         if selected.name == "fermentation_percent_calories" and context.get("is_other_fermented_product"):
             points = selected.high_points
     elif selected.kind == "log_ratio":
-        if not _ratio_gate_passes(selected, context):
+        if not ratio_gate_passes(selected, context):
             return NOT_CALCULATED
         ratio = _finite_number(value, selected.name)
         if ratio <= 0:
@@ -370,7 +420,11 @@ def score_attribute(
     return AttributeScore(points, selected.weight)
 
 
-def _aggregate_value(rule: AttributeRule, value: float | NotCalculated) -> tuple[float, float] | None:
+def _aggregate_value(
+    rule: AttributeRule,
+    value: float | NotCalculated,
+    effective_weight: object | None = None,
+) -> tuple[float, float] | None:
     if value is NOT_CALCULATED:
         if rule.kind != "log_ratio":
             raise ValueError(f"{rule.name} can only be NOT_CALCULATED for a ratio exposure gate")
@@ -378,7 +432,10 @@ def _aggregate_value(rule: AttributeRule, value: float | NotCalculated) -> tuple
     if isinstance(value, NotCalculated):
         raise ValueError("NOT_CALCULATED must use the module sentinel")
     points = _finite_number(value, rule.name)
-    weight = value.weight if isinstance(value, AttributeScore) else rule.weight
+    if effective_weight is None:
+        weight = value.weight if isinstance(value, AttributeScore) else rule.weight
+    else:
+        weight = _finite_number(effective_weight, f"{rule.name} effective weight")
     if not isfinite(weight) or weight <= 0:
         raise ValueError(f"{rule.name} weight must be finite and greater than zero")
     return points, weight
@@ -391,7 +448,79 @@ def _weighted_mean(scores: list[tuple[AttributeRule, float, float]]) -> float:
     return sum(points * weight for _, points, weight in scores) / denominator
 
 
-def aggregate_domains(attribute_scores: Mapping[str, float | NotCalculated]) -> dict[str, float]:
+def _group_domain_scores(
+    attribute_scores: Mapping[str, float | NotCalculated],
+    effective_attribute_weights: Mapping[str, object] | None,
+) -> dict[str, dict[str, tuple[float, float] | None]]:
+    if effective_attribute_weights is not None:
+        if set(effective_attribute_weights) != set(attribute_scores):
+            raise ValueError(
+                "effective_attribute_weights must exactly cover supplied attributes"
+            )
+    grouped: dict[str, dict[str, tuple[float, float] | None]] = {}
+    for name, score in attribute_scores.items():
+        rule = _resolve_rule(name)
+        if not rule.active:
+            raise UnavailableAttributeError(
+                f"{name} is unavailable in the reported FCS2 analysis"
+            )
+        effective_weight = (
+            None
+            if effective_attribute_weights is None
+            else effective_attribute_weights[name]
+        )
+        grouped.setdefault(rule.domain, {})[name] = _aggregate_value(
+            rule, score, effective_weight
+        )
+    return grouped
+
+
+def select_domain_attributes(
+    attribute_scores: Mapping[str, float | NotCalculated],
+    domain: str,
+    effective_attribute_weights: Mapping[str, object] | None = None,
+) -> DomainAttributeSelection:
+    """Return the unique canonical Task 1 selector used by all recomposition."""
+
+    if domain not in _ACTIVE_RULES_BY_DOMAIN:
+        raise ValueError(f"unknown Food Compass domain: {domain}")
+    grouped = _group_domain_scores(attribute_scores, effective_attribute_weights)
+    if set(grouped) != {domain}:
+        raise ValueError("attribute_scores must contain exactly one requested domain")
+    supplied = grouped[domain]
+    expected = _ACTIVE_RULES_BY_DOMAIN[domain]
+    missing = [rule.name for rule in expected if rule.name not in supplied]
+    if missing:
+        raise ValueError(
+            f"incomplete {domain} domain; missing active rules: {', '.join(missing)}"
+        )
+    scores = [
+        (rule, *value)
+        for rule in expected
+        if (value := supplied[rule.name]) is not None
+    ]
+    if not scores:
+        raise ValueError(f"{domain} domain has no calculated active rules")
+    selected = (
+        sorted(
+            scores,
+            key=lambda item: (-abs(item[1]), _RULE_ORDER[item[0].name]),
+        )[: _TOP_K[domain]]
+        if domain in _TOP_K
+        else scores
+    )
+    return DomainAttributeSelection(
+        domain=domain,
+        selected_attributes=tuple(item[0].name for item in selected),
+        active_weight_denominator=float(sum(item[2] for item in selected)),
+    )
+
+
+def aggregate_domains(
+    attribute_scores: Mapping[str, float | NotCalculated],
+    *,
+    effective_attribute_weights: Mapping[str, object] | None = None,
+) -> dict[str, float]:
     """Aggregate final attribute points into Table S9 domain contributions.
 
     The returned values include the two published half-weighted domain factors,
@@ -400,12 +529,7 @@ def aggregate_domains(attribute_scores: Mapping[str, float | NotCalculated]) -> 
     are resolved by immutable FCS2 registry order, never caller mapping order.
     """
 
-    grouped: dict[str, dict[str, tuple[float, float] | None]] = {}
-    for name, score in attribute_scores.items():
-        rule = _resolve_rule(name)
-        if not rule.active:
-            raise UnavailableAttributeError(f"{name} is unavailable in the reported FCS2 analysis")
-        grouped.setdefault(rule.domain, {})[name] = _aggregate_value(rule, score)
+    grouped = _group_domain_scores(attribute_scores, effective_attribute_weights)
 
     domains: dict[str, float] = {}
     for domain, supplied in grouped.items():
@@ -420,13 +544,24 @@ def aggregate_domains(attribute_scores: Mapping[str, float | NotCalculated]) -> 
         ]
         if not scores:
             raise ValueError(f"{domain} domain has no calculated active rules")
+        domain_weights = (
+            None
+            if effective_attribute_weights is None
+            else {
+                rule.name: effective_attribute_weights[rule.name]
+                for rule in expected
+            }
+        )
+        selection = select_domain_attributes(
+            {rule.name: attribute_scores[rule.name] for rule in expected},
+            domain,
+            domain_weights,
+        )
         if domain == "food_ingredients":
             domain_score = sum(points * weight for _, points, weight in scores)
         elif domain in _TOP_K:
-            selected = sorted(
-                scores,
-                key=lambda item: (-abs(item[1]), _RULE_ORDER[item[0].name]),
-            )[:_TOP_K[domain]]
+            selected_names = set(selection.selected_attributes)
+            selected = [item for item in scores if item[0].name in selected_names]
             domain_score = _weighted_mean(selected)
         else:
             domain_score = _weighted_mean(scores)

@@ -25,7 +25,8 @@
       "official_fcs",
       "food_metadata",
       "baseline_attribute_points",
-      "food_exposures"
+      "food_exposures",
+      "effective_attribute_weights"
     ],
     "digest_algorithm": "sha256"
   },

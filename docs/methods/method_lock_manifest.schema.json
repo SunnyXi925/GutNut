@@ -7,10 +7,12 @@
   "additionalProperties": false,
   "required": [
     "manifest_schema_version",
+    "method_lock_schema_sha256",
     "method_version",
     "source_hashes",
     "fndds_releases",
     "fndds_registry_version",
+    "release_registry_snapshot",
     "beta_fit_cohort",
     "calibration_fit_ids_sha256",
     "development_beta_sha256",
@@ -19,12 +21,18 @@
     "person_meal_validation_config_sha256",
     "mapping_version",
     "implementation_source_sha256",
+    "method_lock_gate_implementation_sha256",
     "fixed_parameters",
     "validation_embargo"
   ],
   "properties": {
     "manifest_schema_version": {
       "const": "attribute-gmnps-method-lock-v1"
+    },
+    "method_lock_schema_sha256": {
+      "description": "Run-instance SHA-256 recomputed by the external gate from these schema bytes; it is deliberately not a const inside the schema.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
     },
     "method_version": {
       "const": "attribute-gmnps-v1"
@@ -37,18 +45,18 @@
         "food_metadata",
         "baseline_attribute_points",
         "food_exposures",
+        "effective_attribute_weights",
         "input_manifest",
-        "food_source_linkage",
-        "fcs2_fndds_release_registry"
+        "food_source_linkage"
       ],
       "properties": {
         "official_fcs": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
         "food_metadata": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
         "baseline_attribute_points": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
         "food_exposures": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "effective_attribute_weights": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
         "input_manifest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-        "food_source_linkage": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-        "fcs2_fndds_release_registry": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        "food_source_linkage": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
       }
     },
     "fndds_releases": {
@@ -65,7 +73,91 @@
       ]
     },
     "fndds_registry_version": {
-      "const": "fcs2-fndds-release-registry-v1"
+      "type": "string",
+      "minLength": 1
+    },
+    "release_registry_snapshot": {
+      "description": "Run-level data-registry provenance, separate from the frozen implementation lock.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "snapshot_sha256",
+        "registry_version",
+        "canonical_release_set",
+        "approved_entry"
+      ],
+      "properties": {
+        "snapshot_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "registry_version": {"type": "string", "minLength": 1},
+        "canonical_release_set": {
+          "const": [
+            "FNDDS 2001-2002",
+            "FNDDS 2003-2004",
+            "FNDDS 2005-2006",
+            "FNDDS 2007-2008",
+            "FNDDS 2009-2010",
+            "FNDDS 2011-2012",
+            "FNDDS 2013-2014",
+            "FNDDS 2015-2016",
+            "FNDDS 2017-2018"
+          ]
+        },
+        "approved_entry": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "bundle_id",
+            "entry_sha256",
+            "fndds_releases",
+            "artifact_sha256",
+            "food_source_linkage_sha256",
+            "nutrient_units",
+            "exposure_basis"
+          ],
+          "properties": {
+            "bundle_id": {"type": "string", "minLength": 1},
+            "entry_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "fndds_releases": {
+              "const": [
+                "FNDDS 2001-2002",
+                "FNDDS 2003-2004",
+                "FNDDS 2005-2006",
+                "FNDDS 2007-2008",
+                "FNDDS 2009-2010",
+                "FNDDS 2011-2012",
+                "FNDDS 2013-2014",
+                "FNDDS 2015-2016",
+                "FNDDS 2017-2018"
+              ]
+            },
+            "artifact_sha256": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "official_fcs",
+                "food_metadata",
+                "baseline_attribute_points",
+                "food_exposures",
+                "effective_attribute_weights"
+              ],
+              "properties": {
+                "official_fcs": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                "food_metadata": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                "baseline_attribute_points": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                "food_exposures": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                "effective_attribute_weights": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+              }
+            },
+            "food_source_linkage_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "nutrient_units": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {"type": "string", "minLength": 1}
+            },
+            "exposure_basis": {"const": "per_100_kcal"}
+          }
+        }
+      }
     },
     "beta_fit_cohort": {
       "type": "object",
@@ -106,14 +198,19 @@
     "implementation_source_sha256": {
       "description": "Frozen implementation and configuration bytes used by this method version.",
       "const": {
-        "code/src/gmnps/scoring/fcs2_attribute_rules.py": "60dcc7deb872d404700303aa01deec0dea344d6069e0fed14ae2bc4ceb3bdae0",
-        "code/src/gmnps/scoring/fcs2_attribute_mapping.py": "efaff176113d6db1d0d746230f60b8d82e0dc10e4aac842c1403921976823b9d",
-        "code/src/gmnps/scoring/attribute_calibration.py": "d704ed033f648d7e110f540d13e22526b134b9b500ca77e61d523641abba26f9",
-        "code/src/gmnps/scoring/attribute_recomposition.py": "f0db2e8febdd48ef2421a1286f84b2758d87e6d75250dbd6383ef8e3701d6ea1",
-        "code/src/gmnps/scoring/attribute_gmnps.py": "b2bb1ca5663c2f737c58de3a7d85c4d37c2ae43c99f9b8f4dd5f8179690eddd5",
-        "code/src/configs/attribute_gmnps.yaml": "f450453811653e074ee4143cf6d9a21b9e68a5512924490fe9c64bc5f402e390",
-        "code/src/configs/fcs2_fndds_release_registry.json": "621834bb75d91574bc8b408c21cd05ffb7adf15bd64241633c1cf3fff6481d13"
+        "code/src/gmnps/scoring/fcs2_attribute_rules.py": "8758d245d2e4d7d23a71829893ddfcc7e4b12b120bf8cc2e1c20d4e1c6efba14",
+        "code/src/gmnps/scoring/fcs2_attribute_mapping.py": "d885be53736d020c6797b8b8f6d470c185ca0b1e13bf7b07752b32ec0de200d1",
+        "code/src/gmnps/scoring/attribute_calibration.py": "2dcc803e46f07f2a1c7ca11e31bced942df84bd66496afabd61ec8b86e8585c6",
+        "code/src/gmnps/scoring/attribute_recomposition.py": "806306099b1d398fce1777c3b5714e1465fcc5949c4cf9a8f6fc2d1b1bf3119e",
+        "code/src/gmnps/scoring/attribute_gmnps.py": "968c356eb60e3674517bec8c43d672260a059e06f56e9dec5a64067f48dbda48",
+        "code/src/configs/attribute_gmnps.yaml": "37a46a0cb0d24da374698dd4f900946efb8f581f89d843c27e35ce54fb39d2f2",
+        "code/src/scripts/run_attribute_gmnps.py": "62faa607e688f391cb3483b952a9657d48ea5ffa1a774533a41ecdbdfa9d00fc"
       }
+    },
+    "method_lock_gate_implementation_sha256": {
+      "description": "Run-instance SHA-256 of the Phase 2 method_lock_gate.py implementation, recomputed before outcomes and at the Task 3 entry.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
     },
     "fixed_parameters": {
       "const": {
@@ -123,6 +220,8 @@
         "beta_mad_normal_consistency": 1.4826,
         "beta_iqr_normal_consistency": 1.349,
         "beta_temperature": 2.0,
+        "score_centering": "none",
+        "beta_centering": "development_median",
         "attribute_response_temperature": 2.0,
         "attribute_point_mode": "primary",
         "attribute_point_fraction_cap": 0.2,

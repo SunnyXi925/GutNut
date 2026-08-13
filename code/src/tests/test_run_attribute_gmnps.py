@@ -41,6 +41,7 @@ def write_inputs(tmp_path, *, release="FNDDS 2021-2023", not_calculated_mask=())
         "food_metadata": tmp_path / "food_metadata.csv",
         "baseline_attribute_points": tmp_path / "baseline_attribute_points.csv",
         "food_exposures": tmp_path / "food_exposures.csv",
+        "effective_attribute_weights": tmp_path / "effective_attribute_weights.csv",
     }
     development_beta().rename_axis("individual_id").to_csv(paths["development_beta"])
     beta = score_beta(("person_b", "person_a"))
@@ -57,7 +58,15 @@ def write_inputs(tmp_path, *, release="FNDDS 2021-2023", not_calculated_mask=())
     points.to_csv(paths["baseline_attribute_points"])
     exposures = food_exposures()
     exposures.loc[:, "Vitamin C (mg)"] = 22.5
+    for food_id, attribute in not_calculated_mask:
+        if attribute == "unsaturated_to_saturated_fat_ratio":
+            exposures.loc[food_id, "Total Fat (g)"] = 0.0
+        elif attribute == "fiber_to_carbohydrate_ratio":
+            exposures.loc[food_id, "Carbohydrate (g)"] = 0.0
+        elif attribute == "potassium_to_sodium_ratio":
+            exposures.loc[food_id, "Potassium (mg)"] = 0.0
     exposures.to_csv(paths["food_exposures"])
+    bundle.effective_attribute_weights.to_csv(paths["effective_attribute_weights"])
 
     config = json.loads(CONFIG.read_text(encoding="utf-8"))
     registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
@@ -68,6 +77,7 @@ def write_inputs(tmp_path, *, release="FNDDS 2021-2023", not_calculated_mask=())
         "fndds_releases": releases,
         "production_label": "production" if production else "non-production",
         "registry_version": registry["registry_version"],
+        "release_registry_snapshot_sha256": sha256(REGISTRY),
         "food_source_linkage_sha256": "6" * 64,
         "exposure_basis": "per_100_kcal",
         "nutrient_units": {
@@ -109,6 +119,8 @@ def command(paths, output_dir, *extra, smoke=True):
         str(paths["baseline_attribute_points"]),
         "--food-exposures",
         str(paths["food_exposures"]),
+        "--effective-attribute-weights",
+        str(paths["effective_attribute_weights"]),
         "--input-manifest",
         str(paths["input_manifest"]),
         "--config",
@@ -140,6 +152,8 @@ def test_yaml_contains_locked_defaults_without_arbitrary_primary_parameters():
     assert config["final_delta_cap"] == 12
     assert config["final_delta_cap_sensitivity"] == [8, 15]
     assert config["beta_temperature"] == 2
+    assert config["score_centering"] == "none"
+    assert config["beta_centering"] == "development_median"
     assert config["carbohydrate_policy"] == "sensitivity_proxy_only"
     assert config["clinical_experiment"] is False
 
@@ -155,6 +169,10 @@ def test_chunked_runner_matches_unchunked_api_and_completes_atomically(tmp_path)
     assert completed.returncode == 0, completed.stderr
     assert (output / "_SUCCESS.json").is_file()
     assert not list(output.glob(".*.tmp"))
+    run_manifest = json.loads((output / "run_manifest.json").read_text())
+    assert run_manifest["score_centering"] == "none"
+    assert run_manifest["beta_centering"] == "development_median"
+    assert "centering" not in run_manifest
 
     actual = pd.read_csv(output / "individual_food.csv").sort_values(
         ["individual_id", "food_id"]
@@ -341,7 +359,7 @@ def test_inputs_are_parsed_from_one_immutable_byte_snapshot(tmp_path, monkeypatc
 
     monkeypatch.setattr(Path, "read_bytes", counted_read_bytes)
     module.run(args)
-    expected_once = [*paths.values(), CONFIG]
+    expected_once = [*paths.values(), CONFIG, REGISTRY]
     assert {path.resolve(): counts.get(path.resolve(), 0) for path in expected_once} == {
         path.resolve(): 1 for path in expected_once
     }
@@ -408,3 +426,30 @@ def test_not_calculated_token_is_rejected_outside_ratio_columns(tmp_path):
     rejected = subprocess.run(command(paths, tmp_path / "bad_token"), text=True, capture_output=True)
     assert rejected.returncode != 0
     assert "NOT_CALCULATED token is allowed only for ratio attributes" in rejected.stderr
+
+
+def test_cli_mask_cannot_override_ratio_gate_recomputed_from_exposure_bytes(tmp_path):
+    paths = write_inputs(
+        tmp_path,
+        not_calculated_mask=(("food_1", "fiber_to_carbohydrate_ratio"),),
+    )
+    exposures = pd.read_csv(paths["food_exposures"])
+    exposures.loc[
+        exposures["food_id"] == "food_1", "Carbohydrate (g)"
+    ] = 10.0
+    exposures.to_csv(paths["food_exposures"], index=False)
+    manifest = json.loads(paths["input_manifest"].read_text(encoding="utf-8"))
+    manifest["files"]["food_exposures"]["sha256"] = sha256(
+        paths["food_exposures"]
+    )
+    paths["input_manifest"].write_text(
+        json.dumps(manifest, sort_keys=True), encoding="utf-8"
+    )
+
+    rejected = subprocess.run(
+        command(paths, tmp_path / "gate_override"),
+        text=True,
+        capture_output=True,
+    )
+    assert rejected.returncode != 0
+    assert "ratio gate pass requires a finite point" in rejected.stderr
