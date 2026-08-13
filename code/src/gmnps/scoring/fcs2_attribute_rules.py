@@ -26,6 +26,25 @@ class UnavailableAttributeError(ValueError):
     """Raised when a Table S10 candidate was unavailable in the reported analysis."""
 
 
+class AttributeScore(float):
+    """Raw attribute points with the effective published aggregation weight."""
+
+    def __new__(cls, points: float, weight: float) -> AttributeScore:
+        instance = super().__new__(cls, points)
+        instance.weight = weight
+        return instance
+
+
+@dataclass(frozen=True)
+class NotCalculated:
+    """Explicit result for a ratio below its Table S10 exposure gate."""
+
+    reason: str = "minimum exposure gate not met"
+
+
+NOT_CALCULATED = NotCalculated()
+
+
 @dataclass(frozen=True)
 class AttributeRule:
     """One Table S10 candidate attribute and its reported scoring metadata."""
@@ -187,6 +206,14 @@ FCS2_CONCEPTUAL_ATTRIBUTE_COUNT = len({rule.conceptual_name for rule in FCS2_RUL
 
 _TOP_K = MappingProxyType({"vitamins": 5, "minerals": 5, "specific_lipids": 3})
 _DOMAIN_WEIGHTS = MappingProxyType({"specific_lipids": 0.5, "phytochemicals": 0.5})
+_RULE_ORDER = MappingProxyType({rule.name: index for index, rule in enumerate(FCS2_RULES.values())})
+_active_rules_by_domain: dict[str, list[AttributeRule]] = {}
+for _registry_rule in FCS2_RULES.values():
+    if _registry_rule.active:
+        _active_rules_by_domain.setdefault(_registry_rule.domain, []).append(_registry_rule)
+_ACTIVE_RULES_BY_DOMAIN: Mapping[str, tuple[AttributeRule, ...]] = MappingProxyType(
+    {domain: tuple(rules) for domain, rules in _active_rules_by_domain.items()}
+)
 
 
 def _finite_number(value: object, label: str) -> float:
@@ -261,12 +288,12 @@ def score_attribute(
     *,
     context: Mapping[str, object] | None = None,
     nitrite_rule_version: str = NITRITE_RULE_PRIMARY_VERSION,
-) -> float:
+) -> AttributeScore | NotCalculated:
     """Score one active Table S10 attribute on its published point scale.
 
     Ratio values are raw ratios, not their logs. Ratio gates are evaluated from
-    per-100-kcal values in ``context``. A gated ratio receives neutral points,
-    so it cannot affect its domain when the published minimum exposure is unmet.
+    per-100-kcal values in ``context``. A gated ratio returns
+    ``NOT_CALCULATED`` and is excluded from its domain denominator.
     """
 
     selected = _resolve_rule(rule)
@@ -285,7 +312,7 @@ def score_attribute(
         if ratio <= 0:
             raise ValueError(f"{selected.name} must be greater than zero")
         if not _ratio_gate_passes(selected, context):
-            return 0.0
+            return NOT_CALCULATED
         log_ratio = log(ratio)
         assert selected.low_target is not None and selected.high_target is not None
         fraction = (log_ratio - selected.low_target) / (selected.high_target - selected.low_target)
@@ -295,7 +322,7 @@ def score_attribute(
             selected.high_points,
         )
         if selected.name == "unsaturated_to_saturated_fat_ratio" and context.get("is_dairy"):
-            return points * 0.5
+            return AttributeScore(points, 0.5)
     elif selected.kind == "added_sugar":
         percent = _finite_number(value, selected.name)
         if not 0.0 <= percent <= 100.0:
@@ -340,34 +367,69 @@ def score_attribute(
             raise ValueError("unable to score NOVA processing level")
     else:  # pragma: no cover - registry construction controls kinds
         raise ValueError(f"unsupported Food Compass rule kind: {selected.kind}")
-    return points * selected.weight
+    return AttributeScore(points, selected.weight)
 
 
-def aggregate_domains(attribute_scores: Mapping[str, float]) -> dict[str, float]:
+def _aggregate_value(rule: AttributeRule, value: float | NotCalculated) -> tuple[float, float] | None:
+    if value is NOT_CALCULATED:
+        if rule.kind != "log_ratio":
+            raise ValueError(f"{rule.name} can only be NOT_CALCULATED for a ratio exposure gate")
+        return None
+    if isinstance(value, NotCalculated):
+        raise ValueError("NOT_CALCULATED must use the module sentinel")
+    points = _finite_number(value, rule.name)
+    weight = value.weight if isinstance(value, AttributeScore) else rule.weight
+    if not isfinite(weight) or weight <= 0:
+        raise ValueError(f"{rule.name} weight must be finite and greater than zero")
+    return points, weight
+
+
+def _weighted_mean(scores: list[tuple[AttributeRule, float, float]]) -> float:
+    denominator = sum(weight for _, _, weight in scores)
+    if denominator <= 0:  # pragma: no cover - weights are validated at construction/use
+        raise ValueError("domain has no active attribute weight")
+    return sum(points * weight for _, points, weight in scores) / denominator
+
+
+def aggregate_domains(attribute_scores: Mapping[str, float | NotCalculated]) -> dict[str, float]:
     """Aggregate final attribute points into Table S9 domain contributions.
 
     The returned values include the two published half-weighted domain factors,
     so their sum is the local contribution to an unscaled Food Compass score.
-    Callers may provide a complete score set or a complete subset of domains.
+    Each requested domain must provide every active operational rule. Top-k ties
+    are resolved by immutable FCS2 registry order, never caller mapping order.
     """
 
-    grouped: dict[str, list[tuple[str, float]]] = {}
+    grouped: dict[str, dict[str, tuple[float, float] | None]] = {}
     for name, score in attribute_scores.items():
         rule = _resolve_rule(name)
         if not rule.active:
             raise UnavailableAttributeError(f"{name} is unavailable in the reported FCS2 analysis")
-        grouped.setdefault(rule.domain, []).append((name, _finite_number(score, name)))
+        grouped.setdefault(rule.domain, {})[name] = _aggregate_value(rule, score)
 
     domains: dict[str, float] = {}
-    for domain, scores in grouped.items():
-        values = [score for _, score in scores]
+    for domain, supplied in grouped.items():
+        expected = _ACTIVE_RULES_BY_DOMAIN[domain]
+        missing = [rule.name for rule in expected if rule.name not in supplied]
+        if missing:
+            raise ValueError(f"incomplete {domain} domain; missing active rules: {', '.join(missing)}")
+        scores = [
+            (rule, *value)
+            for rule in expected
+            if (value := supplied[rule.name]) is not None
+        ]
+        if not scores:
+            raise ValueError(f"{domain} domain has no calculated active rules")
         if domain == "food_ingredients":
-            domain_score = sum(values)
+            domain_score = sum(points * weight for _, points, weight in scores)
         elif domain in _TOP_K:
-            selected = sorted(scores, key=lambda item: abs(item[1]), reverse=True)[:_TOP_K[domain]]
-            domain_score = sum(score for _, score in selected) / len(selected)
+            selected = sorted(
+                scores,
+                key=lambda item: (-abs(item[1]), _RULE_ORDER[item[0].name]),
+            )[:_TOP_K[domain]]
+            domain_score = _weighted_mean(selected)
         else:
-            domain_score = sum(values) / len(values)
+            domain_score = _weighted_mean(scores)
         domains[domain] = domain_score * _DOMAIN_WEIGHTS.get(domain, 1.0)
     return domains
 

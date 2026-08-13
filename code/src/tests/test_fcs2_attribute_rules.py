@@ -8,6 +8,7 @@ from gmnps.scoring.fcs2_attribute_rules import (
     FCS2_RULES,
     NITRITE_RULE_PRIMARY_VERSION,
     NITRITE_RULE_TABLE_SENSITIVITY_VERSION,
+    NOT_CALCULATED,
     aggregate_domains,
     fcs_to_unscaled,
     score_attribute,
@@ -84,7 +85,7 @@ def test_table_s10_log_ratios_apply_published_targets_and_minimum_exposure_gates
         "unsaturated_to_saturated_fat_ratio",
         math.exp(1.77),
         context={"fat_energy_percent": 9.999},
-    ) == 0.0
+    ) is NOT_CALCULATED
     assert score_attribute(
         "fiber_to_carbohydrate_ratio",
         math.exp(-0.78),
@@ -99,10 +100,10 @@ def test_table_s10_log_ratios_apply_published_targets_and_minimum_exposure_gates
         "potassium_to_sodium_ratio",
         math.exp(3.30),
         context={"potassium_mg": 9.999, "sodium_mg": 10.0},
-    ) == 0.0
+    ) is NOT_CALCULATED
 
 
-def test_table_s10_dairy_and_emerging_attribute_half_weights_apply_to_points():
+def test_table_s10_dairy_and_emerging_attribute_half_weights_are_preserved_for_aggregation():
     ratio = math.exp(1.77)
     assert score_attribute(
         "unsaturated_to_saturated_fat_ratio",
@@ -113,18 +114,22 @@ def test_table_s10_dairy_and_emerging_attribute_half_weights_apply_to_points():
         "unsaturated_to_saturated_fat_ratio",
         ratio,
         context={"fat_energy_percent": 10.0, "is_dairy": True},
-    ) == pytest.approx(5.0)
-    assert score_attribute("total_protein", 14.0) == pytest.approx(5.0)
-    assert score_attribute("cholesterol", 75.0) == pytest.approx(-5.0)
-    assert score_attribute("fermentation_percent_calories", 50.0) == pytest.approx(5.0)
-    assert score_attribute("frying", True) == pytest.approx(-5.0)
+    ).weight == pytest.approx(0.5)
+    assert score_attribute("total_protein", 14.0) == pytest.approx(10.0)
+    assert score_attribute("total_protein", 14.0).weight == pytest.approx(0.5)
+    assert score_attribute("cholesterol", 75.0) == pytest.approx(-10.0)
+    assert score_attribute("cholesterol", 75.0).weight == pytest.approx(0.5)
+    assert score_attribute("fermentation_percent_calories", 50.0) == pytest.approx(10.0)
+    assert score_attribute("fermentation_percent_calories", 50.0).weight == pytest.approx(0.5)
+    assert score_attribute("frying", True) == pytest.approx(-10.0)
+    assert score_attribute("frying", True).weight == pytest.approx(0.5)
 
 
 def test_table_s10_fermentation_keyword_and_binary_additives():
     assert score_attribute("fermentation_percent_calories", 0.0) == 0.0
     assert score_attribute(
         "fermentation_percent_calories", 0.0, context={"is_other_fermented_product": True}
-    ) == 5.0
+    ) == 10.0
     assert score_attribute("artificial_sweeteners_flavors_or_colors", True) == -1.0
     assert score_attribute("artificial_sweeteners_flavors_or_colors", False) == 0.0
 
@@ -183,18 +188,68 @@ def test_aggregation_applies_processing_fiber_and_phytochemical_weights():
     domains = aggregate_domains(
         {
             "nova_processing_level": 10.0,
-            "fermentation_percent_calories": 5.0,
-            "frying": -5.0,
+            "fermentation_percent_calories": 10.0,
+            "frying": -10.0,
             "total_fiber": 10.0,
-            "total_protein": 5.0,
+            "total_protein": 10.0,
             "total_flavonoids": 10.0,
             "total_carotenoids": 10.0,
         }
     )
 
-    assert domains["processing"] == pytest.approx(10.0 / 3.0)
-    assert domains["fiber_and_protein"] == pytest.approx(7.5)
+    assert domains["processing"] == pytest.approx(5.0)
+    assert domains["fiber_and_protein"] == pytest.approx(10.0)
     assert domains["phytochemicals"] == pytest.approx(5.0)
+
+
+def test_gated_ratio_is_not_calculated_and_is_excluded_from_the_ratio_denominator():
+    gated = score_attribute(
+        "potassium_to_sodium_ratio",
+        math.exp(3.30),
+        context={"potassium_mg": 9.999, "sodium_mg": 10.0},
+    )
+
+    assert gated is NOT_CALCULATED
+    domains = aggregate_domains(
+        {
+            "unsaturated_to_saturated_fat_ratio": 10.0,
+            "fiber_to_carbohydrate_ratio": 10.0,
+            "potassium_to_sodium_ratio": gated,
+        }
+    )
+    assert domains["nutrient_ratios"] == pytest.approx(10.0)
+
+
+@pytest.mark.parametrize(
+    ("domain", "removed"),
+    [
+        ("vitamins", "vitamin_c"),
+        ("processing", "frying"),
+    ],
+)
+def test_aggregation_rejects_incomplete_requested_domains(domain, removed):
+    scores = {
+        rule.name: 0.0
+        for rule in FCS2_RULES.values()
+        if rule.domain == domain and rule.active
+    }
+    scores.pop(removed)
+
+    with pytest.raises(ValueError, match=rf"incomplete {domain} domain.*{removed}"):
+        aggregate_domains(scores)
+
+
+def test_top_k_ties_use_immutable_registry_order_not_caller_mapping_order():
+    in_registry_order = {
+        "cholesterol": -10.0,
+        "medium_chain_fatty_acids": 10.0,
+        "alpha_linolenic_acid": -10.0,
+        "epa_plus_dha": 10.0,
+    }
+    reverse_caller_order = dict(reversed(tuple(in_registry_order.items())))
+
+    assert aggregate_domains(in_registry_order)["specific_lipids"] == pytest.approx(-5.0 / 3.0)
+    assert aggregate_domains(reverse_caller_order)["specific_lipids"] == pytest.approx(-5.0 / 3.0)
 
 
 def test_table_s10_unscaled_truncation_and_exact_inverse_scaling():
