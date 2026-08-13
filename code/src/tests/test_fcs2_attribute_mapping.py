@@ -113,11 +113,43 @@ def test_primary_mapping_has_required_component_policies_and_exact_splits():
     assert all(row.version == PRIMARY_MAPPING_VERSION for row in PRIMARY_ATTRIBUTE_MAPPINGS)
 
 
+def test_unsaturated_exposure_is_fixed_and_never_receives_an_expert_mask_beta():
+    all_registries = (PRIMARY_ATTRIBUTE_MAPPINGS, *SENSITIVITY_ATTRIBUTE_MAPPINGS.values())
+    unsaturated_columns = {
+        "Fatty acids, total monounsaturated (g)",
+        "Fatty acids, total polyunsaturated (g)",
+    }
+
+    for rows in all_registries:
+        assert not any(row.nutrient in unsaturated_columns and row.role == "effect" for row in rows)
+    primary_ratio_effects = {
+        row.nutrient
+        for row in PRIMARY_ATTRIBUTE_MAPPINGS
+        if row.attribute == "unsaturated_to_saturated_fat_ratio" and row.role == "effect"
+    }
+    assert primary_ratio_effects == {"Fatty acids, total saturated (g)"}
+
+
 def test_mapping_validation_rejects_duplicates():
     row = PRIMARY_ATTRIBUTE_MAPPINGS[0]
 
     with pytest.raises(ValueError, match="duplicate"):
         validate_attribute_mappings((row, row))
+
+
+def test_mapping_validation_rejects_duplicates_independent_of_version():
+    row = PRIMARY_ATTRIBUTE_MAPPINGS[2]
+
+    with pytest.raises(ValueError, match="duplicate"):
+        validate_attribute_mappings((row, replace(row, version="another_version")))
+
+
+def test_mapping_validation_requires_one_registry_version():
+    first = PRIMARY_ATTRIBUTE_MAPPINGS[2]
+    second = replace(PRIMARY_ATTRIBUTE_MAPPINGS[3], version="another_version")
+
+    with pytest.raises(ValueError, match="one registry version"):
+        validate_attribute_mappings((first, second))
 
 
 def test_mapping_validation_requires_exact_allocation_conservation():
@@ -142,6 +174,29 @@ def test_mapping_validation_rejects_invalid_targets_and_role_allocations(row, me
 
 
 @pytest.mark.parametrize(
+    "nutrient",
+    [
+        "Total Fat (g)",
+        "4:0 (g)",
+        "6:0 (g)",
+        "14:0 (g)",
+        "16:0 (g)",
+        "18:0 (g)",
+        "Carbohydrate (g)",
+        "Zinc (mg)",
+        "Copper (mg)",
+        "Vitamin A, RAE (mcg_RAE)",
+    ],
+)
+def test_mapping_validation_rejects_protected_nutrient_promotion(nutrient):
+    row = next(row for row in PRIMARY_ATTRIBUTE_MAPPINGS if row.nutrient == nutrient)
+    promoted = replace(row, role="effect", allocation_weight=1.0)
+
+    with pytest.raises(ValueError, match="protected nutrient"):
+        validate_attribute_mappings((promoted,))
+
+
+@pytest.mark.parametrize(
     ("version", "nutrient", "expected_attribute"),
     [
         ("fiber_all_ratio", "Fiber, total dietary (g)", "fiber_to_carbohydrate_ratio"),
@@ -158,15 +213,39 @@ def test_sensitivity_variants_reallocate_to_one_target(version, nutrient, expect
     validate_attribute_mappings(rows)
 
 
-def test_carbohydrate_is_a_denominator_effect_only_in_sensitivity_variants():
+def test_allocation_variants_do_not_activate_carbohydrate_proxy():
     primary = [row for row in PRIMARY_ATTRIBUTE_MAPPINGS if row.nutrient == "Carbohydrate (g)"]
     assert [(row.role, row.allocation_weight) for row in primary] == [("sensitivity_proxy_only", 0.0)]
 
-    for version, rows in SENSITIVITY_ATTRIBUTE_MAPPINGS.items():
+    allocation_versions = {
+        "fiber_all_ratio",
+        "fiber_all_absolute",
+        "potassium_all_ratio",
+        "potassium_all_absolute",
+    }
+    for version in allocation_versions:
+        rows = SENSITIVITY_ATTRIBUTE_MAPPINGS[version]
         carbohydrate = [row for row in rows if row.nutrient == "Carbohydrate (g)"]
-        assert [(row.attribute, row.role, row.component_policy, row.allocation_weight) for row in carbohydrate] == [
-            ("fiber_to_carbohydrate_ratio", "effect", "denominator_component", 1.0)
+        assert [(row.role, row.allocation_weight) for row in carbohydrate] == [
+            ("sensitivity_proxy_only", 0.0)
         ], version
+
+
+def test_carbohydrate_proxy_is_a_separate_sensitivity_registry():
+    assert set(SENSITIVITY_ATTRIBUTE_MAPPINGS) == {
+        "fiber_all_ratio",
+        "fiber_all_absolute",
+        "potassium_all_ratio",
+        "potassium_all_absolute",
+        "carbohydrate_proxy",
+    }
+    rows = SENSITIVITY_ATTRIBUTE_MAPPINGS["carbohydrate_proxy"]
+    carbohydrate = [row for row in rows if row.nutrient == "Carbohydrate (g)"]
+
+    assert [(row.attribute, row.role, row.component_policy, row.allocation_weight) for row in carbohydrate] == [
+        ("fiber_to_carbohydrate_ratio", "effect", "denominator_component", 1.0)
+    ]
+    validate_attribute_mappings(rows)
 
 
 def test_allocation_matrix_preserves_labels_and_reports_zero_allocation_roles():
@@ -273,6 +352,119 @@ def test_food_specific_response_denominator_effect_has_opposite_ratio_direction(
     result = build_food_specific_response(beta, exposure)
 
     assert result.response["unsaturated_to_saturated_fat_ratio"] < 0.0
+
+
+def test_ratio_effects_use_component_specific_normalized_exposures():
+    beta, exposure = _complete_response_inputs()
+    beta["Fiber, total dietary (g)"] = 1.0
+    exposure["Fiber, total dietary (g)"] = 9.5
+    beta["Potassium (mg)"] = 1.0
+    exposure["Potassium (mg)"] = 1175.0
+    beta["Fatty acids, total saturated (g)"] = 1.0
+    exposure["Fatty acids, total saturated (g)"] = 2.0
+    exposure["Fatty acids, total monounsaturated (g)"] = 4.0
+    exposure["Fatty acids, total polyunsaturated (g)"] = 2.0
+
+    result = build_food_specific_response(beta, exposure)
+
+    assert result.response["fiber_to_carbohydrate_ratio"] == pytest.approx(0.5)
+    assert result.response["potassium_to_sodium_ratio"] == pytest.approx(0.5)
+    assert result.response["unsaturated_to_saturated_fat_ratio"] == pytest.approx(-0.25)
+
+
+def test_zero_unsaturated_numerator_does_not_erase_saturated_denominator_effect():
+    beta, exposure = _complete_response_inputs()
+    beta["Fatty acids, total saturated (g)"] = 1.0
+    exposure["Fatty acids, total saturated (g)"] = 2.0
+    exposure["Fatty acids, total monounsaturated (g)"] = 0.0
+    exposure["Fatty acids, total polyunsaturated (g)"] = 0.0
+
+    result = build_food_specific_response(beta, exposure)
+
+    assert result.response["unsaturated_to_saturated_fat_ratio"] == pytest.approx(-1.0)
+
+
+def test_ratio_component_effects_respect_published_applicability_gates():
+    beta, exposure = _complete_response_inputs()
+    beta["Fatty acids, total saturated (g)"] = 1.0
+    exposure["Total Fat (g)"] = 1.0
+
+    fat_gated = build_food_specific_response(beta, exposure)
+    assert fat_gated.response["unsaturated_to_saturated_fat_ratio"] == 0.0
+
+    beta["Carbohydrate (g)"] = 1.0
+    exposure["Carbohydrate (g)"] = 2.0
+    carbohydrate_gated = build_food_specific_response(beta, exposure, "carbohydrate_proxy")
+    assert carbohydrate_gated.response["fiber_to_carbohydrate_ratio"] == 0.0
+
+
+def test_carbohydrate_proxy_uses_signed_clipped_energy_fraction_independent_of_fiber():
+    beta, exposure = _complete_response_inputs()
+    beta["Carbohydrate (g)"] = 1.0
+    exposure["Carbohydrate (g)"] = 12.5
+    exposure["Fiber, total dietary (g)"] = 0.0
+
+    result = build_food_specific_response(beta, exposure, "carbohydrate_proxy")
+
+    assert result.response["fiber_to_carbohydrate_ratio"] == pytest.approx(-0.5)
+
+    exposure["Carbohydrate (g)"] = 50.0
+    clipped = build_food_specific_response(beta, exposure, "carbohydrate_proxy")
+    assert clipped.response["fiber_to_carbohydrate_ratio"] == pytest.approx(-1.0)
+
+
+def test_ratio_effects_fail_closed_when_side_inputs_are_missing():
+    beta, exposure = _complete_response_inputs()
+
+    with pytest.raises(ValueError, match="missing required food exposure.*monounsaturated"):
+        build_food_specific_response(beta, exposure.drop(index="Fatty acids, total monounsaturated (g)"))
+    with pytest.raises(ValueError, match="missing required food exposure.*Sodium"):
+        build_food_specific_response(beta, exposure.drop(index="Sodium (mg)"))
+
+
+def test_food_specific_response_rejects_tampered_allocation_matrices():
+    beta, exposure = _complete_response_inputs()
+
+    def set_effect_weights(allocation):
+        allocation.weights.loc[:, "vitamin_c"] = 2.0
+
+    def set_nonfinite_weights(allocation):
+        allocation.weights.loc[:, "zinc"] = float("nan")
+
+    def set_protected_role_weight(allocation):
+        allocation.weights.loc[
+            "Total Fat (g)",
+            "unsaturated_to_saturated_fat_ratio",
+        ] = 0.1
+
+    def add_attribute_label(allocation):
+        allocation.weights.loc[:, "unexpected_attribute"] = 0.0
+
+    def change_version(allocation):
+        allocation.role_diagnostics.loc[:, "version"] = "fiber_all_ratio"
+
+    mutations = (
+        set_effect_weights,
+        set_nonfinite_weights,
+        set_protected_role_weight,
+        add_attribute_label,
+        change_version,
+    )
+    for mutate in mutations:
+        allocation = build_allocation_matrix(CANONICAL_COLUMNS)
+        mutate(allocation)
+        with pytest.raises(ValueError, match="allocation matrix"):
+            build_food_specific_response(beta, exposure, allocation)
+
+
+def test_food_specific_response_accepts_an_untampered_allocation_matrix():
+    beta, exposure = _complete_response_inputs()
+    allocation = build_allocation_matrix(CANONICAL_COLUMNS)
+
+    by_version = build_food_specific_response(beta, exposure)
+    by_allocation = build_food_specific_response(beta, exposure, allocation)
+
+    pd.testing.assert_series_equal(by_allocation.response, by_version.response)
 
 
 def test_food_specific_response_requires_declared_units_and_all_required_labels():
