@@ -1,0 +1,75 @@
+code/src/gmnps/validation/person_meal_benchmark.py
+  s_4d75bbbcc79dac::t_3b23889d472f63 18,30,166-167,176-177,188
+  s_4d75bbbcc79dac::t_caf8477c4096de 821-933,937-939,1519,1564,1593-1601,1623,1676-1680,1689-1691
+  s_4d75bbbcc79dac::t_eda79f3af246d0 26,1001-1007,1098-1109
+  s_4d75bbbcc79dac::t_38f563ffaffc11 736-737,804-805
+  s_4d75bbbcc79dac::t_e8138800b906eb 1726-1744,1749,1759
+  s_4d75bbbcc79dac::t_9e1d8fbb4ef685 400-403
+  s_4d75bbbcc79dac::t_19af9309331f85 20
+  s_4d75bbbcc79dac::t_171886ec71d635 186-187,1235,1240-1242,1252,1324,1379,1396,1412,1420,1437-1494,1504-1512,1552-1553,1566,1570,1625,1633,1720,1758
+  s_4d75bbbcc79dac::t_4ec359124d19de 614-617,1128-1200,1281-1286,1349,1352
+  s_4d75bbbcc79dac::t_7d867ff8704007 1495-1503,1520,1526-1551,1568,1628-1631,1750
+  s_4d75bbbcc79dac::t_058e77f71b607d 458,484,489-492,498,548-562,591,597-613,957,959-964
+  s_4d75bbbcc79dac::t_ce7284eca5d105 1061-1062,1064-1072
+  s_4d75bbbcc79dac::t_4f2beef8b8471a 934-936
+  s_4d75bbbcc79dac::t_c65dba47c2926b 631-633,708-712,768
+  s_4d75bbbcc79dac::t_606ae6878dde54 1016
+  s_4d75bbbcc79dac::t_19d4e8c127cf43 10,14,17,19,71-76,78-97,105-113,115-126,128-129,131-139,147,149,192,194-207,212-214,217,225-399,404-435
+  s_4d75bbbcc79dac::t_8b2469abed21e8 1710
+  s_4d75bbbcc79dac::t_d2088b6eadfdb2 1513-1514
+code/src/tests/test_predict_zoe_loader.py
+  s_4d75bbbcc79dac::t_d276b643ca5725 34,64-101,107,138-160,425
+  s_4d75bbbcc79dac::t_16efb32b50bff5 728-742
+  s_4d75bbbcc79dac::t_67df6ee6630e07 424,442,638-648
+  s_4d75bbbcc79dac::t_4f2beef8b8471a 102-106,108-137
+docs/data/predict_zoe_reconstruction_log.md
+  s_4d75bbbcc79dac::t_1ec03350a15978 181-182,188-192,196-203,216-217
+code/src/gmnps/data_sources/predict_zoe_loader.py
+  s_4d75bbbcc79dac::t_212da054fd20f2 112-127,129-150,156,159-185
+docs/superpowers/plans/2026-08-13-predict-zoe-data-validation.md
+  s_4d75bbbcc79dac::t_1ec03350a15978 66-67,80-84
+code/src/tests/test_method_lock_gate.py
+  s_4d75bbbcc79dac::t_67df6ee6630e07 187-190,196,227,265-267,390,431-441
+  s_4d75bbbcc79dac::t_e4e8386f422b81 420-424
+  s_4d75bbbcc79dac::t_d2088b6eadfdb2 442-443
+code/src/tests/test_cohort_split.py
+  s_4d75bbbcc79dac::t_a90469bee24c15 136-180
+code/src/gmnps/validation/cohort_split.py
+  s_4d75bbbcc79dac::t_a5479133214d0c 163-236,244-245
+docs/methods/method_lock_manifest.schema.json
+  s_4d75bbbcc79dac::t_19e1f86f4fce64 28-31
+  s_4d75bbbcc79dac::t_413c07b6f65560 203-204
+  s_4d75bbbcc79dac::t_d2088b6eadfdb2 205-207
+code/src/gmnps/validation/method_lock_gate.py
+  s_4d75bbbcc79dac::t_19e1f86f4fce64 276-285
+  s_4d75bbbcc79dac::t_413c07b6f65560 80,487-490,582,632
+code/src/tests/test_person_meal_benchmark.py
+  s_4d75bbbcc79dac::t_9dead9e30570ba 9,54-55,62,78,83-127,158-185,216,237,240,261,346,487,517-518,562-567,571-581,583-593,595-599,604-606,608,624-625,644-645
+  s_4d75bbbcc79dac::t_202266779b549d 513-514
+  s_4d75bbbcc79dac::t_e638d84231180e 195
+  s_4d75bbbcc79dac::t_b119220c9174d1 407-412,418-422,443-474,519-561
+  s_4d75bbbcc79dac::t_9e1d8fbb4ef685 568-570
+  s_4d75bbbcc79dac::t_f5ba7ee9bcaad1 475-482
+  s_4d75bbbcc79dac::t_4f2beef8b8471a 128-157,600-603
+  s_4d75bbbcc79dac::t_ab470cfcc9aaeb 213,369,386-394,414,429-442,489
+code/src/configs/person_meal_validation.yaml
+  s_4d75bbbcc79dac::t_413c07b6f65560 48-49,53-83,89,92-116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "5a93d29be313cdb2f6207f99ed3fe25ad1b91157",
+  "prompts": {},
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 7,
+      "accepted_lines": 7
+    }
+  }
+}
