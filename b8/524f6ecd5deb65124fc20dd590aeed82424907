@@ -1,0 +1,54 @@
+code/src/tests/test_attribute_gmnps.py
+  s_4d75bbbcc79dac::t_5b6770e5f97bd1 183-184,186,313-314,357
+  s_4d75bbbcc79dac::t_7c4edc90754107 361,377
+.superpowers/sdd/phase1-final-fix-report.md
+  s_4d75bbbcc79dac::t_db15781c25d1db 5,16-21,54-116,186-189
+code/src/tests/test_run_attribute_gmnps.py
+  s_4d75bbbcc79dac::t_e4b957085b77fc 347-403
+code/src/gmnps/scoring/attribute_gmnps.py
+  s_4d75bbbcc79dac::t_29d0b10682da8d 1822-1824
+  s_4d75bbbcc79dac::t_dd4e40a9f671a8 111,113,128,151,158-159,162-163,173-181,240,252-278
+  s_4d75bbbcc79dac::t_9b331a26c1a40c 182-188,209-211,213-215,221-231
+  s_4d75bbbcc79dac::t_7d3eeba263be0c 541-547,554-558,582
+  s_4d75bbbcc79dac::t_3fa3f6741ed187 389,417-423
+  s_4d75bbbcc79dac::t_7037dbeecd9093 1209-1218,1802-1810
+  s_4d75bbbcc79dac::t_ce7defd1483bff 165-168,189-190,200-202
+  s_4d75bbbcc79dac::t_f8d7c1c179fa5f 1672-1678
+  s_4d75bbbcc79dac::t_3a7c2a845a6819 799,801-803
+  s_4d75bbbcc79dac::t_2b244c5f27ee18 955-959,982-986,988-997,999-1028
+  s_4d75bbbcc79dac::t_c424eaadba0955 1401,1403,1413-1436,1456-1462,1471-1500,1566-1568
+  s_4d75bbbcc79dac::t_e46f3baf96c2ea 279-280
+docs/methods/method_lock_manifest.schema.json
+  s_4d75bbbcc79dac::t_85317fce1b980b 76,84,86,92-94
+  s_4d75bbbcc79dac::t_e2adca8f84722f 208,210
+code/src/tests/test_phase1_final_fixes.py
+  s_4d75bbbcc79dac::t_c2a637185c5f07 10-11,13,15,18,83-88,179,181,213-234,293-390
+code/src/tests/test_attribute_method_lock.py
+  s_4d75bbbcc79dac::t_721f2c926153c6 11-12,125,170,172,176-184
+code/src/scripts/run_attribute_gmnps.py
+  s_4d75bbbcc79dac::t_723d5943318fad 599-603
+code/src/configs/fcs2_fndds_release_registry.json
+  s_4d75bbbcc79dac::t_a35d26450834ca 4
+docs/superpowers/plans/2026-08-13-predict-zoe-data-validation.md
+  s_4d75bbbcc79dac::t_db15781c25d1db 45,67-68,80
+docs/methods/attribute_level_gmnps_spec.md
+  s_4d75bbbcc79dac::t_db15781c25d1db 98-105,299-304,318-336,386,388
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "b8524f6ecd5deb65124fc20dd590aeed82424907",
+  "prompts": {},
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 2,
+      "accepted_lines": 2
+    }
+  }
+}
