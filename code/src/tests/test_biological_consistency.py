@@ -1,7 +1,9 @@
 import hashlib
 import inspect
 import json
+from argparse import Namespace
 from pathlib import Path
+import shutil
 
 import numpy as np
 import pandas as pd
@@ -24,11 +26,16 @@ from gmnps.validation.biological_consistency import (
     zoe_aggregate_rank_consistency_from_paths,
 )
 from gmnps.validation import biological_consistency as biological_module
-from gmnps.scoring.attribute_gmnps import fit_attribute_gmnps, score_attribute_gmnps
-from test_attribute_gmnps import development_beta, make_bundle, score_beta, smoke_config
+from gmnps.scoring import attribute_gmnps as attribute_scorer_module
+from test_attribute_gmnps import development_beta
 from test_method_lock_gate import _fixture as method_lock_fixture
 from test_method_lock_gate import _generate as generate_method_lock
 from test_method_lock_gate import _normalization_payload
+from test_run_attribute_gmnps import (
+    CONFIG as ATTRIBUTE_CONFIG,
+    load_runner_module,
+    write_inputs as write_runner_inputs,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -319,6 +326,7 @@ def test_true_microbiome_shuffle_requires_deranged_mapping_and_locked_rerun_cont
     rerun = toy_profile_attribute_rescore(profiles, foods, mapping=sidecar)
     assert "component_id" not in original
     assert "profile_source_unit_id" not in rerun
+    assert original["method_role"].eq("primary").all()
     manifest = _manifest("microbiome_shuffle_rerun", "biological_consistency")
     manifest.update(
         {
@@ -526,34 +534,135 @@ def _success_marker(path: Path, table: Path, manifest: Path) -> None:
 
 
 def _production_shuffle_chain(tmp_path, monkeypatch):
-    people = ["person_1", "person_2", "person_3", "person_4"]
-    dev = development_beta()
-    original_score_beta = score_beta(people)
-    for index, person in enumerate(people):
-        original_score_beta.loc[person, :] = (-0.75, -0.25, 0.5, 1.0)[index]
+    lock_paths, _ = method_lock_fixture(tmp_path / "lock", monkeypatch=monkeypatch)
+    canonical_releases = json.loads(lock_paths.release_registry.read_text())[
+        "canonical_release_set"
+    ]
+    runner_inputs = write_runner_inputs(
+        tmp_path / "runner_inputs", release=canonical_releases
+    )
+    original_score_beta = pd.read_csv(runner_inputs["score_beta"])
+    people = original_score_beta["individual_id"].astype(str).tolist()
+    source_people = list(reversed(people))
     sidecar = pd.DataFrame(
         {
             "target_individual_id": people,
-            "source_individual_id": ["person_3", "person_4", "person_1", "person_2"],
-            "target_component_id": ["component_a", "component_a", "component_b", "component_b"],
-            "source_component_id": ["component_b", "component_b", "component_a", "component_a"],
+            "source_individual_id": source_people,
+            "target_component_id": [f"component_{index}" for index in range(len(people))],
+            "source_component_id": [
+                f"component_{people.index(source)}" for source in source_people
+            ],
         }
     )
-    source_by_target = dict(
-        zip(sidecar["target_individual_id"], sidecar["source_individual_id"])
-    )
-    rerun_score_beta = original_score_beta.loc[
-        [source_by_target[person] for person in people]
-    ].copy()
-    rerun_score_beta.index = people
-    model = fit_attribute_gmnps(dev, smoke_config())
-    bundle = make_bundle()
-    original_scored = score_attribute_gmnps(model, original_score_beta, bundle)
-    rerun_scored = score_attribute_gmnps(model, rerun_score_beta, bundle)
-    assert "component_id" not in original_scored.individual_food
-    assert "profile_source_unit_id" not in rerun_scored.individual_food
+    sidecar_path = tmp_path / "mapping_sidecar.csv"
+    sidecar.to_csv(sidecar_path, index=False)
+    sidecar_hash = hashlib.sha256(sidecar_path.read_bytes()).hexdigest()
 
-    lock_paths, _ = method_lock_fixture(tmp_path / "lock", monkeypatch=monkeypatch)
+    original_beta_frame = original_score_beta.set_index("individual_id")
+    rerun_beta_frame = original_beta_frame.loc[source_people].copy()
+    rerun_beta_frame.index = people
+    rerun_score_beta = tmp_path / "rerun_score_beta.csv"
+    rerun_beta_frame.rename_axis("individual_id").to_csv(rerun_score_beta)
+
+    original_input = json.loads(runner_inputs["input_manifest"].read_text())
+    original_input["food_source_linkage_sha256"] = hashlib.sha256(
+        lock_paths.food_source_linkage.read_bytes()
+    ).hexdigest()
+    registry = json.loads(lock_paths.release_registry.read_text())
+    registry["approved_artifacts"] = [
+        {
+            "bundle_id": "runner-path-shuffle-test-bundle",
+            "fndds_releases": list(original_input["fndds_releases"]),
+            "artifact_sha256": {
+                "official_fcs": hashlib.sha256(
+                    runner_inputs["food_metadata"].read_bytes()
+                ).hexdigest(),
+                "food_metadata": hashlib.sha256(
+                    runner_inputs["food_metadata"].read_bytes()
+                ).hexdigest(),
+                "baseline_attribute_points": hashlib.sha256(
+                    runner_inputs["baseline_attribute_points"].read_bytes()
+                ).hexdigest(),
+                "food_exposures": hashlib.sha256(
+                    runner_inputs["food_exposures"].read_bytes()
+                ).hexdigest(),
+                "effective_attribute_weights": hashlib.sha256(
+                    runner_inputs["effective_attribute_weights"].read_bytes()
+                ).hexdigest(),
+            },
+            "food_source_linkage_sha256": original_input[
+                "food_source_linkage_sha256"
+            ],
+            "nutrient_units": original_input["nutrient_units"],
+            "exposure_basis": original_input["exposure_basis"],
+        }
+    ]
+    _write_json(lock_paths.release_registry, registry)
+    original_input["release_registry_snapshot_sha256"] = hashlib.sha256(
+        lock_paths.release_registry.read_bytes()
+    ).hexdigest()
+    _write_json(runner_inputs["input_manifest"], original_input)
+    rerun_input_payload = json.loads(json.dumps(original_input))
+    rerun_input_payload["files"]["score_beta"]["sha256"] = hashlib.sha256(
+        rerun_score_beta.read_bytes()
+    ).hexdigest()
+    rerun_input_payload["microbiome_shuffle_sidecar_sha256"] = sidecar_hash
+    rerun_input = tmp_path / "rerun_input.json"
+    _write_json(rerun_input, rerun_input_payload)
+
+    monkeypatch.setattr(
+        attribute_scorer_module,
+        "_TRUSTED_REGISTRY_PATH",
+        lock_paths.release_registry,
+    )
+    runner = load_runner_module()
+
+    def run_args(score_beta_path, input_manifest_path, output_dir):
+        return Namespace(
+            development_beta=runner_inputs["development_beta"],
+            score_beta=score_beta_path,
+            food_metadata=runner_inputs["food_metadata"],
+            baseline_attribute_points=runner_inputs["baseline_attribute_points"],
+            food_exposures=runner_inputs["food_exposures"],
+            effective_attribute_weights=runner_inputs["effective_attribute_weights"],
+            input_manifest=input_manifest_path,
+            config=ATTRIBUTE_CONFIG,
+            output_dir=output_dir,
+            method="attribute_recomposition",
+            method_role="primary",
+            development_smoke_test=False,
+            individual_chunk_size=None,
+            food_chunk_size=None,
+        )
+
+    original_output = tmp_path / "original"
+    rerun_output = tmp_path / "rerun"
+    runner.run(
+        run_args(
+            runner_inputs["score_beta"],
+            runner_inputs["input_manifest"],
+            original_output,
+        )
+    )
+    runner.run(run_args(rerun_score_beta, rerun_input, rerun_output))
+    original_run_payload = json.loads((original_output / "run_manifest.json").read_text())
+    rerun_run_payload = json.loads((rerun_output / "run_manifest.json").read_text())
+    assert pd.read_csv(original_output / "individual_food.csv")["method_role"].eq(
+        "primary"
+    ).all()
+    assert pd.read_csv(rerun_output / "individual_food.csv")["method_role"].eq(
+        "primary"
+    ).all()
+    assert original_run_payload["bundle_fingerprint"] != rerun_run_payload[
+        "bundle_fingerprint"
+    ]
+    assert biological_module._stable_food_method_artifact_fingerprint(
+        original_run_payload["source_hashes"]
+    ) == biological_module._stable_food_method_artifact_fingerprint(
+        rerun_run_payload["source_hashes"]
+    )
+
+    dev = pd.read_csv(runner_inputs["development_beta"]).set_index("individual_id")
     beta_payload = lambda frame: {
         "schema_version": "gmnps-canonical-beta-v1",
         "participant_ids": list(map(str, frame.index)),
@@ -561,7 +670,7 @@ def _production_shuffle_chain(tmp_path, monkeypatch):
         "values": frame.to_numpy(float).tolist(),
     }
     _write_json(lock_paths.development_beta, beta_payload(dev))
-    _write_json(lock_paths.scoring_beta, beta_payload(original_score_beta))
+    _write_json(lock_paths.scoring_beta, beta_payload(original_beta_frame))
     _write_json(
         lock_paths.normalization_state,
         _normalization_payload(
@@ -570,53 +679,15 @@ def _production_shuffle_chain(tmp_path, monkeypatch):
             dev.to_numpy(float).tolist(),
         ),
     )
-    bundle.official_fcs.rename("FCS2").to_csv(lock_paths.official_fcs)
-    bundle.food_metadata.to_csv(lock_paths.food_metadata)
-    bundle.baseline_points.to_csv(lock_paths.baseline_attribute_points)
-    bundle.food_exposures.to_csv(lock_paths.food_exposures)
-    bundle.effective_attribute_weights.to_csv(lock_paths.effective_attribute_weights)
-    release_registry = json.loads(lock_paths.release_registry.read_text())
-    release_registry["approved_artifacts"][0]["artifact_sha256"] = {
-        name: hashlib.sha256(getattr(lock_paths, name).read_bytes()).hexdigest()
-        for name in (
-            "official_fcs",
-            "food_metadata",
-            "baseline_attribute_points",
-            "food_exposures",
-            "effective_attribute_weights",
-        )
-    }
-    _write_json(lock_paths.release_registry, release_registry)
-
-    sidecar_path = tmp_path / "mapping_sidecar.csv"
-    sidecar.to_csv(sidecar_path, index=False)
-    sidecar_hash = hashlib.sha256(sidecar_path.read_bytes()).hexdigest()
-    rerun_beta = tmp_path / "rerun_beta.json"
-    _write_json(rerun_beta, beta_payload(rerun_score_beta))
-    phase1_artifacts = {
-        "development_beta": lock_paths.development_beta,
-        "score_beta": lock_paths.scoring_beta,
-        "food_metadata": lock_paths.food_metadata,
-        "baseline_attribute_points": lock_paths.baseline_attribute_points,
-        "food_exposures": lock_paths.food_exposures,
-        "effective_attribute_weights": lock_paths.effective_attribute_weights,
-    }
-    original_input = {
-        "production_label": "production",
-        "files": {
-            name: hashlib.sha256(path.read_bytes()).hexdigest()
-            for name, path in phase1_artifacts.items()
-        },
-        "model_contract": "attribute-recomposition-test-chain",
-    }
-    _write_json(lock_paths.input_manifest, original_input)
-    rerun_input_payload = json.loads(json.dumps(original_input))
-    rerun_input_payload["files"]["score_beta"] = hashlib.sha256(
-        rerun_beta.read_bytes()
-    ).hexdigest()
-    rerun_input_payload["microbiome_shuffle_sidecar_sha256"] = sidecar_hash
-    rerun_input = tmp_path / "rerun_input.json"
-    _write_json(rerun_input, rerun_input_payload)
+    shutil.copyfile(runner_inputs["food_metadata"], lock_paths.official_fcs)
+    for name in (
+        "food_metadata",
+        "baseline_attribute_points",
+        "food_exposures",
+        "effective_attribute_weights",
+    ):
+        shutil.copyfile(runner_inputs[name], getattr(lock_paths, name))
+    shutil.copyfile(runner_inputs["input_manifest"], lock_paths.input_manifest)
 
     method_lock = generate_method_lock(lock_paths)
     method_lock_path = tmp_path / "method_lock.json"
@@ -627,46 +698,13 @@ def _production_shuffle_chain(tmp_path, monkeypatch):
         {name: str(getattr(lock_paths, name)) for name in lock_paths.__dataclass_fields__},
     )
 
-    original_table = tmp_path / "original" / "individual_food.csv"
-    rerun_table = tmp_path / "rerun" / "individual_food.csv"
-    original_table.parent.mkdir()
-    rerun_table.parent.mkdir()
-    original_scored.individual_food.to_csv(original_table, index=False)
-    rerun_scored.individual_food.to_csv(rerun_table, index=False)
-
-    contracts = []
-    for scored in (original_scored, rerun_scored):
-        run_contract = dict(scored.run_manifest)
-        run_contract.update(
-            {
-                "production_label": "production",
-                "development_smoke_test": False,
-            }
-        )
-        contracts.append(run_contract)
-    contract = contracts[0]
-    original_run = tmp_path / "original" / "run_manifest.json"
-    rerun_run = tmp_path / "rerun" / "run_manifest.json"
-    for path, upstream, run_contract in (
-        (original_run, lock_paths.input_manifest, contracts[0]),
-        (rerun_run, rerun_input, contracts[1]),
-    ):
-        upstream_hash = hashlib.sha256(upstream.read_bytes()).hexdigest()
-        _write_json(
-            path,
-            {
-                **run_contract,
-                "input_manifest_sha256": upstream_hash,
-                "source_hashes": {
-                    **dict(run_contract["source_hashes"]),
-                    "input_manifest": upstream_hash,
-                },
-            },
-        )
-    original_success = tmp_path / "original" / "_SUCCESS.json"
-    rerun_success = tmp_path / "rerun" / "_SUCCESS.json"
-    _success_marker(original_success, original_table, original_run)
-    _success_marker(rerun_success, rerun_table, rerun_run)
+    original_table = original_output / "individual_food.csv"
+    rerun_table = rerun_output / "individual_food.csv"
+    original_run = original_output / "run_manifest.json"
+    rerun_run = rerun_output / "run_manifest.json"
+    original_success = original_output / "_SUCCESS.json"
+    rerun_success = rerun_output / "_SUCCESS.json"
+    contract = original_run_payload
 
     provenance = _manifest("microbiome_shuffle_rerun", "biological_consistency")
     provenance.update(
@@ -687,10 +725,20 @@ def _production_shuffle_chain(tmp_path, monkeypatch):
         "locked_scoring_contract_sha256": biological_module._canonical_mapping_sha256(
             biological_module._scoring_contract(contract)
         ),
+        "stable_food_method_artifact_fingerprint": (
+            biological_module._stable_food_method_artifact_fingerprint(
+                contract["source_hashes"]
+            )
+        ),
         "original_input_manifest_sha256": hashlib.sha256(lock_paths.input_manifest.read_bytes()).hexdigest(),
         "rerun_input_manifest_sha256": hashlib.sha256(rerun_input.read_bytes()).hexdigest(),
-        "original_scoring_beta_sha256": hashlib.sha256(lock_paths.scoring_beta.read_bytes()).hexdigest(),
-        "rerun_scoring_beta_sha256": hashlib.sha256(rerun_beta.read_bytes()).hexdigest(),
+        "runner_development_beta_sha256": hashlib.sha256(
+            runner_inputs["development_beta"].read_bytes()
+        ).hexdigest(),
+        "original_scoring_beta_sha256": hashlib.sha256(
+            runner_inputs["score_beta"].read_bytes()
+        ).hexdigest(),
+        "rerun_scoring_beta_sha256": hashlib.sha256(rerun_score_beta.read_bytes()).hexdigest(),
         "method_lock_manifest_sha256": hashlib.sha256(method_lock_path.read_bytes()).hexdigest(),
         "method_lock_artifact_locator_sha256": hashlib.sha256(locator.read_bytes()).hexdigest(),
         "phase1_release_registry_sha256": hashlib.sha256(lock_paths.release_registry.read_bytes()).hexdigest(),
@@ -735,8 +783,9 @@ def _production_shuffle_chain(tmp_path, monkeypatch):
         rerun_success_marker=rerun_success,
         rerun_input_manifest=rerun_input,
         mapping_sidecar=sidecar_path,
-        original_scoring_beta=lock_paths.scoring_beta,
-        rerun_scoring_beta=rerun_beta,
+        runner_development_beta=runner_inputs["development_beta"],
+        original_scoring_beta=runner_inputs["score_beta"],
+        rerun_scoring_beta=rerun_score_beta,
         method_lock_manifest=method_lock_path,
         method_lock_artifact_locator=locator,
         method_lock_artifacts=lock_paths,
@@ -755,16 +804,47 @@ def test_production_microbiome_shuffle_verifies_two_live_phase1_chains(
     assert result["verified_input_hashes"]["rerun_scoring_beta_sha256"] == hashlib.sha256(
         paths.rerun_scoring_beta.read_bytes()
     ).hexdigest()
+    assert result["verified_input_hashes"][
+        "stable_food_method_artifact_fingerprint"
+    ]
+
+
+def test_stable_source_contract_allows_only_preregistered_varying_inputs():
+    stable = {
+        "development_beta": "1" * 64,
+        "official_fcs": "2" * 64,
+        "food_metadata": "3" * 64,
+        "baseline_attribute_points": "4" * 64,
+        "food_exposures": "5" * 64,
+        "effective_attribute_weights": "6" * 64,
+    }
+    original = {**stable, "score_beta": "7" * 64, "input_manifest": "8" * 64}
+    rerun = {**stable, "score_beta": "9" * 64, "input_manifest": "a" * 64}
+    fingerprint = biological_module._validate_stable_source_hash_contract(
+        original, rerun
+    )
+    assert fingerprint == biological_module._stable_food_method_artifact_fingerprint(
+        original
+    )
+
+    with pytest.raises(ValueError, match="unrecognized differing source key"):
+        biological_module._validate_stable_source_hash_contract(
+            original, {**rerun, "unexpected_profile_copy": "b" * 64}
+        )
+    with pytest.raises(ValueError, match="stable source hash mismatch"):
+        biological_module._validate_stable_source_hash_contract(
+            original, {**rerun, "food_metadata": "c" * 64}
+        )
 
 
 def test_production_microbiome_shuffle_rejects_self_signed_rerun_tamper(
     tmp_path, monkeypatch
 ):
     paths, _ = _production_shuffle_chain(tmp_path, monkeypatch)
-    payload = json.loads(paths.rerun_scoring_beta.read_text())
-    payload["values"][0][0] += 1
-    _write_json(paths.rerun_scoring_beta, payload)
-    with pytest.raises(ValueError, match="rerun input manifest does not bind"):
+    frame = pd.read_csv(paths.rerun_scoring_beta)
+    frame.iloc[0, 1] += 1
+    frame.to_csv(paths.rerun_scoring_beta, index=False)
+    with pytest.raises(ValueError, match="rerun run source_hashes does not bind score_beta"):
         evaluate_microbiome_shuffle_rerun_from_paths(paths)
 
 
@@ -772,9 +852,9 @@ def test_production_microbiome_shuffle_rejects_hash_coherent_wrong_beta_mapping(
     tmp_path, monkeypatch
 ):
     paths, registry = _production_shuffle_chain(tmp_path, monkeypatch)
-    rerun_beta = json.loads(paths.rerun_scoring_beta.read_text())
-    rerun_beta["values"][0] = list(rerun_beta["values"][1])
-    _write_json(paths.rerun_scoring_beta, rerun_beta)
+    rerun_beta = pd.read_csv(paths.rerun_scoring_beta)
+    rerun_beta.iloc[0, 1:] = rerun_beta.iloc[1, 1:].to_numpy()
+    rerun_beta.to_csv(paths.rerun_scoring_beta, index=False)
 
     rerun_input = json.loads(paths.rerun_input_manifest.read_text())
     rerun_input["files"]["score_beta"] = hashlib.sha256(
@@ -785,6 +865,9 @@ def test_production_microbiome_shuffle_rejects_hash_coherent_wrong_beta_mapping(
     input_hash = hashlib.sha256(paths.rerun_input_manifest.read_bytes()).hexdigest()
     rerun_run["input_manifest_sha256"] = input_hash
     rerun_run["source_hashes"]["input_manifest"] = input_hash
+    rerun_run["source_hashes"]["score_beta"] = hashlib.sha256(
+        paths.rerun_scoring_beta.read_bytes()
+    ).hexdigest()
     _write_json(paths.rerun_run_manifest, rerun_run)
     _success_marker(
         paths.rerun_success_marker,

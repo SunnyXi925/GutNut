@@ -107,6 +107,7 @@ class MicrobiomeShuffleArtifactPaths:
     rerun_success_marker: Path
     rerun_input_manifest: Path
     mapping_sidecar: Path
+    runner_development_beta: Path
     original_scoring_beta: Path
     rerun_scoring_beta: Path
     method_lock_manifest: Path
@@ -349,6 +350,78 @@ def verify_supporting_evidence_file(
     return hashes
 
 
+_PREREGISTERED_VARYING_SOURCE_KEYS = frozenset(
+    {
+        "score_beta",
+        "input_manifest",
+        "microbiome_shuffle_sidecar",
+        "microbiome_profile_input",
+        "rerun_profile_input",
+    }
+)
+_REQUIRED_STABLE_SOURCE_KEYS = frozenset(
+    {
+        "development_beta",
+        "official_fcs",
+        "food_metadata",
+        "baseline_attribute_points",
+        "food_exposures",
+        "effective_attribute_weights",
+    }
+)
+
+
+def _source_hash_mapping(value: object, label: str) -> dict[str, str]:
+    if not isinstance(value, Mapping) or not value:
+        raise ValueError(f"{label} source_hashes must be a nonempty object")
+    result: dict[str, str] = {}
+    for key, digest in value.items():
+        if not isinstance(key, str) or not key.strip():
+            raise ValueError(f"{label} source_hashes keys must be nonempty strings")
+        result[key] = _sha(digest, f"{label} source_hashes.{key}")
+    return result
+
+
+def _stable_source_hashes(source_hashes: object) -> dict[str, str]:
+    source = _source_hash_mapping(source_hashes, "run manifest")
+    stable = {
+        key: digest
+        for key, digest in source.items()
+        if key not in _PREREGISTERED_VARYING_SOURCE_KEYS
+    }
+    missing = sorted(_REQUIRED_STABLE_SOURCE_KEYS - set(stable))
+    if missing:
+        raise ValueError(f"stable source hashes lack required keys: {missing}")
+    return dict(sorted(stable.items()))
+
+
+def _stable_food_method_artifact_fingerprint(source_hashes: object) -> str:
+    return _canonical_mapping_sha256(
+        {
+            "schema_version": "gmnps-stable-food-method-artifacts-v1",
+            "source_hashes": _stable_source_hashes(source_hashes),
+        }
+    )
+
+
+def _validate_stable_source_hash_contract(
+    original_source_hashes: object,
+    rerun_source_hashes: object,
+) -> str:
+    original = _source_hash_mapping(original_source_hashes, "original run")
+    rerun = _source_hash_mapping(rerun_source_hashes, "rerun")
+    for key in sorted(set(original) | set(rerun)):
+        if original.get(key) != rerun.get(key) and key not in _PREREGISTERED_VARYING_SOURCE_KEYS:
+            if key not in original or key not in rerun:
+                raise ValueError(f"unrecognized differing source key: {key}")
+            raise ValueError(f"stable source hash mismatch: {key}")
+    original_stable = _stable_source_hashes(original)
+    rerun_stable = _stable_source_hashes(rerun)
+    if original_stable != rerun_stable:
+        raise ValueError("stable source hash mismatch")
+    return _stable_food_method_artifact_fingerprint(original)
+
+
 def _scoring_contract(manifest: Mapping[str, object]) -> dict[str, object]:
     fields = (
         "method",
@@ -357,13 +430,17 @@ def _scoring_contract(manifest: Mapping[str, object]) -> dict[str, object]:
         "scoring_version",
         "score_centering",
         "beta_centering",
-        "bundle_fingerprint",
         "model_fingerprint",
     )
     missing = [field for field in fields if field not in manifest]
     if missing:
         raise ValueError(f"scoring manifest lacks locked contract fields: {missing}")
-    return {field: manifest[field] for field in fields}
+    return {
+        **{field: manifest[field] for field in fields},
+        "stable_food_method_artifact_fingerprint": (
+            _stable_food_method_artifact_fingerprint(manifest.get("source_hashes"))
+        ),
+    }
 
 
 def _json_bytes_object(raw: bytes, label: str) -> dict[str, object]:
@@ -386,12 +463,26 @@ def _manifest_file_digest(manifest: Mapping[str, object], name: str) -> str:
 
 
 def _canonical_beta(raw: bytes, label: str) -> tuple[list[str], list[str], np.ndarray]:
-    payload = _json_bytes_object(raw, label)
-    if payload.get("schema_version") != "gmnps-canonical-beta-v1":
-        raise ValueError(f"{label} schema_version is invalid")
-    people = payload.get("participant_ids")
-    nutrients = payload.get("nutrient_order")
-    values = payload.get("values")
+    try:
+        payload = json.loads(raw)
+    except (UnicodeError, json.JSONDecodeError):
+        payload = None
+    if isinstance(payload, dict):
+        if payload.get("schema_version") != "gmnps-canonical-beta-v1":
+            raise ValueError(f"{label} schema_version is invalid")
+        people = payload.get("participant_ids")
+        nutrients = payload.get("nutrient_order")
+        values = payload.get("values")
+    else:
+        try:
+            frame = pd.read_csv(BytesIO(raw))
+        except Exception as error:
+            raise ValueError(f"{label} is neither canonical JSON nor runner CSV") from error
+        if "individual_id" not in frame or frame["individual_id"].duplicated().any():
+            raise ValueError(f"{label} runner CSV requires unique individual_id")
+        people = frame["individual_id"].astype(str).tolist()
+        nutrients = [str(column) for column in frame.columns if column != "individual_id"]
+        values = frame.loc[:, nutrients].to_numpy().tolist()
     if not isinstance(people, list) or not people or len(set(map(str, people))) != len(people):
         raise ValueError(f"{label} participant_ids must be unique and nonempty")
     if not isinstance(nutrients, list) or not nutrients or len(set(map(str, nutrients))) != len(nutrients):
@@ -403,6 +494,22 @@ def _canonical_beta(raw: bytes, label: str) -> tuple[list[str], list[str], np.nd
     if matrix.shape != (len(people), len(nutrients)) or not np.isfinite(matrix).all():
         raise ValueError(f"{label} values must be a finite participant-by-nutrient matrix")
     return [str(value) for value in people], [str(value) for value in nutrients], matrix
+
+
+def _assert_same_beta_content(
+    left_raw: bytes, left_label: str, right_raw: bytes, right_label: str
+) -> None:
+    left_people, left_nutrients, left_values = _canonical_beta(left_raw, left_label)
+    right_people, right_nutrients, right_values = _canonical_beta(right_raw, right_label)
+    if set(left_people) != set(right_people) or left_nutrients != right_nutrients:
+        raise ValueError(f"{left_label} does not match {right_label} identifiers")
+    left_index = {person: index for index, person in enumerate(left_people)}
+    right_index = {person: index for index, person in enumerate(right_people)}
+    for person in left_people:
+        if not np.array_equal(
+            left_values[left_index[person]], right_values[right_index[person]]
+        ):
+            raise ValueError(f"{left_label} does not match {right_label} values")
 
 
 def _verify_deranged_beta(
@@ -908,7 +1015,14 @@ def _evaluate_microbiome_shuffle_frames(
         _reject_outcomes(frame)
         _require_columns(
             frame,
-            {"individual_id", "food_id", "FCS2", "GMNPS_score", "GMNPS_delta"},
+            {
+                "individual_id",
+                "food_id",
+                "FCS2",
+                "GMNPS_score",
+                "GMNPS_delta",
+                "method_role",
+            },
             f"{label} score table",
         )
         if frame.duplicated(["individual_id", "food_id"]).any():
@@ -930,7 +1044,7 @@ def _evaluate_microbiome_shuffle_frames(
             raise ValueError(
                 f"{label} GMNPS_delta must equal GMNPS_score - FCS2"
             )
-        if "method_role" in frame and not frame["method_role"].eq("primary").all():
+        if not frame["method_role"].eq("primary").all():
             raise ValueError(f"{label} score table method_role must be primary")
     original_people = set(original_scores["individual_id"].astype(str))
     rerun_people = set(rerun_scores["individual_id"].astype(str))
@@ -1041,6 +1155,7 @@ def toy_profile_attribute_rescore(
                     "FCS2": float(food_row.FCS2),
                     "GMNPS_delta": score - float(food_row.FCS2),
                     "GMNPS_score": score,
+                    "method_role": "primary",
                 }
             )
     return pd.DataFrame(rows)
@@ -1068,8 +1183,19 @@ def evaluate_microbiome_shuffle_rerun_from_paths(
         "rerun_run_manifest": _immutable_read(paths.rerun_run_manifest, "rerun run manifest"),
         "original_input_manifest": _immutable_read(paths.original_input_manifest, "original input manifest"),
         "rerun_input_manifest": _immutable_read(paths.rerun_input_manifest, "rerun input manifest"),
+        "runner_development_beta": _immutable_read(
+            paths.runner_development_beta, "runner development beta"
+        ),
         "original_scoring_beta": _immutable_read(paths.original_scoring_beta, "original scoring beta"),
         "rerun_scoring_beta": _immutable_read(paths.rerun_scoring_beta, "rerun scoring beta"),
+        "method_lock_development_beta": _immutable_read(
+            paths.method_lock_artifacts.development_beta,
+            "method-locked development beta",
+        ),
+        "method_lock_scoring_beta": _immutable_read(
+            paths.method_lock_artifacts.scoring_beta,
+            "method-locked scoring beta",
+        ),
         "method_lock_manifest": _immutable_read(paths.method_lock_manifest, "method-lock manifest"),
         "method_lock_locator": _immutable_read(paths.method_lock_artifact_locator, "method-lock artifact locator"),
         "scoring_implementation": _immutable_read(_SCORING_IMPLEMENTATION, "scoring implementation"),
@@ -1109,13 +1235,52 @@ def evaluate_microbiome_shuffle_rerun_from_paths(
         paths.method_lock_artifacts.input_manifest, "locked input manifest"
     ):
         raise ValueError("original run input manifest is not the method-locked manifest")
-    if raw["original_scoring_beta"] != _immutable_read(
-        paths.method_lock_artifacts.scoring_beta, "locked scoring beta"
-    ):
-        raise ValueError("original scoring beta is not the method-locked scoring beta")
+    _assert_same_beta_content(
+        raw["runner_development_beta"],
+        "runner development beta",
+        raw["method_lock_development_beta"],
+        "method-locked development beta",
+    )
+    _assert_same_beta_content(
+        raw["original_scoring_beta"],
+        "original runner scoring beta",
+        raw["method_lock_scoring_beta"],
+        "method-locked scoring beta",
+    )
 
     original_run = _json_bytes_object(raw["original_run_manifest"], "original run manifest")
     rerun_run = _json_bytes_object(raw["rerun_run_manifest"], "rerun run manifest")
+    original_run_sources = _source_hash_mapping(
+        original_run.get("source_hashes"), "original run"
+    )
+    rerun_run_sources = _source_hash_mapping(
+        rerun_run.get("source_hashes"), "rerun"
+    )
+    for label, source_hashes_for_run, expected_hashes in (
+        (
+            "original",
+            original_run_sources,
+            {
+                "development_beta": sha256(raw["runner_development_beta"]).hexdigest(),
+                "score_beta": sha256(raw["original_scoring_beta"]).hexdigest(),
+                "input_manifest": sha256(raw["original_input_manifest"]).hexdigest(),
+            },
+        ),
+        (
+            "rerun",
+            rerun_run_sources,
+            {
+                "development_beta": sha256(raw["runner_development_beta"]).hexdigest(),
+                "score_beta": sha256(raw["rerun_scoring_beta"]).hexdigest(),
+                "input_manifest": sha256(raw["rerun_input_manifest"]).hexdigest(),
+            },
+        ),
+    ):
+        for source_name, expected_digest in expected_hashes.items():
+            if source_hashes_for_run.get(source_name) != expected_digest:
+                raise ValueError(
+                    f"{label} run source_hashes does not bind {source_name}"
+                )
     for run, label in ((original_run, "original"), (rerun_run, "rerun")):
         for field, expected in {
             "method": "attribute_recomposition",
@@ -1126,6 +1291,9 @@ def evaluate_microbiome_shuffle_rerun_from_paths(
         }.items():
             if run.get(field) != expected:
                 raise ValueError(f"{label} run {field} is not production locked")
+    stable_source_fingerprint = _validate_stable_source_hash_contract(
+        original_run_sources, rerun_run_sources
+    )
     if _scoring_contract(original_run) != _scoring_contract(rerun_run):
         raise ValueError("original and rerun do not share the locked scoring contract")
 
@@ -1136,8 +1304,8 @@ def evaluate_microbiome_shuffle_rerun_from_paths(
     if not isinstance(original_files, dict) or not isinstance(rerun_files, dict):
         raise ValueError("both input manifests must contain files objects")
     required_phase1_inputs = {
-        "development_beta": paths.method_lock_artifacts.development_beta,
-        "score_beta": paths.method_lock_artifacts.scoring_beta,
+        "development_beta": paths.runner_development_beta,
+        "score_beta": paths.original_scoring_beta,
         "food_metadata": paths.method_lock_artifacts.food_metadata,
         "baseline_attribute_points": paths.method_lock_artifacts.baseline_attribute_points,
         "food_exposures": paths.method_lock_artifacts.food_exposures,
@@ -1185,6 +1353,7 @@ def evaluate_microbiome_shuffle_rerun_from_paths(
         "locked_scoring_contract_sha256": _canonical_mapping_sha256(_scoring_contract(original_run)),
         "original_input_manifest_sha256": sha256(raw["original_input_manifest"]).hexdigest(),
         "rerun_input_manifest_sha256": sha256(raw["rerun_input_manifest"]).hexdigest(),
+        "runner_development_beta_sha256": sha256(raw["runner_development_beta"]).hexdigest(),
         "original_scoring_beta_sha256": sha256(raw["original_scoring_beta"]).hexdigest(),
         "rerun_scoring_beta_sha256": sha256(raw["rerun_scoring_beta"]).hexdigest(),
         "method_lock_manifest_sha256": sha256(raw["method_lock_manifest"]).hexdigest(),
@@ -1193,6 +1362,7 @@ def evaluate_microbiome_shuffle_rerun_from_paths(
         "scoring_implementation_sha256": sha256(raw["scoring_implementation"]).hexdigest(),
         "original_success_marker_sha256": original_phase1["phase1_success_marker_sha256"],
         "rerun_success_marker_sha256": rerun_phase1["phase1_success_marker_sha256"],
+        "stable_food_method_artifact_fingerprint": stable_source_fingerprint,
     }
     for field, digest in observed.items():
         if provenance.get(field) != digest:
