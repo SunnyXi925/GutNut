@@ -1,0 +1,58 @@
+code/src/tests/test_biological_consistency.py
+  s_4d75bbbcc79dac::t_477d32eb4d18b8 115-117
+  s_4d75bbbcc79dac::t_0db78d10db1aa5 185,196-197,199,396-412
+  s_4d75bbbcc79dac::t_0bd1c59d06f5d1 417-439,448-450,453-669
+  s_4d75bbbcc79dac::t_685b362f77aee5 2,15,19-20,24,26,158-174,200-262,290-306,311,330,341-354,378-395,413-414
+  s_4d75bbbcc79dac::t_54ba8be4d37b94 440-447,451-452
+  s_4d75bbbcc79dac::t_898609404b4831 4,12,17,27-31
+  s_4d75bbbcc79dac::t_01392fe0d4b225 415-416
+code/src/gmnps/validation/attribute_population_safety.py
+  s_4d75bbbcc79dac::t_43a58d25362524 545-548
+  s_4d75bbbcc79dac::t_af784549f6dcfa 262-264,382,384,473-480,775,779-780,811-849,859
+code/src/scripts/run_attribute_validation.py
+  s_4d75bbbcc79dac::t_af784549f6dcfa 27,133-135,144-149
+code/src/gmnps/validation/biological_consistency.py
+  s_4d75bbbcc79dac::t_a6698f50cec430 856-870
+  s_4d75bbbcc79dac::t_a23057cf85e9a2 616,736
+  s_4d75bbbcc79dac::t_78454c2b75da3b 1137-1138,1140-1142
+  s_4d75bbbcc79dac::t_2a0fe54f8ec5b1 1084-1095,1097-1101
+  s_4d75bbbcc79dac::t_49d3f4c9221536 997-1083,1096,1102-1136,1143-1146
+  s_4d75bbbcc79dac::t_477d32eb4d18b8 770
+  s_4d75bbbcc79dac::t_f499dddae6535c 369-376,379-398,400-431,433-439,441-451
+  s_4d75bbbcc79dac::t_e3756b7d8d3f37 4,6,16-24,55,97-114,116-123,133
+  s_4d75bbbcc79dac::t_39f41357fbcb56 320,514-532,542,545,555-556,569
+  s_4d75bbbcc79dac::t_76132e90939417 816,818,821-845,851-855,887-892,918-920,926-994
+  s_4d75bbbcc79dac::t_67e7afde60a155 630-634,636-638,640-649,652-654,660-661,663,669-671,697-698,781-804
+  s_4d75bbbcc79dac::t_5d2c8fe9a965ad 1157-1167,1175,1189-1191,1217-1227,1234-1244,1252,1270-1272,1276-1284
+  s_4d75bbbcc79dac::t_8947334e0570c5 1139
+  s_4d75bbbcc79dac::t_4a99fdad9f63d6 903,905
+  s_4d75bbbcc79dac::t_0ab06b678763b2 1292,1295,1297,1299-1300,1304
+  s_4d75bbbcc79dac::t_ab12d63a8e7c00 236-238,270-275,277-286,289-292,325-349
+  s_4d75bbbcc79dac::t_01392fe0d4b225 995-996,1285-1286
+code/src/tests/test_attribute_population_safety.py
+  s_4d75bbbcc79dac::t_685b362f77aee5 2,13,16,21-23,121-123,133-149,254,256-416
+  s_4d75bbbcc79dac::t_c8895f16aace1e 171-177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "beb37c116429c5326ed0002c81e8926b12dbcb56",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  },
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 6,
+      "accepted_lines": 6
+    }
+  }
+}
