@@ -1,0 +1,28 @@
+docs/methods/method_lock_manifest.schema.json
+  s_4d75bbbcc79dac::t_884e5ba0d50198 1-126
+code/src/tests/test_attribute_method_lock.py
+  s_4d75bbbcc79dac::t_2323f426466bc3 3-5,11,13-14,17-33,36,38-54,56-127
+  s_4d75bbbcc79dac::t_721ff9a6db2869 1-2,6-10,12,15-16,34-35,37,55,128-248
+docs/methods/attribute_mapping_table.csv
+  s_4d75bbbcc79dac::t_de72e85b6f0d56 1-57
+docs/methods/attribute_level_gmnps_spec.md
+  s_4d75bbbcc79dac::t_de72e85b6f0d56 1-301
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "33ac945e277ca261fda02b48ff4ffd8072f84290",
+  "prompts": {},
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 840,
+      "accepted_lines": 840
+    }
+  }
+}
