@@ -108,11 +108,11 @@
 - Test: `code/src/tests/test_attribute_synthetic_twin.py`
 - Test: `code/src/tests/test_evidence_gate.py`
 
-- [ ] **Step 1: Write failing tests** for pre-specified synthetic truth, independent noise, recovery metrics, shuffled-control failure and evidence-tier labels.
-- [ ] **Step 2: Verify RED** with focused pytest commands.
-- [ ] **Step 3: Extend the simulator to generate attribute-level microbiome-conditioned responses** and benchmark the same locked comparators. Simulation demonstrates identifiability and pipeline behavior only.
-- [ ] **Step 4: Implement the evidence gate:** `direct_external_validity` only when eligible real response data pass provenance, independence and incremental-performance checks; otherwise the manuscript is automatically restricted to `computational_feasibility`.
-- [ ] **Step 5: Run the full validation suite, freeze source-data tables and commit** `feat: gate claims on direct response validity`.
+- [x] **Step 1: Write failing tests** for pre-specified synthetic truth, independent noise, recovery metrics, shuffled-control failure and evidence-tier labels.
+- [x] **Step 2: Verify RED** with focused pytest commands.
+- [x] **Step 3: Extend the simulator to generate attribute-level microbiome-conditioned responses** and benchmark the same locked comparators. Simulation demonstrates identifiability and pipeline behavior only.
+- [x] **Step 4: Implement the evidence gate:** `direct_external_validity` only when eligible real response data pass provenance, independence and incremental-performance checks; otherwise the manuscript is automatically restricted to `computational_feasibility`.
+- [x] **Step 5: Run the full validation suite, freeze source-data tables and commit** `feat: gate claims on direct response validity`.
 
 ## Phase Exit Criteria
 

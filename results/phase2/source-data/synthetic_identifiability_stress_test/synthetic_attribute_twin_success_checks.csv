@@ -1,0 +1,6 @@
+criterion_id,criterion,passed,evidence_role,data_class,seed_set,payload_sha256
+locked_beats_fcs_rmse,mean residual RMSE strictly below FCS baseline,True,synthetic_identifiability_stress_test,synthetic,"[1701,1702,1703,1704,1705]",9b998310f64bf443cad3447bf8490916a4e4cab82f513e909afb8d03b0acd3f0
+locked_beats_random_rmse,mean residual RMSE strictly below random microbiome,True,synthetic_identifiability_stress_test,synthetic,"[1701,1702,1703,1704,1705]",9b998310f64bf443cad3447bf8490916a4e4cab82f513e909afb8d03b0acd3f0
+locked_beats_deranged_rmse,mean residual RMSE strictly below Sattolo-deranged microbiome,True,synthetic_identifiability_stress_test,synthetic,"[1701,1702,1703,1704,1705]",9b998310f64bf443cad3447bf8490916a4e4cab82f513e909afb8d03b0acd3f0
+locked_preserves_universal_rank,mean universal-rank Spearman >= 0.90,True,synthetic_identifiability_stress_test,synthetic,"[1701,1702,1703,1704,1705]",9b998310f64bf443cad3447bf8490916a4e4cab82f513e909afb8d03b0acd3f0
+expert_mask_resists_excluded_proxies,expert legacy-form RMSE strictly below original-mask legacy-form RMSE,True,synthetic_identifiability_stress_test,synthetic,"[1701,1702,1703,1704,1705]",9b998310f64bf443cad3447bf8490916a4e4cab82f513e909afb8d03b0acd3f0
