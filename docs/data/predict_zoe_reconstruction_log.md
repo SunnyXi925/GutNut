@@ -199,11 +199,11 @@ summary was read to define them.
 The synchronized method-lock schema SHA-256 is
 `4726aed7568fa9b8ca2ce46228239887e6e9a3026c9270629b0812ae4d3d78a6`,
 and the reviewed gate implementation SHA-256 is
-`e47f1825e30a67008fc0bf5d73884426174996d0769583eb93bf7e2aced3931e`.
+`b2d1cc720bb3f4dd4079e97ddc872b974b36d2c5dc0703ec0d0671fc54f6085f`.
 The reviewed cohort-split and benchmark implementation SHA-256 values are
 `510d5a584a9fa27067baa60758438ab6dfb7a1f2d3c2afb8284a627520d1df25`
 and
-`896470854c1109ac6d5e4100cdcd2d15df442603d6ad03edda1cd4da91a52b83`,
+`1d64d23937a1c8ee360b3b921242d901e4307b26413ab7349123f4ba7479a782`,
 respectively. The schema now requires predictor-frame/feature-contract hashes,
 both Task 3 implementation hashes and the canonical benchmark specification
 hash. The existing Phase 1 `implementation_source_sha256` constants were not

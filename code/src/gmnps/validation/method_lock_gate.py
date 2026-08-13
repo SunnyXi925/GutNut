@@ -48,6 +48,114 @@ _NORMALIZATION_FIELDS = {
     "temperature",
     "state_fingerprint",
 }
+PERSON_MEAL_RESERVED_COLUMN_NAMES = frozenset(
+    {
+        # Join, split, component and local transformation internals.
+        "_merge",
+        "__comparator_order__",
+        "__gmnps_global_position__",
+        "__mapping_unit__",
+        "__outcome_row__",
+        "__outcome_row_present__",
+        "family_twin_component_id",
+        "inference_cluster_id",
+        "row_id",
+        # Prediction, fit-audit, split-audit and status result fields.
+        "adjusted_p_value",
+        "alpha",
+        "analysis_mode",
+        "analysis_role",
+        "analysis_status",
+        "bootstrap_minimum_valid_fraction",
+        "bootstrap_replicates_requested",
+        "bootstrap_replicates_valid",
+        "bootstrap_seed",
+        "bootstrap_valid_fraction",
+        "ci_lower",
+        "ci_method",
+        "ci_upper",
+        "cohort",
+        "comparator",
+        "comparator_information_opportunity",
+        "correction_family",
+        "denominator_scope",
+        "dropped_n_participants",
+        "dropped_n_person_meals",
+        "dropped_n_rows",
+        "dropped_reason",
+        "dropped_row_ids",
+        "endpoint",
+        "endpoint_role",
+        "estimate",
+        "estimate_delta",
+        "estimand",
+        "fit_participant_ids",
+        "fit_seed",
+        "inference_n_clusters",
+        "inference_policy",
+        "inference_status",
+        "inference_unit",
+        "inner_cv_seed",
+        "inner_fold",
+        "metric",
+        "missing_n",
+        "missing_rate",
+        "multiplicity_method",
+        "n_finite_outcome_opportunities",
+        "n_missing_outcome_opportunities",
+        "n_missing_outcome_rows",
+        "n_outcome_rows_present",
+        "n_participants",
+        "n_person_meals",
+        "n_prediction_rows",
+        "n_predictor_opportunities",
+        "n_rows",
+        "outer_fit_seed",
+        "outer_fit_seeds",
+        "outer_fold",
+        "outer_split_seed",
+        "permutation_minimum_valid_fraction",
+        "permutation_null_mean",
+        "permutation_p_value",
+        "permutation_replicates_requested",
+        "permutation_replicates_valid",
+        "permutation_seed",
+        "permutation_valid_fraction",
+        "reason",
+        "reference",
+        "reference_information_opportunity",
+        "secondary_unit",
+        "selected_alpha",
+        "split",
+        "split_seed",
+        "stage",
+        "test_n_rows",
+        "test_role",
+        "train_n_rows",
+        "validation_participant_ids",
+        "variable",
+        "variable_role",
+        "y_pred",
+        "y_true",
+        # Method-lock and statistical provenance fields.
+        "benchmark_specification_id",
+        "benchmark_specification_sha256",
+        "block_artifact_sha256",
+        "cohort_split_implementation_sha256",
+        "endpoint_config_sha256",
+        "feature_contract_sha256",
+        "manifest_sha256",
+        "method_lock_gate_implementation_sha256",
+        "outcome_source_id",
+        "outcome_source_sha256",
+        "person_meal_benchmark_implementation_sha256",
+        "predictor_frame_sha256",
+        "predictor_source_artifact_sha256",
+        "seed_derivation_id",
+        "software_versions",
+        "validation_config_sha256",
+    }
+)
 _LOCKED_IMPLEMENTATION_PATHS = frozenset(
     {
         "code/src/gmnps/scoring/fcs2_attribute_rules.py",
@@ -76,6 +184,16 @@ _TRUSTED_PERSON_MEAL_BENCHMARK_PATH = (
 
 class MethodLockError(ValueError):
     """Raised whenever the method-lock contract cannot be proven."""
+
+
+def is_reserved_person_meal_column(name: object) -> bool:
+    """Return whether a predictor name is reserved for validation internals."""
+
+    return isinstance(name, str) and (
+        name in PERSON_MEAL_RESERVED_COLUMN_NAMES
+        or name.startswith("__gmnps_")
+        or (name.startswith("__") and name.endswith("__"))
+    )
 
 
 @dataclass(frozen=True)
@@ -263,6 +381,14 @@ def validate_predictor_artifact_binding(
         or any(not isinstance(row, list) or len(row) != len(columns) for row in rows)
     ):
         raise MethodLockError("canonical predictor frame matrix is invalid")
+    reserved_columns = sorted(
+        column for column in columns if is_reserved_person_meal_column(column)
+    )
+    if reserved_columns:
+        raise MethodLockError(
+            "canonical predictor frame uses reserved internal columns: "
+            f"{reserved_columns}"
+        )
     if (
         contract.get("schema_version") != "person-meal-feature-contract-v1"
         or contract.get("generated_stage") != "pre-outcome_predictor_only"
@@ -993,9 +1119,11 @@ def write_method_lock_manifest(
 __all__ = [
     "MethodLockArtifactPaths",
     "MethodLockError",
+    "PERSON_MEAL_RESERVED_COLUMN_NAMES",
     "canonical_ids_sha256",
     "canonical_json_sha256",
     "generate_method_lock_manifest",
+    "is_reserved_person_meal_column",
     "validate_method_lock_manifest",
     "validate_predictor_artifact_binding",
     "write_method_lock_manifest",

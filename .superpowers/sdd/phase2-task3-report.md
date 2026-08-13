@@ -299,3 +299,44 @@ superseding the preceding implementation hash in this report. No real,
 on-disk synthetic or aggregate outcome file was opened, and no benchmark result
 or placeholder artifact was generated. Execution remains blocked for the same
 pre-outcome artifact and controlled-access reasons documented above.
+
+## Final reserved-column collision hardening
+
+**Status remains:** `implementation_complete_execution_blocked`
+
+Predictor schema validation now rejects validation-internal column names before
+any outcome access. A single exported reserved-name contract in the Task 2 gate
+covers current join indicators, outcome-presence flags, split/component fields,
+mapping/comparator temporaries, prediction/status/audit fields and provenance
+fields. It also reserves the `__gmnps_*` namespace and generic double-underscore
+internal names. Both the canonical predictor-frame binding validator and the
+independent Task 3 feature-contract/frame validators use the same predicate, so
+a valid predictor block cannot be silently overwritten by a runtime internal
+assignment.
+
+Testing-only fixtures exercise two concrete collisions:
+`__outcome_row_present__` at the predictor/outcome join boundary and
+`inference_cluster_id` at the inference boundary. RED was observed as one
+failing test before the binding check was added. Both tests then passed and
+asserted that the outcome loader call log remained empty.
+
+Final verification on the repository `.venv` with `PYTHONPATH=code/src`:
+
+- Focused Task 3/gate/loader suite: `125 passed in 82.73s`.
+- Related tracked test suite: `541 passed, 63 warnings in 99.12s`.
+- Full repository suite: `582 passed, 69 warnings in 103.55s`.
+- Python byte compilation and `git diff --check`: passed.
+
+Warnings remain confined to the pre-existing numerical stress paths in
+`anchored.py`, `synthetic_twin.py` and `gmwi2_dual_channel.py`; none points to a
+Task 3 file. The final implementation SHA-256 values are:
+
+- `method_lock_gate.py`:
+  `b2d1cc720bb3f4dd4079e97ddc872b974b36d2c5dc0703ec0d0671fc54f6085f`
+- `person_meal_benchmark.py`:
+  `1d64d23937a1c8ee360b3b921242d901e4307b26413ab7349123f4ba7479a782`
+
+No real, local synthetic or aggregate outcome file was read, and no result,
+manifest or placeholder artifact was generated. Execution remains blocked by
+the absent real frozen predictor/feature artifacts and manifest plus controlled
+outcome authorization.

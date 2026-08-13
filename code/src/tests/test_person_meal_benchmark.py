@@ -20,6 +20,10 @@ import pytest
 import gmnps.validation.person_meal_benchmark as benchmark_module
 from gmnps.data_sources.predict_zoe_loader import LoadedTable
 from gmnps.scoring.attribute_gmnps import load_release_registry_snapshot
+from gmnps.validation.method_lock_gate import (
+    MethodLockError,
+    validate_predictor_artifact_binding,
+)
 from gmnps.validation.person_meal_benchmark import (
     BenchmarkAccessBlocked,
     REQUIRED_COMPARATORS,
@@ -288,6 +292,45 @@ def _testing_only_feature_contract_bytes(
         column["name"] for column in columns
     )
     return _canonical_bytes(payload)
+
+
+def _rename_bound_predictor_column(
+    paths,
+    manifest_path: Path,
+    manifest: dict[str, object],
+    *,
+    old_name: str,
+    new_name: str,
+) -> None:
+    predictor_payload = json.loads(paths.predictor_frame.read_bytes())
+    position = predictor_payload["columns"].index(old_name)
+    predictor_payload["columns"][position] = new_name
+    paths.predictor_frame.write_bytes(_canonical_bytes(predictor_payload))
+    predictor_sha256 = _sha(paths.predictor_frame)
+
+    contract = json.loads(paths.feature_contract.read_bytes())
+    for column in contract["columns"]:
+        if column["name"] == old_name:
+            column["name"] = new_name
+    for specification in contract["feature_blocks"].values():
+        specification["columns"] = [
+            new_name if column == old_name else column
+            for column in specification["columns"]
+        ]
+    contract["predictor_frame_artifact"]["sha256"] = predictor_sha256
+    contract["block_artifact_sha256"] = {
+        block: _testing_only_block_sha256(
+            predictor_payload,
+            predictor_sha256,
+            block,
+            specification["columns"],
+        )
+        for block, specification in contract["feature_blocks"].items()
+    }
+    paths.feature_contract.write_bytes(_canonical_bytes(contract))
+    manifest["predictor_frame_sha256"] = predictor_sha256
+    manifest["feature_contract_sha256"] = _sha(paths.feature_contract)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
 
 def _testing_only_tables() -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -973,6 +1016,70 @@ def test_predictor_symlink_and_path_swap_fail_closed(tmp_path, monkeypatch):
             manifest_path=manifest_path,
             method_lock_paths=paths,
         )
+
+
+def _assert_reserved_collision_fails_before_outcome_access(
+    tmp_path,
+    monkeypatch,
+    *,
+    old_name: str,
+    reserved_name: str,
+) -> None:
+    paths, manifest_path, manifest = _testing_only_lock_fixture(tmp_path)
+    _rename_bound_predictor_column(
+        paths,
+        manifest_path,
+        manifest,
+        old_name=old_name,
+        new_name=reserved_name,
+    )
+
+    with pytest.raises(MethodLockError, match="reserved|internal|column"):
+        validate_predictor_artifact_binding(
+            paths.feature_contract.read_bytes(),
+            paths.predictor_frame.read_bytes(),
+        )
+
+    outcome_reads: list[str] = []
+    monkeypatch.setattr(
+        benchmark_module,
+        "validate_method_lock_manifest",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        benchmark_module,
+        "load_outcome_table_after_gate",
+        lambda *args, **kwargs: outcome_reads.append("outcome-read"),
+    )
+    with pytest.raises(BenchmarkAccessBlocked, match="reserved|contract|binding"):
+        load_locked_outcomes_for_benchmark(
+            "testing-only-controlled-source",
+            manifest_path=manifest_path,
+            method_lock_paths=paths,
+        )
+    assert outcome_reads == []
+
+
+def test_join_internal_column_collision_fails_before_outcome_access(
+    tmp_path, monkeypatch
+):
+    _assert_reserved_collision_fails_before_outcome_access(
+        tmp_path,
+        monkeypatch,
+        old_name="age",
+        reserved_name="__outcome_row_present__",
+    )
+
+
+def test_inference_internal_column_collision_fails_before_outcome_access(
+    tmp_path, monkeypatch
+):
+    _assert_reserved_collision_fails_before_outcome_access(
+        tmp_path,
+        monkeypatch,
+        old_name="microbiome_1",
+        reserved_name="inference_cluster_id",
+    )
 
 
 def test_categorical_preprocessing_has_explicit_missing_indicator():

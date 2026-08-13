@@ -47,6 +47,7 @@ from gmnps.validation.cohort_split import (
     make_nested_group_splits,
 )
 from gmnps.validation.method_lock_gate import (
+    is_reserved_person_meal_column,
     validate_method_lock_manifest,
     validate_predictor_artifact_binding,
 )
@@ -355,6 +356,10 @@ def _parse_feature_contract(raw: bytes, digest: str) -> FeatureContract:
         name = raw_column["name"]
         if not isinstance(name, str) or not name or name in seen_columns:
             raise ValueError("feature contract contains duplicate or invalid column names")
+        if is_reserved_person_meal_column(name):
+            raise ValueError(
+                f"feature contract column {name} is reserved for internal use"
+            )
         seen_columns.add(name)
         if raw_column["data_type"] not in _DATA_TYPES:
             raise ValueError(f"feature contract column {name} has invalid data type")
@@ -739,6 +744,13 @@ def validate_feature_contract(
     observed = tuple(str(column) for column in frame.columns)
     if len(set(observed)) != len(observed):
         raise ValueError("predictor table contains duplicate column names")
+    reserved = sorted(
+        column for column in observed if is_reserved_person_meal_column(column)
+    )
+    if reserved:
+        raise ValueError(
+            f"predictor table uses reserved internal columns: {reserved}"
+        )
     if set(observed) != set(expected):
         missing = sorted(set(expected).difference(observed))
         unknown = sorted(set(observed).difference(expected))
