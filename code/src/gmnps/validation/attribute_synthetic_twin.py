@@ -1112,6 +1112,11 @@ def run_attribute_synthetic_experiment(
         ]
     )
     source_hashes, environment = _source_and_environment_manifest()
+    unique_truth_hashes = set(truth_hashes)
+    if len(unique_truth_hashes) != 1:
+        raise ValueError(
+            "formal synthetic replicates must share exactly one truth definition"
+        )
     manifest = {
         "schema_version": "attribute-synthetic-experiment-manifest-v2",
         "evidence_role": EVIDENCE_ROLE,
@@ -1122,7 +1127,7 @@ def run_attribute_synthetic_experiment(
         "replicates": len(resolved.seeds),
         "config": asdict(resolved),
         "config_sha256": _canonical_hash(asdict(resolved)),
-        "truth_definition_sha256": sorted(set(truth_hashes))[0],
+        "truth_definition_sha256": next(iter(unique_truth_hashes)),
         "code_fixed_checks": _CODE_FIXED_CHECKS,
         "checks_code_fixed_in_same_release": True,
         "independently_preregistered": False,

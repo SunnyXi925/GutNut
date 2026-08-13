@@ -64,7 +64,7 @@
   "interpretation": "Locked implementation recovered the programmed mapping in a correctly specified synthetic positive-control and lost recovery after random or Sattolo-deranged assignment.",
   "interpretation_limit": "Correctly specified synthetic positive-control only; not clinical, external, construct, or biological mask validation.",
   "passed": true,
-  "payload_sha256": "27a6dba19dca9c9e9cbfbe1d199dc69272c913e2615e2c5de453826e0005d86e",
+  "payload_sha256": "d990586316982501fa18c80a90c3905a8dc7facf5a4525f373f186673d8047fd",
   "replicates": 5,
   "rng_streams": {
     "1701": {
@@ -134,7 +134,7 @@
     "fcs2_attribute_mapping": "d885be53736d020c6797b8b8f6d470c185ca0b1e13bf7b07752b32ec0de200d1",
     "fcs2_attribute_rules": "8758d245d2e4d7d23a71829893ddfcc7e4b12b120bf8cc2e1c20d4e1c6efba14",
     "masks": "b8eadceed21887b17fe3862378ad79df097f463f7b1301611526623a3e839de9",
-    "simulator": "9cae2f4029db83113c3a320986afd368042c0a8f5d22eb3a52c49360d1315c7f"
+    "simulator": "b7c7a3cd5e5b267ae484352219b57100e46cfc7b9a3e3a706ea67b1006ff2b2e"
   },
   "truth_definition_sha256": "2ebce1d83bc7502ee58b0ee0aef602a5b976df9afd9f135977071af63b8313fa"
 }

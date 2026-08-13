@@ -432,3 +432,96 @@ There were no failures. The one warning is the unchanged NumPy 2.4.6 / SciPy
 1.13.1 declared-version mismatch. The real producer fixture ran once per test
 module; no benchmark result cache or generated real-validation artifact was
 introduced.
+
+## Whole-review final closure: independent statistic recomputation and tiered claims
+
+### Status
+
+**DONE.** This closure supersedes the preceding v3 statistical and claim-control
+descriptions. The production gate is now `direct-response-evidence-gate-v4`.
+The user-owned legacy `synthetic_twin.py`, the manuscript and
+`scoring/__init__.py` were not edited or staged.
+
+### M1: prediction-derived production-statistic recomputation
+
+After live method-lock and trusted outcome loading, and after production split and
+family/twin-component recomputation, the gate now joins each frozen primary endpoint
+to trusted outcomes by the official participant-meal keys. It requires the
+`locked_attribute_gmnps` and `fcs_microbiome` rows, folds and recomputed clusters to
+align exactly, requires exported `y_true` to equal the trusted endpoint value and
+rejects every non-finite primary `y_pred`.
+
+For each of `glucose_iAUC_2h` and `tg_6h_rise`, the gate independently recomputes
+both RMSE values and their difference from predictions. It verifies the Task 3 seed
+derivation, then calls the Task 3 production component-cluster percentile bootstrap
+and complete-cluster paired permutation algorithms with the exact artifact seeds and
+2,000 repeats each. Recomputed estimates, confidence limits, raw permutation *P*
+values, methods and valid counts must match the paired artifact within a `1e-12`
+relative/absolute floating-point tolerance. Holm adjustment is then recomputed from
+the two reproduced raw *P* values.
+
+Negative tests fail closed for identical model/reference predictions paired with a
+declared improvement, incorrect exported truth, non-finite primary predictions and
+seed/statistic mismatch. Broad tamper cases use deterministic test doubles; one small
+gate fixture executes the actual Task 3 algorithms at 2,000 bootstrap and 2,000
+permutation repeats.
+
+### M2: tier-aware sentence-level claim control
+
+The current fail-closed allowed-claim set no longer contains
+`biological_consistency` or `mechanistic_consistency`. No independent,
+registry-bound Task 4 production evidence currently authorizes either claim.
+
+The fixed-path, registry-bound checker now treats each sentence containing validation,
+external or independent-cohort wording, generalization, held-out wording, prediction
+improvement, metabolic response, guidance, recommendation, biological consistency,
+mechanistic validation, clinical, causal or precision-ready wording as claim-bearing.
+Such a sentence must be an explicit negative limitation or exactly match a positive
+template authorized for its tier. The computational tier has only the correctly
+specified synthetic programmed-mapping, audited-data-unavailable and computational
+fail-closed templates. A future direct tier adds only the exact statement naming both
+locked primary endpoints and their subject-held-out RMSE comparison; it does not
+authorize generic external-validity, clinical, causal or dietary-guidance wording.
+
+The current production bundle remains fail closed:
+
+```text
+tier=computational_feasibility
+source_state=absent_real_validation_artifacts
+```
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `claim_policy.json` | `ede519199becc7416a73d8f78bfdd82d07f5475d99bc5c31a382f56a4ecd11af` |
+| `current_gate_decision.json` | `3398cda302524393eca7dbe0dcbba431b0d3aaaaa66e6d62078da3cbdd39e8a1` |
+| `claim_policy_registry.json` | `ddf04f82ca51262377ffcce8b516d21d470c63a05ae5f47573019fa431dddb29` |
+
+### Minor findings
+
+The Task 2 report now retains the former `12bbe...` validation-config digest as
+historical and records current `a8208e...` as superseding it. The historical Task 2
+body was not rewritten.
+
+The formal synthetic experiment now refuses to choose a truth digest unless all
+replicates yield exactly one unique truth definition. The full formal experiment was
+rerun and frozen; all code-fixed checks passed.
+
+| Frozen synthetic artifact | SHA-256 |
+| --- | --- |
+| `synthetic_attribute_twin_config.json` | `fd5a21d815406225f3fe5a6222cd39dafed7b98014dbc25190b61399fdb97c35` |
+| `synthetic_attribute_twin_manifest.json` | `df0684efa66377bdbdaec77182cdcbadc03b35cd4c5ec0403febf3c7d1096263` |
+| `synthetic_attribute_twin_replicate_metrics.csv` | `b0a0e379e8654ef1c370d614abe932a2a7cd0cedb4ad13ccf52ef6db0a7e70e6` |
+| `synthetic_attribute_twin_success_checks.csv` | `091bea04c4baed04fa4f4898d8c980cac081e3bc7dfb58435b5799fdfac32719` |
+| `synthetic_attribute_twin_summary.csv` | `b78ab05011a7c5f9bb150b22d50d72ff84797721c6a5c1d3bc8c37a3edbf9bdd` |
+
+### Final verification
+
+| Scope | Result | Time |
+| --- | ---: | ---: |
+| Focused Task 5 | 53 passed, 1 warning | 54.04 s |
+| Related Task 1/2/3/5 validation | 352 passed, 1 warning | 208.16 s |
+| Full `code/src/tests` | 683 passed, 1 warning | 205.55 s |
+
+The full suite exceeds the 665-test baseline by 18 tests and has no failures. The sole
+warning is the pre-existing environment mismatch: installed NumPy 2.4.6 is outside
+SciPy 1.13.1's declared `<2.3.0` range. This remains the only known concern.

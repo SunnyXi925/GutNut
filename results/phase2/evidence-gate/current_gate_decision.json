@@ -2,8 +2,8 @@
   "allowed_claims": [
     "computational_feasibility",
     "correctly_specified_synthetic_positive_control",
-    "biological_consistency",
-    "mechanistic_consistency"
+    "audited_data_unavailable",
+    "fail_closed_computational_design"
   ],
   "authorization": "production_path_only_evidence_gate",
   "blockers": [
@@ -16,19 +16,22 @@
     "analysis status path is missing"
   ],
   "claim_policy_file": "claim_policy.json",
-  "claim_policy_file_sha256": "a437c42a5e91ddcc9eae64f463a0b79882f4fc2997c28e510ef520c4e6114d2f",
+  "claim_policy_file_sha256": "ede519199becc7416a73d8f78bfdd82d07f5475d99bc5c31a382f56a4ecd11af",
   "forbidden_claims": [
     "transforms_postprandial_response",
     "precision_ready",
     "clinical_validity",
     "external_validity",
     "direct_response_validity",
-    "causal_dietary_effect"
+    "causal_dietary_effect",
+    "dietary_guidance_or_recommendation",
+    "biological_consistency",
+    "mechanistic_validation"
   ],
-  "gate_version": "direct-response-evidence-gate-v3",
+  "gate_version": "direct-response-evidence-gate-v4",
   "manuscript_checked_or_revised": false,
   "passed": false,
-  "payload_sha256": "17245df5651460e643ed42d107d5eb01ef9e44aa573f4a696b2da9e318914b48",
+  "payload_sha256": "fad7f21dda95b43e5c8c57096c931ee2eedd5ea06dd282ba205b17aa52a1f974",
   "schema_version": "evidence-gate-decision-v2",
   "source_state": "absent_real_validation_artifacts",
   "tier": "computational_feasibility"

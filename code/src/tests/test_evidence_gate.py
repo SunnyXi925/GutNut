@@ -153,6 +153,8 @@ def real_task3_roundtrip(tmp_path_factory):
     monkeypatch.setattr(
         benchmark_module, "participant_permutation_test", fast_permutation
     )
+    monkeypatch.setattr(gate_module, "participant_bootstrap_ci", fast_bootstrap)
+    monkeypatch.setattr(gate_module, "participant_permutation_test", fast_permutation)
     original_loader = benchmark_module.load_locked_outcomes_for_benchmark
     captured: dict[str, object] = {}
 
@@ -304,7 +306,16 @@ def _benchmark_result(
                             "outer_fold": fold.outer.fold_id,
                             "comparator": comparator,
                             "y_true": float(getattr(row, endpoint)),
-                            "y_pred": float(getattr(row, endpoint) - 0.1),
+                            "y_pred": float(
+                                getattr(row, endpoint)
+                                + (
+                                    0.1
+                                    if comparator == "locked_attribute_gmnps"
+                                    else 1.0
+                                    if comparator == "fcs_microbiome"
+                                    else 0.5
+                                )
+                            ),
                             "selected_alpha": 1.0,
                             "outer_fit_seed": 100 + fold.outer.fold_id,
                             "outer_split_seed": int(seeds["outer_split"]),
@@ -323,8 +334,42 @@ def _benchmark_result(
         "benchmark_specification_sha256": binding.benchmark_specification_sha256,
         "validation_config_sha256": binding.person_meal_validation_config_sha256,
     }
-    paired = pd.DataFrame(
-        [
+    predictions = pd.DataFrame(prediction_rows)
+    paired_records = []
+    for endpoint_index, endpoint in enumerate(("glucose_iAUC_2h", "tg_6h_rise")):
+        model = predictions.loc[
+            predictions["endpoint"].eq(endpoint)
+            & predictions["comparator"].eq("locked_attribute_gmnps")
+        ].sort_values("row_id")
+        reference = predictions.loc[
+            predictions["endpoint"].eq(endpoint)
+            & predictions["comparator"].eq("fcs_microbiome")
+        ].sort_values("row_id")
+        y = model["y_true"].to_numpy(dtype=float)
+        model_prediction = model["y_pred"].to_numpy(dtype=float)
+        reference_prediction = reference["y_pred"].to_numpy(dtype=float)
+        clusters = model["inference_cluster_id"].astype(str).to_numpy()
+        bootstrap_seed = int(seeds["bootstrap"]) + endpoint_index * 1_000_003 + 110_078
+        permutation_seed = int(seeds["permutation"]) + endpoint_index * 1_000_003 + 110_078
+        interval = gate_module.participant_bootstrap_ci(
+            y,
+            model_prediction,
+            clusters,
+            metric="rmse",
+            n_bootstrap=2_000,
+            seed=bootstrap_seed,
+            reference_prediction=reference_prediction,
+        )
+        permutation = gate_module.participant_permutation_test(
+            y,
+            model_prediction,
+            reference_prediction,
+            clusters,
+            metric="rmse",
+            n_permutations=2_000,
+            seed=permutation_seed,
+        )
+        paired_records.append(
             {
                 **provenance,
                 "endpoint": endpoint,
@@ -333,31 +378,37 @@ def _benchmark_result(
                 "comparator": "locked_attribute_gmnps",
                 "reference": "fcs_microbiome",
                 "metric": "rmse",
-                "estimate_delta": -0.20,
-                "ci_lower": -0.30,
-                "ci_upper": -0.10,
+                "estimate_delta": interval.estimate,
+                "ci_lower": interval.lower,
+                "ci_upper": interval.upper,
                 "ci_method": "paired_family_twin_component_cluster_percentile_bootstrap_95",
-                "bootstrap_replicates_requested": 2000,
-                "bootstrap_replicates_valid": 1900,
+                "bootstrap_seed": bootstrap_seed,
+                "permutation_seed": permutation_seed,
+                "bootstrap_replicates_requested": interval.requested_replicates,
+                "bootstrap_replicates_valid": interval.valid_replicates,
                 "bootstrap_minimum_valid_fraction": 0.9,
-                "bootstrap_valid_fraction": 0.95,
-                "permutation_replicates_requested": 2000,
-                "permutation_replicates_valid": 1900,
+                "bootstrap_valid_fraction": interval.valid_replicates / 2_000,
+                "permutation_replicates_requested": permutation.requested_replicates,
+                "permutation_replicates_valid": permutation.valid_replicates,
                 "permutation_minimum_valid_fraction": 0.9,
-                "permutation_valid_fraction": 0.95,
-                "permutation_p_value": raw_p,
-                "adjusted_p_value": adjusted,
+                "permutation_valid_fraction": permutation.valid_replicates / 2_000,
+                "permutation_p_value": permutation.p_value,
+                "adjusted_p_value": np.nan,
                 "test_role": "primary",
                 "correction_family": "two_primary_endpoints_locked_gmnps_vs_fcs_microbiome_rmse",
                 "multiplicity_method": "holm",
                 "inference_status": "completed",
             }
-            for endpoint, raw_p, adjusted in (
-                ("glucose_iAUC_2h", 0.01, 0.02),
-                ("tg_6h_rise", 0.03, 0.03),
-            )
-        ]
-    )
+        )
+    paired = pd.DataFrame(paired_records)
+    order = np.argsort(paired["permutation_p_value"].to_numpy(), kind="stable")
+    running = 0.0
+    for rank, position in enumerate(order):
+        running = max(
+            running,
+            min(1.0, float(paired.loc[position, "permutation_p_value"]) * (2 - rank)),
+        )
+        paired.loc[position, "adjusted_p_value"] = running
     split_audit = pd.DataFrame(
         [
             {
@@ -401,7 +452,7 @@ def _benchmark_result(
         ]
     )
     return BenchmarkResult(
-        predictions=pd.DataFrame(prediction_rows),
+        predictions=predictions,
         absolute_metrics=pd.DataFrame(),
         paired_metrics=paired,
         fit_audit=pd.DataFrame(),
@@ -412,7 +463,7 @@ def _benchmark_result(
     )
 
 
-def _production_fixture(tmp_path: Path, monkeypatch):
+def _production_fixture(tmp_path: Path, monkeypatch, *, actual_resampling: bool = False):
     tmp_path.mkdir(parents=True, exist_ok=True)
     config_payload = json.loads(CONFIG_PATH.read_text())
     predictors, outcomes = _tables()
@@ -446,6 +497,57 @@ def _production_fixture(tmp_path: Path, monkeypatch):
         "load_locked_outcomes_for_benchmark",
         lambda *args, **kwargs: loaded,
     )
+    if not actual_resampling:
+        def fast_bootstrap(
+            y,
+            prediction,
+            clusters,
+            *,
+            metric,
+            n_bootstrap,
+            seed,
+            reference_prediction=None,
+        ):
+            model_rmse = float(np.sqrt(np.mean((y - prediction) ** 2)))
+            reference_rmse = float(
+                np.sqrt(np.mean((y - reference_prediction) ** 2))
+            )
+            estimate = model_rmse - reference_rmse
+            return BootstrapInterval(
+                estimate=estimate,
+                lower=estimate - 0.05,
+                upper=estimate + 0.05,
+                n_clusters=len(set(clusters)),
+                requested_replicates=n_bootstrap,
+                valid_replicates=n_bootstrap,
+            )
+
+        def fast_permutation(
+            y,
+            model_prediction,
+            reference_prediction,
+            clusters,
+            *,
+            metric,
+            n_permutations,
+            seed,
+        ):
+            model_rmse = float(np.sqrt(np.mean((y - model_prediction) ** 2)))
+            reference_rmse = float(
+                np.sqrt(np.mean((y - reference_prediction) ** 2))
+            )
+            estimate = model_rmse - reference_rmse
+            return PermutationTestResult(
+                estimate_delta=estimate,
+                p_value=0.001,
+                null_distribution=(0.0,),
+                n_clusters=len(set(clusters)),
+                requested_replicates=n_permutations,
+                valid_replicates=n_permutations,
+            )
+
+        monkeypatch.setattr(gate_module, "participant_bootstrap_ci", fast_bootstrap)
+        monkeypatch.setattr(gate_module, "participant_permutation_test", fast_permutation)
     binding = VerifiedRunBinding.from_locked_outcome("direct-run-001", loaded)
     result = _benchmark_result(predictors, outcomes, config_payload, binding)
     exported = export_benchmark_result(result, binding, tmp_path / "export")
@@ -498,6 +600,31 @@ def _rehash(paths: EvidenceGateArtifactPaths, registry_path: Path) -> None:
     _write_json(registry_path, registry)
 
 
+def _make_primary_predictions_identical(frame: pd.DataFrame) -> pd.DataFrame:
+    result = frame.copy()
+    reference = result.loc[
+        result["comparator"].eq("fcs_microbiome")
+    ].set_index(["endpoint", "row_id"])["y_pred"]
+    model = result["comparator"].eq("locked_attribute_gmnps")
+    keys = pd.MultiIndex.from_frame(result.loc[model, ["endpoint", "row_id"]])
+    result.loc[model, "y_pred"] = reference.reindex(keys).to_numpy()
+    return result
+
+
+def _corrupt_primary_y_true(frame: pd.DataFrame) -> pd.DataFrame:
+    result = frame.copy()
+    index = result.index[result["comparator"].eq("locked_attribute_gmnps")][0]
+    result.loc[index, "y_true"] = float(result.loc[index, "y_true"]) + 9.0
+    return result
+
+
+def _make_primary_y_pred_nonfinite(frame: pd.DataFrame) -> pd.DataFrame:
+    result = frame.copy()
+    index = result.index[result["comparator"].eq("locked_attribute_gmnps")][0]
+    result.loc[index, "y_pred"] = np.inf
+    return result
+
+
 def test_actual_task3_producer_exporter_and_path_gate_roundtrip(real_task3_roundtrip):
     result = real_task3_roundtrip["result"]
     paths = real_task3_roundtrip["paths"]
@@ -540,8 +667,20 @@ def test_actual_task3_producer_exporter_and_path_gate_roundtrip(real_task3_round
     assert set(primary_split["outer_fold"]) == set(range(5))
     assert "predictions" in manifest["artifacts"]
     outcome = evaluate_evidence_gate(paths)
-    assert outcome.tier == DIRECT_EXTERNAL_VALIDITY
+    assert outcome.tier == DIRECT_EXTERNAL_VALIDITY, outcome.blockers
     assert outcome.passed is True
+
+
+def test_small_gate_fixture_runs_actual_task3_2000_repeat_algorithms(
+    tmp_path, monkeypatch
+):
+    paths, _, _, _ = _production_fixture(
+        tmp_path, monkeypatch, actual_resampling=True
+    )
+    outcome = evaluate_evidence_gate(paths)
+    assert outcome.passed is True
+    assert len(outcome.endpoint_checks) == 2
+    assert outcome.endpoint_checks["valid_replicates_passed"].all()
 
 
 def test_production_api_is_path_only_and_current_state_fails_closed():
@@ -593,6 +732,48 @@ def test_holm_is_recomputed_from_task3_raw_p_and_compared_to_adjusted(
     _rehash(paths, registry)
     outcome = evaluate_evidence_gate(paths)
     assert any("recomputed Holm" in blocker for blocker in outcome.blockers)
+
+
+@pytest.mark.parametrize(
+    "artifact,mutator,fragment",
+    [
+        (
+            "predictions",
+            _make_primary_predictions_identical,
+            "recomputed RMSE delta",
+        ),
+        (
+            "predictions",
+            _corrupt_primary_y_true,
+            "trusted outcome",
+        ),
+        (
+            "predictions",
+            _make_primary_y_pred_nonfinite,
+            "finite y_pred",
+        ),
+        (
+            "paired_metrics",
+            lambda frame: frame.assign(
+                bootstrap_seed=frame["bootstrap_seed"].where(
+                    frame.index != 0, frame.loc[0, "bootstrap_seed"] + 1
+                )
+            ),
+            "bootstrap seed",
+        ),
+    ],
+)
+def test_primary_statistics_are_recomputed_from_trusted_outcomes_and_predictions(
+    tmp_path, monkeypatch, artifact, mutator, fragment
+):
+    paths, _, _, registry = _production_fixture(tmp_path, monkeypatch)
+    path = getattr(paths, artifact)
+    frame = mutator(pd.read_csv(path))
+    frame.to_csv(path, index=False)
+    _rehash(paths, registry)
+    outcome = evaluate_evidence_gate(paths)
+    assert outcome.passed is False
+    assert any(fragment in blocker for blocker in outcome.blockers)
 
 
 @pytest.mark.parametrize(
@@ -796,8 +977,8 @@ def test_self_signed_direct_bundle_cannot_authorize_production_claims(
     )
     claim = tmp_path / "claim.txt"
     claim.write_text(
-        "The locked primary endpoints glucose_iAUC_2h and tg_6h_rise "
-        "demonstrate direct external validity."
+        "For the locked primary endpoints glucose_iAUC_2h and tg_6h_rise, "
+        "locked_attribute_gmnps had lower subject-held-out RMSE than fcs_microbiome."
     )
     with pytest.raises(ValueError, match="production path-only gate"):
         check_claim_inputs([claim])
@@ -839,13 +1020,53 @@ def test_direct_policy_rejects_generic_external_validity_and_allows_exact_scope(
     clinical = tmp_path / "clinical.txt"
     generic.write_text("The model demonstrates external validity.")
     scoped.write_text(
-        "The locked primary endpoints glucose_iAUC_2h and tg_6h_rise "
-        "demonstrate direct external validity."
+        "For the locked primary endpoints glucose_iAUC_2h and tg_6h_rise, "
+        "locked_attribute_gmnps had lower subject-held-out RMSE than fcs_microbiome."
     )
     clinical.write_text("The locked primary endpoints demonstrate clinical validity.")
     assert check_claim_inputs([generic])
     assert check_claim_inputs([scoped]) == ()
     assert check_claim_inputs([clinical])
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "The model was validated in an independent cohort.",
+        "These findings generalize across populations.",
+        "The system improved prediction of meal responses.",
+        "The score captures metabolic response.",
+        "The model provides dietary guidance and recommendations.",
+        "The results establish biological consistency.",
+        "This experiment provides mechanistic validation.",
+        "The score is clinically actionable.",
+        "The association is causal.",
+        "The platform is precision-ready.",
+        "External validation was not performed, and external validity is established.",
+    ],
+)
+def test_sentence_level_final_review_claim_examples_are_rejected(
+    tmp_path, monkeypatch, sentence
+):
+    _activate_claim_bundle(tmp_path, monkeypatch, evaluate_evidence_gate())
+    claim = tmp_path / "claim.txt"
+    claim.write_text(sentence)
+    assert check_claim_inputs([claim])
+
+
+def test_computational_tier_accepts_only_exact_safe_methods_and_limitations(
+    tmp_path, monkeypatch
+):
+    _activate_claim_bundle(tmp_path, monkeypatch, evaluate_evidence_gate())
+    safe = tmp_path / "safe.txt"
+    safe.write_text(
+        "The locked implementation recovered the programmed mapping in a correctly "
+        "specified synthetic positive-control.\n"
+        "Eligible observed participant-by-meal outcomes are unavailable in the audited data.\n"
+        "The evidence gate implements a computational, fail-closed design.\n"
+        "This analysis does not establish external validity, clinical utility, or causal effects."
+    )
+    assert check_claim_inputs([safe]) == ()
 
 
 def test_negative_limitation_sentence_is_allowed_by_current_policy(tmp_path):

@@ -25,6 +25,8 @@ from gmnps.validation.person_meal_benchmark import (
     REQUIRED_COMPARATORS,
     BenchmarkResult,
     load_locked_outcomes_for_benchmark,
+    participant_bootstrap_ci,
+    participant_permutation_test,
 )
 
 
@@ -40,6 +42,9 @@ _CI_METHOD = "paired_family_twin_component_cluster_percentile_bootstrap_95"
 _MINIMUM_REPLICATES = 2_000
 _MINIMUM_VALID_FRACTION = 0.90
 _ALPHA = 0.05
+_STAT_TOLERANCE = 1e-12
+_ENDPOINT_SEED_STRIDE = 1_000_003
+_COMPARISON_SEED_STRIDE = 10_007
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _TRUSTED_RESULT_REGISTRY_PATH = (
     Path(__file__).resolve().parents[2]
@@ -73,6 +78,9 @@ _PROHIBITED_COMPUTATIONAL_CLAIMS = (
     "external_validity",
     "direct_response_validity",
     "causal_dietary_effect",
+    "dietary_guidance_or_recommendation",
+    "biological_consistency",
+    "mechanistic_validation",
 )
 
 
@@ -180,7 +188,7 @@ class EvidenceGateOutcome:
     allowed_claims: tuple[str, ...]
     prohibited_claims: tuple[str, ...]
     source_state: str
-    gate_version: str = "direct-response-evidence-gate-v3"
+    gate_version: str = "direct-response-evidence-gate-v4"
 
 
 def _canonical_hash(value: object) -> str:
@@ -254,6 +262,7 @@ def export_benchmark_result(
             "ci_method", "bootstrap_replicates_requested",
             "bootstrap_replicates_valid", "permutation_replicates_requested",
             "permutation_replicates_valid", "permutation_p_value",
+            "bootstrap_seed", "permutation_seed",
             "adjusted_p_value", "test_role", "correction_family",
             "multiplicity_method", "inference_status",
         },
@@ -383,8 +392,8 @@ def _fail(
         allowed_claims=(
             "computational_feasibility",
             "correctly_specified_synthetic_positive_control",
-            "biological_consistency",
-            "mechanistic_consistency",
+            "audited_data_unavailable",
+            "fail_closed_computational_design",
         ),
         prohibited_claims=_PROHIBITED_COMPUTATIONAL_CLAIMS,
         source_state=source_state,
@@ -449,10 +458,179 @@ def _strict_integer(value: object, label: str) -> int:
     return int(value)
 
 
-def _validate_endpoint_rows(rows: pd.DataFrame) -> tuple[list[dict[str, object]], list[str]]:
+def _strict_integral_number(value: object, label: str) -> int:
+    """Accept canonical-CSV integer seeds even when nullable columns parse as float."""
+
+    numeric = _strict_number(value, label)
+    if not numeric.is_integer():
+        raise ValueError(f"{label} must be an exact integer")
+    return int(numeric)
+
+
+def _expected_resample_seeds(config: object, endpoint: str) -> tuple[int, int]:
+    payload = getattr(config, "payload", None)
+    if not isinstance(payload, Mapping):
+        raise ValueError("verified validation config payload is unavailable")
+    seeds = payload.get("seeds")
+    contract = payload.get("outcome_contract")
+    specification = payload.get("benchmark_specification")
+    if not isinstance(seeds, Mapping) or not isinstance(contract, Mapping):
+        raise ValueError("verified validation config seed/endpoint contract is invalid")
+    endpoints = contract.get("endpoints")
+    if not isinstance(endpoints, list):
+        raise ValueError("verified validation config endpoint order is invalid")
+    endpoint_names = [str(value.get("name")) for value in endpoints if isinstance(value, Mapping)]
+    if endpoint not in endpoint_names:
+        raise ValueError(f"{endpoint} is absent from the frozen endpoint order")
+    if not isinstance(specification, Mapping):
+        raise ValueError("verified benchmark specification is unavailable")
+    derivation = specification.get("seed_derivation")
+    bootstrap_spec = specification.get("bootstrap")
+    permutation_spec = specification.get("permutation")
+    if (
+        not isinstance(derivation, Mapping)
+        or derivation.get("identifier") != "additive-indexed-v1"
+        or derivation.get("resample_formula")
+        != "base_plus_mode_10000019_plus_endpoint_1000003_plus_comparison_10007_plus_metric"
+        or not isinstance(bootstrap_spec, Mapping)
+        or bootstrap_spec.get("replicates") != _MINIMUM_REPLICATES
+        or bootstrap_spec.get("method") != "cluster_percentile"
+        or not isinstance(permutation_spec, Mapping)
+        or permutation_spec.get("replicates") != _MINIMUM_REPLICATES
+        or permutation_spec.get("method") != "complete_cluster_label_swap"
+    ):
+        raise ValueError("frozen Task 3 resampling specification is invalid")
+    references = [
+        comparator
+        for comparator in REQUIRED_COMPARATORS
+        if comparator != "locked_attribute_gmnps"
+    ]
+    reference_index = references.index("fcs_microbiome")
+    comparison_index = len(REQUIRED_COMPARATORS) + reference_index
+    metric_index = 1  # Task 3's frozen _METRICS order places RMSE second.
+    offset = (
+        endpoint_names.index(endpoint) * _ENDPOINT_SEED_STRIDE
+        + comparison_index * _COMPARISON_SEED_STRIDE
+        + metric_index
+    )
+    return (
+        _strict_integer(seeds.get("bootstrap"), "config bootstrap seed") + offset,
+        _strict_integer(seeds.get("permutation"), "config permutation seed") + offset,
+    )
+
+
+def _aligned_primary_vectors(
+    predictions: pd.DataFrame,
+    predictor_frame: pd.DataFrame,
+    outcome_frame: pd.DataFrame,
+    endpoint: str,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    required = {
+        "analysis_mode", "endpoint", "row_id", "participant_id", "meal_id",
+        "inference_cluster_id", "outer_fold", "comparator", "y_true", "y_pred",
+    }
+    missing = sorted(required - set(predictions.columns))
+    if missing:
+        raise ValueError("predictions omit Task 3 columns: " + ", ".join(missing))
+    selected = predictions.loc[
+        predictions["analysis_mode"].eq("subject_held_out")
+        & predictions["endpoint"].eq(endpoint)
+        & predictions["comparator"].isin(
+            ("locked_attribute_gmnps", "fcs_microbiome")
+        )
+    ].copy()
+    frames: dict[str, pd.DataFrame] = {}
+    for comparator in ("locked_attribute_gmnps", "fcs_microbiome"):
+        frame = selected.loc[selected["comparator"].eq(comparator)].copy()
+        if frame.empty:
+            raise ValueError(f"{endpoint} predictions omit {comparator}")
+        if frame.duplicated(["participant_id", "meal_id"]).any():
+            raise ValueError(f"{endpoint}/{comparator} predictions duplicate official keys")
+        frame["__participant_key"] = frame["participant_id"].astype(str)
+        frame["__meal_key"] = frame["meal_id"].astype(str)
+        frame = frame.sort_values(["__participant_key", "__meal_key"], kind="mergesort")
+        frames[comparator] = frame.reset_index(drop=True)
+    model = frames["locked_attribute_gmnps"]
+    reference = frames["fcs_microbiome"]
+    alignment_columns = (
+        "row_id", "participant_id", "meal_id", "inference_cluster_id", "outer_fold"
+    )
+    if len(model) != len(reference) or any(
+        not model[column].astype(str).equals(reference[column].astype(str))
+        for column in alignment_columns
+    ):
+        raise ValueError(
+            f"{endpoint} locked_attribute_gmnps and fcs_microbiome rows/clusters are not exactly aligned"
+        )
+
+    trusted = predictor_frame.loc[
+        :, ["participant_id", "meal_id", "family_id", "twin_id"]
+    ].copy()
+    if trusted.duplicated(["participant_id", "meal_id"]).any():
+        raise ValueError("verified predictor opportunities duplicate official keys")
+    trusted["inference_cluster_id"] = family_twin_component_ids(trusted).astype(str)
+    trusted["__participant_key"] = trusted["participant_id"].astype(str)
+    trusted["__meal_key"] = trusted["meal_id"].astype(str)
+    if outcome_frame.duplicated(["participant_id", "meal_id"]).any():
+        raise ValueError("trusted outcomes contain duplicate official keys")
+    if endpoint not in outcome_frame:
+        raise ValueError(f"trusted outcomes omit primary endpoint {endpoint}")
+    outcomes = outcome_frame.loc[:, ["participant_id", "meal_id", endpoint]].copy()
+    outcomes["__participant_key"] = outcomes["participant_id"].astype(str)
+    outcomes["__meal_key"] = outcomes["meal_id"].astype(str)
+    outcomes = outcomes.drop(columns=["participant_id", "meal_id"])
+    trusted = trusted.merge(
+        outcomes,
+        on=["__participant_key", "__meal_key"],
+        how="left",
+        validate="one_to_one",
+    )
+    trusted[endpoint] = pd.to_numeric(trusted[endpoint], errors="coerce")
+    trusted = trusted.loc[np.isfinite(trusted[endpoint])].sort_values(
+        ["__participant_key", "__meal_key"], kind="mergesort"
+    ).reset_index(drop=True)
+    trusted_keys = trusted[["__participant_key", "__meal_key"]]
+    if not model[["__participant_key", "__meal_key"]].equals(trusted_keys):
+        raise ValueError(
+            f"{endpoint} prediction official keys do not equal trusted finite-outcome keys"
+        )
+    if not model["inference_cluster_id"].astype(str).equals(
+        trusted["inference_cluster_id"].astype(str)
+    ):
+        raise ValueError(f"{endpoint} prediction clusters do not equal trusted Task 3 components")
+
+    trusted_y = trusted[endpoint].to_numpy(dtype=float)
+    model_y = pd.to_numeric(model["y_true"], errors="coerce").to_numpy(dtype=float)
+    reference_y = pd.to_numeric(reference["y_true"], errors="coerce").to_numpy(dtype=float)
+    model_prediction = pd.to_numeric(model["y_pred"], errors="coerce").to_numpy(dtype=float)
+    reference_prediction = pd.to_numeric(reference["y_pred"], errors="coerce").to_numpy(dtype=float)
+    if not np.isfinite(model_y).all() or not np.isfinite(reference_y).all():
+        raise ValueError(f"{endpoint} predictions require finite y_true")
+    if not np.isfinite(model_prediction).all() or not np.isfinite(reference_prediction).all():
+        raise ValueError(f"{endpoint} predictions require finite y_pred")
+    if not np.allclose(model_y, trusted_y, rtol=_STAT_TOLERANCE, atol=_STAT_TOLERANCE):
+        raise ValueError(f"{endpoint} model y_true does not match the trusted outcome")
+    if not np.allclose(reference_y, trusted_y, rtol=_STAT_TOLERANCE, atol=_STAT_TOLERANCE):
+        raise ValueError(f"{endpoint} reference y_true does not match the trusted outcome")
+    return (
+        trusted_y,
+        model_prediction,
+        reference_prediction,
+        trusted["inference_cluster_id"].astype(str).to_numpy(),
+    )
+
+
+def _validate_endpoint_rows(
+    rows: pd.DataFrame,
+    predictions: pd.DataFrame,
+    predictor_frame: pd.DataFrame,
+    outcome_frame: pd.DataFrame,
+    config: object,
+) -> tuple[list[dict[str, object]], list[str]]:
     required = {
         "endpoint", "analysis_mode", "comparator", "reference", "metric",
         "estimate_delta", "ci_lower", "ci_upper", "ci_method",
+        "bootstrap_seed", "permutation_seed",
         "bootstrap_replicates_requested", "bootstrap_replicates_valid",
         "bootstrap_minimum_valid_fraction", "bootstrap_valid_fraction",
         "permutation_replicates_requested", "permutation_replicates_valid",
@@ -488,8 +666,21 @@ def _validate_endpoint_rows(rows: pd.DataFrame) -> tuple[list[dict[str, object]]
                 raise ValueError(f"{endpoint} raw permutation p-value must be in [0,1]")
             if not 0.0 <= supplied <= 1.0:
                 raise ValueError(f"{endpoint} adjusted p-value must be in [0,1]")
-            if not lower <= upper < 0.0 or row["ci_method"] != _CI_METHOD:
-                raise ValueError(f"{endpoint} confidence interval order/direction/method is invalid")
+            if not lower <= upper or row["ci_method"] != _CI_METHOD:
+                raise ValueError(f"{endpoint} confidence interval order/method is invalid")
+            bootstrap_seed = _strict_integral_number(
+                row["bootstrap_seed"], f"{endpoint} bootstrap seed"
+            )
+            permutation_seed = _strict_integral_number(
+                row["permutation_seed"], f"{endpoint} permutation seed"
+            )
+            expected_bootstrap_seed, expected_permutation_seed = _expected_resample_seeds(
+                config, endpoint
+            )
+            if bootstrap_seed != expected_bootstrap_seed:
+                raise ValueError(f"{endpoint} bootstrap seed does not match Task 3 derivation")
+            if permutation_seed != expected_permutation_seed:
+                raise ValueError(f"{endpoint} permutation seed does not match Task 3 derivation")
             requested_boot = _strict_integer(
                 row["bootstrap_replicates_requested"],
                 f"{endpoint} bootstrap requested count",
@@ -526,12 +717,61 @@ def _validate_endpoint_rows(rows: pd.DataFrame) -> tuple[list[dict[str, object]]
             ):
                 if abs(_strict_number(observed, f"{endpoint} {label} fraction") - expected) > 1e-12:
                     raise ValueError(f"{endpoint} {label} fraction is inconsistent")
+            y, model_prediction, reference_prediction, clusters = _aligned_primary_vectors(
+                predictions, predictor_frame, outcome_frame, endpoint
+            )
+            model_rmse = float(np.sqrt(np.mean((y - model_prediction) ** 2)))
+            reference_rmse = float(np.sqrt(np.mean((y - reference_prediction) ** 2)))
+            recomputed_delta = model_rmse - reference_rmse
+            interval = participant_bootstrap_ci(
+                y,
+                model_prediction,
+                clusters,
+                metric="rmse",
+                n_bootstrap=_MINIMUM_REPLICATES,
+                seed=bootstrap_seed,
+                reference_prediction=reference_prediction,
+            )
+            permutation = participant_permutation_test(
+                y,
+                model_prediction,
+                reference_prediction,
+                clusters,
+                metric="rmse",
+                n_permutations=_MINIMUM_REPLICATES,
+                seed=permutation_seed,
+            )
+            comparisons = (
+                ("recomputed RMSE delta", estimate, recomputed_delta),
+                ("bootstrap estimate", interval.estimate, recomputed_delta),
+                ("permutation estimate", permutation.estimate_delta, recomputed_delta),
+                ("bootstrap CI lower", lower, interval.lower),
+                ("bootstrap CI upper", upper, interval.upper),
+                ("raw permutation p-value", raw_p, permutation.p_value),
+            )
+            for label, observed, recomputed in comparisons:
+                if not np.isclose(
+                    float(observed), float(recomputed),
+                    rtol=_STAT_TOLERANCE, atol=_STAT_TOLERANCE,
+                ):
+                    raise ValueError(f"{endpoint} {label} does not match production recomputation")
+            if (
+                interval.requested_replicates != requested_boot
+                or interval.valid_replicates != valid_boot
+                or permutation.requested_replicates != requested_perm
+                or permutation.valid_replicates != valid_perm
+            ):
+                raise ValueError(
+                    f"{endpoint} valid/requested resample counts do not match production recomputation"
+                )
             parsed[index] = {
                 "endpoint": endpoint,
-                "estimate": estimate,
-                "lower": lower,
-                "upper": upper,
-                "raw_p": raw_p,
+                "estimate": recomputed_delta,
+                "model_rmse": model_rmse,
+                "reference_rmse": reference_rmse,
+                "lower": float(interval.lower),
+                "upper": float(interval.upper),
+                "raw_p": float(permutation.p_value),
                 "supplied": supplied,
                 "counts_passed": True,
                 "specification": (
@@ -554,6 +794,7 @@ def _validate_endpoint_rows(rows: pd.DataFrame) -> tuple[list[dict[str, object]]
     for index, values in parsed.items():
         endpoint = str(values["endpoint"])
         direction = float(values["estimate"]) < 0.0
+        ci_passed = float(values["upper"]) < 0.0
         multiplicity = (
             abs(float(values["supplied"]) - adjusted[index]) <= 1e-12
             and adjusted[index] <= _ALPHA
@@ -562,21 +803,25 @@ def _validate_endpoint_rows(rows: pd.DataFrame) -> tuple[list[dict[str, object]]
         checks.append(
             {
                 "endpoint": endpoint,
+                "recomputed_model_rmse": values["model_rmse"],
+                "recomputed_reference_rmse": values["reference_rmse"],
                 "estimate_delta": values["estimate"],
                 "ci_lower": values["lower"],
                 "ci_upper": values["upper"],
                 "raw_permutation_p_value": values["raw_p"],
                 "recomputed_holm_adjusted_p_value": adjusted[index],
                 "direction_passed": direction,
-                "ci_passed": True,
+                "ci_passed": ci_passed,
                 "multiplicity_passed": multiplicity,
                 "valid_replicates_passed": True,
                 "specification_passed": bool(values["specification"]),
-                "passed": direction and multiplicity,
+                "passed": direction and ci_passed and multiplicity,
             }
         )
         if not direction:
             blockers.append(f"{endpoint} RMSE paired improvement is not in the required direction")
+        if not ci_passed:
+            blockers.append(f"{endpoint} recomputed confidence interval does not exclude zero")
         if not multiplicity:
             blockers.append(f"{endpoint} does not pass the recomputed Holm test")
     return checks, blockers
@@ -692,6 +937,7 @@ def _split_and_prediction_blockers(
     prediction_required = {
         "analysis_mode", "row_id", "participant_id", "meal_id",
         "inference_cluster_id", "endpoint", "outer_fold", "comparator",
+        "y_true", "y_pred",
     }
     missing_predictions = sorted(prediction_required - set(predictions.columns))
     if missing_predictions:
@@ -865,10 +1111,6 @@ def evaluate_evidence_gate(
                     blockers.append(f"{name} rows are not bound to the same run/manifest")
                 if name != "predictions":
                     blockers.extend(_task3_provenance_blockers(frame, name, live_binding))
-            paired = frames.get("paired_metrics")
-            if paired is not None:
-                checks, endpoint_blockers = _validate_endpoint_rows(paired)
-                blockers.extend(endpoint_blockers)
             status = frames.get("analysis_status")
             if status is not None:
                 blockers.extend(_status_blockers(status))
@@ -884,6 +1126,16 @@ def evaluate_evidence_gate(
                         loaded.verified_lock.config,
                     )
                 )
+            paired = frames.get("paired_metrics")
+            if paired is not None and predictions is not None:
+                checks, endpoint_blockers = _validate_endpoint_rows(
+                    paired,
+                    predictions,
+                    loaded.verified_lock.predictor_frame,
+                    loaded.outcome.frame,
+                    loaded.verified_lock.config,
+                )
+                blockers.extend(endpoint_blockers)
         except (TypeError, ValueError, KeyError, AttributeError) as error:
             blockers.append(f"live Task 3 result validation failed closed: {error}")
     if blockers:
@@ -896,10 +1148,19 @@ def evaluate_evidence_gate(
         blockers=(),
         endpoint_checks=pd.DataFrame.from_records(checks),
         allowed_claims=(
-            "direct_external_validity_for_locked_primary_endpoints",
+            "locked_primary_endpoint_subject_held_out_rmse_statement",
             "computational_feasibility",
+            "correctly_specified_synthetic_positive_control",
+            "fail_closed_computational_design",
         ),
-        prohibited_claims=("clinical_utility", "causal_dietary_effect"),
+        prohibited_claims=(
+            "generic_external_validity",
+            "clinical_utility",
+            "causal_dietary_effect",
+            "dietary_guidance_or_recommendation",
+            "biological_consistency",
+            "mechanistic_validation",
+        ),
         source_state="verified_direct_validation_artifacts",
     )
 

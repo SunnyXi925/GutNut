@@ -2,8 +2,8 @@
   "allowed_claims": [
     "computational_feasibility",
     "correctly_specified_synthetic_positive_control",
-    "biological_consistency",
-    "mechanistic_consistency"
+    "audited_data_unavailable",
+    "fail_closed_computational_design"
   ],
   "authorization": "production_path_only_evidence_gate",
   "direct_scope_whitelist": [],
@@ -13,20 +13,36 @@
     "clinical_validity",
     "external_validity",
     "direct_response_validity",
-    "causal_dietary_effect"
+    "causal_dietary_effect",
+    "dietary_guidance_or_recommendation",
+    "biological_consistency",
+    "mechanistic_validation"
   ],
   "forbidden_patterns": [
-    "transform(s|ed|ing)?\\s+postprandial response",
-    "precision[- ]ready",
-    "clinical validity",
-    "clinical utility",
-    "causal dietary effect",
-    "external validity",
-    "direct response validity"
+    "\\bvalidat(?:e|es|ed|ing|ion)\\b",
+    "\\bexternal\\b",
+    "\\bindependent\\s+cohort\\b",
+    "\\bgenerali[sz]\\w*\\b",
+    "\\b(?:subject[- ]?)?held[- ]out\\b",
+    "\\bimprov\\w*(?:\\s+\\w+){0,4}\\s+prediction\\b",
+    "\\bprediction(?:\\s+\\w+){0,4}\\s+improv\\w*\\b",
+    "\\bmetabolic\\s+response\\b",
+    "\\bguidance\\b",
+    "\\brecommendation\\w*\\b",
+    "\\bbiological\\s+consistency\\b",
+    "\\bmechanistic\\s+validation\\b",
+    "\\bclinical\\w*\\b",
+    "\\bcausal\\w*\\b",
+    "\\bprecision[- ]ready\\b"
   ],
   "negative_limitation_sentences_allowed": true,
-  "payload_sha256": "1aeeb23c11c65dafdec5d7a3c10d7cba0b40a6eec34be11831017e5164febb9a",
+  "payload_sha256": "11470350f08b2e5fb6e28380e638039e1a26a7f7ddde622457b452c4af9c19c1",
   "phase3_must_consume": true,
+  "positive_claim_templates": [
+    "The locked implementation recovered the programmed mapping in a correctly specified synthetic positive-control.",
+    "Eligible observed participant-by-meal outcomes are unavailable in the audited data.",
+    "The evidence gate implements a computational, fail-closed design."
+  ],
   "schema_version": "claim-policy-v2",
   "scope": "Phase 3 manuscript and build inputs",
   "source_state": "absent_real_validation_artifacts",

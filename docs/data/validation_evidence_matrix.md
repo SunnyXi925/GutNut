@@ -3,18 +3,19 @@
 ## Evidence boundary
 
 This matrix separates direct response validity from predictor reconstruction,
-aggregate biological consistency, mechanistic consistency and synthetic pipeline
-stress testing. Only verified, observed participant-by-meal outcomes can enter the
-direct-validity gate. A locally available file is not eligible merely because it is
-accessible.
+aggregate or mechanistic context and synthetic pipeline stress testing. Only
+verified, observed participant-by-meal outcomes can enter the direct-validity gate.
+A locally available file is not eligible merely because it is accessible. No current
+Task 4 production registry binds aggregate biological or mechanistic evidence to an
+authorized positive claim.
 
 | Evidence | Data class | Access status | Allowed role | Execution status | Claims it can support | Claims it cannot support |
 | --- | --- | --- | --- | --- | --- | --- |
-| PREDICT-1 microbiome resources (`PRJEB39223`, `EH5458`) | Real public microbiome predictor data | Public or locally cached predictor metadata; participant-to-meal linkage is not verified | Predictor reconstruction; biological consistency | Provenance audited; no direct outcome analysis executed | Predictor availability and microbiome-profile feasibility | Person-by-meal response validity, clinical validity, causal dietary effects |
-| PREDICT-2/3 sequencing (`PRJEB75460`, `PRJEB75462`, `PRJEB75463`, `PRJEB75464`) | Real public sequencing predictor data | Public; no eligible response table identified | Predictor reconstruction; biological consistency | Provenance audited; no direct outcome analysis executed | Public sequencing availability | Person-by-meal response validity or independent endpoint performance |
-| Nature supplementary workbook (`10.1038/s41586-025-09854-7:MOESM3`) | Aggregate public supplementary evidence | Public | Aggregate biological consistency | Workbook structure audited; no participant-by-meal endpoint established | Published aggregate rank and consistency context | Direct, construct, clinical or external response validity |
-| ZOE public microbiome ranks and GMrepo disease labels | Aggregate or cohort-level supporting evidence | Public or repository-mediated | Biological consistency | Supporting pathways are separate from this gate; no direct response upgrade executed | Concordance or disease-stratified biological consistency when analysed | Individual food-response validity, clinical utility or causal effects |
-| Knowledge-graph paths | Curated mechanistic supporting evidence | Repository-local/public-source dependent | Mechanistic consistency | Separate supporting analysis; not a direct response test | Plausibility of nutrient–microbiome–host paths | Construct, clinical or external response validity |
+| PREDICT-1 microbiome resources (`PRJEB39223`, `EH5458`) | Real public microbiome predictor data | Public or locally cached predictor metadata; participant-to-meal linkage is not verified | Predictor reconstruction only | Provenance audited; no direct outcome analysis executed | Audited predictor availability only | Biological consistency, person-by-meal response validity, clinical validity, causal dietary effects |
+| PREDICT-2/3 sequencing (`PRJEB75460`, `PRJEB75462`, `PRJEB75463`, `PRJEB75464`) | Real public sequencing predictor data | Public; no eligible response table identified | Predictor reconstruction only | Provenance audited; no direct outcome analysis executed | Audited sequencing availability only | Biological consistency, person-by-meal response validity or independent endpoint performance |
+| Nature supplementary workbook (`10.1038/s41586-025-09854-7:MOESM3`) | Aggregate public supplementary evidence | Public | Context only; no current claim authorization | Workbook structure audited; no participant-by-meal endpoint established and no registry-bound Task 4 production evidence | Audited workbook availability only | Biological consistency, direct, construct, clinical or external response validity |
+| ZOE public microbiome ranks and GMrepo disease labels | Aggregate or cohort-level supporting evidence | Public or repository-mediated | Context only; no current claim authorization | Supporting pathways are separate from this gate; no registry-bound Task 4 production evidence | Audited resource availability only | Biological consistency, individual food-response validity, clinical utility or causal effects |
+| Knowledge-graph paths | Curated mechanistic supporting evidence | Repository-local/public-source dependent | Context only; no current claim authorization | Separate supporting analysis; no registry-bound Task 4 production evidence | Audited graph availability only | Mechanistic validation, construct, clinical or external response validity |
 | Controlled clinical archive (`10.5281/zenodo.17236382`; version `10.5281/zenodo.17236383`) | Controlled real participant clinical resource | Access not granted; encrypted payload; endpoint schema, meal keys, units and microbiome linkage remain unverified | Controlled eligibility assessment; future direct validation only after approval and verification | Metadata audited; outcomes not opened; direct benchmark not executed | Existence of a controlled access route | Any observed endpoint performance or completed external validation |
 | Local `glucose_iAUC_2h`, `tg_6h_rise` and `c_peptide_iAUC_2h` fields | Synthetic local response data | Local | Synthetic stress testing only | Classified in the prior provenance audit; not used as real outcomes | Computational pipeline stress testing | Observed PREDICT response validity, retrospective external validation or clinical validity |
 | Attribute-level digital gut twin generated in Task 5 | Correctly specified synthetic positive-control with programmed truth | Deterministically generated in `results/phase2/source-data/correctly_specified_synthetic_positive_control/` | `correctly_specified_synthetic_positive_control` | Executed; code-fixed checks, metrics, seeds, source hashes and environment versions are frozen in the accompanying manifest | The locked implementation recovered the programmed mapping in this correctly specified synthetic positive-control and lost recovery after random or Sattolo-deranged assignment; cap and pipeline reproducibility checks | General model superiority, biological validity of a mask, clinical validity, external validity, precision readiness, or real-world transformation of postprandial responses |
@@ -31,9 +32,10 @@ establishes all of the following:
 4. The formal Task 5 exporter consumes the real Task 3 `BenchmarkResult` schema and hashes canonical `paired_metrics`, `predictions`, `analysis_status`, split-audit summary and result-run manifest artifacts. A module-scoped integration fixture actually invokes `run_person_meal_benchmark`, retains its produced predictions, status DataFrame and split objects, then roundtrips that result through the exporter and path-only gate. It preserves Task 3 `comparator`, `reference` and `adjusted_p_value` fields; no parallel hand-made result schema is accepted.
 5. After live method-lock/outcome-loader validation, the gate recomputes the frozen primary nested subject-held-out splits and transitive family/twin components from the verified predictor frame and config using the production cohort-split functions. Every prediction `row_id`, participant, component and outer fold, and every split-summary count, must match that recomputation. Predictor opportunities and participants without a finite outcome are allowed and are not required to appear in predictions.
 6. Exactly two subject-held-out primary RMSE rows, one each for `glucose_iAUC_2h` and `tg_6h_rise`, comparing locked attribute GMNPS with `fcs_microbiome`.
-7. RMSE differences in the favourable direction and the exact paired family/twin-component bootstrap method, with 95% intervals excluding zero.
-8. Holm values recomputed from raw paired permutation *P* values, passing at 0.05 in the frozen two-endpoint family; supplied adjusted values are cross-checked but never trusted.
-9. Exactly 2,000 bootstrap and 2,000 permutation replicates, with at least 90% valid replicates for each procedure and endpoint.
+7. For each endpoint, `locked_attribute_gmnps` and `fcs_microbiome` predictions must have identical official person-meal rows, folds and recomputed family/twin-component clusters. Exported `y_true` must equal the trusted outcome and every `y_pred` must be finite.
+8. The gate independently recomputes both RMSE values and their difference from predictions, then reruns Task 3's production component-cluster percentile bootstrap and complete-cluster paired permutation using the exact frozen artifact seeds and 2,000 repeats each.
+9. Recomputed differences, confidence limits, raw permutation *P* values, methods and valid counts must match the paired artifact within floating-point tolerance. At least 90% of replicates must be valid.
+10. Holm values are recomputed from the two independently reproduced raw *P* values, must pass at 0.05, and are cross-checked against supplied adjusted values.
 
 GMrepo, ZOE ranks, knowledge graphs, simulations and predictor-only resources are
 supporting evidence and cannot satisfy or upgrade any of these requirements.
@@ -54,17 +56,21 @@ absence of real production artifacts and reports these blockers:
 - `split audit summary path is missing`
 - `analysis status path is missing`
 
-Therefore, no claim of transformation of postprandial response, precision readiness,
-clinical validity, direct response validity or external validity is permitted. No real
+Therefore, no positive claim of biological consistency, mechanistic validation,
+transformation of postprandial response, precision readiness, clinical validity,
+direct response validity or external validity is permitted. No real
 participant-by-meal validation experiment is represented as completed. Phase 3 must
 run `code/src/scripts/check_claim_policy.py` against every manuscript/build input. The
 CLI accepts input files only: it loads the fixed decision/policy paths and verifies their
 exact hashes against `code/src/configs/claim_policy_registry.json`. Arbitrary decision
 or policy paths cannot authorize a claim. The production policy builder reruns the
 path-only evidence gate; an in-memory outcome can create testing-only bytes but cannot
-create an authorized bundle. Explicit negative limitation sentences (for example,
-“does not establish external validity”) are permitted. Even at a future direct tier,
-generic positive external-validity wording remains forbidden; only the frozen sentence
-scoped jointly to locked primary endpoints `glucose_iAUC_2h` and `tg_6h_rise` is
-eligible. Clinical, causal, general precision-ready and transformation claims remain
-forbidden. Task 5 did not check or revise the current manuscript.
+create an authorized bundle. Claim-bearing sentences are checked individually. At the
+current computational tier, only exact templates for the correctly specified synthetic
+programmed mapping, audited outcome unavailability and the computational fail-closed
+design are eligible; explicit negative limitation sentences are also permitted. Even
+at a future direct tier, generic external-validity, clinical, causal, guidance and
+recommendation wording remains forbidden. The sole additional positive template is
+explicitly scoped to both locked primary endpoints, `glucose_iAUC_2h` and
+`tg_6h_rise`, and their subject-held-out RMSE comparison. Task 5 did not check or
+revise the current manuscript.

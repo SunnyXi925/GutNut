@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
 
@@ -236,3 +237,22 @@ def test_multiseed_experiment_reports_ci_valid_n_and_code_fixed_checks(tmp_path)
         "specified synthetic positive-control and lost recovery after random or "
         "Sattolo-deranged assignment."
     ) in manifest_text
+
+
+def test_experiment_refuses_multiple_truth_definitions(monkeypatch):
+    simulate = twin_module.simulate_attribute_synthetic_twin
+
+    def divergent_truth(config):
+        bundle = simulate(config)
+        return replace(bundle, truth_definition_sha256=f"{config.seed:064x}")
+
+    monkeypatch.setattr(twin_module, "simulate_attribute_synthetic_twin", divergent_truth)
+    with pytest.raises(ValueError, match="exactly one truth definition"):
+        run_attribute_synthetic_experiment(
+            AttributeSyntheticExperimentConfig(
+                seeds=(1701, 1702, 1703),
+                n_individuals=4,
+                n_foods=4,
+                bootstrap_replicates=20,
+            )
+        )

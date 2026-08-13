@@ -28,23 +28,41 @@ _TRUSTED_POLICY_PATH = _REPOSITORY_ROOT / _TRUSTED_POLICY_RELATIVE
 _TRUSTED_POLICY_REGISTRY_PATH = _REPOSITORY_ROOT / _TRUSTED_REGISTRY_RELATIVE
 
 _FORBIDDEN_PATTERNS = (
-    r"transform(s|ed|ing)?\s+postprandial response",
-    r"precision[- ]ready",
-    r"clinical validity",
-    r"clinical utility",
-    r"causal dietary effect",
-    r"external validity",
-    r"direct response validity",
+    r"\bvalidat(?:e|es|ed|ing|ion)\b",
+    r"\bexternal\b",
+    r"\bindependent\s+cohort\b",
+    r"\bgenerali[sz]\w*\b",
+    r"\b(?:subject[- ]?)?held[- ]out\b",
+    r"\bimprov\w*(?:\s+\w+){0,4}\s+prediction\b",
+    r"\bprediction(?:\s+\w+){0,4}\s+improv\w*\b",
+    r"\bmetabolic\s+response\b",
+    r"\bguidance\b",
+    r"\brecommendation\w*\b",
+    r"\bbiological\s+consistency\b",
+    r"\bmechanistic\s+validation\b",
+    r"\bclinical\w*\b",
+    r"\bcausal\w*\b",
+    r"\bprecision[- ]ready\b",
 )
 _DIRECT_SCOPED_SENTENCE = (
-    "The locked primary endpoints glucose_iAUC_2h and tg_6h_rise demonstrate "
-    "direct external validity."
+    "For the locked primary endpoints glucose_iAUC_2h and tg_6h_rise, "
+    "locked_attribute_gmnps had lower subject-held-out RMSE than fcs_microbiome."
 )
-_NEGATIVE_LIMITATION_PREFIX = re.compile(
-    r"(?:does|do|did)\s+not\s+(?:establish|demonstrate|show|support|claim)\s*$"
-    r"|(?:cannot|can't)\s+(?:establish|demonstrate|show|support|claim)\s*$"
-    r"|(?:is|are)\s+not\s+(?:evidence|proof)\s+of\s*$"
-    r"|no\s+(?:evidence|claim)\s+of\s*$",
+_COMPUTATIONAL_POSITIVE_TEMPLATES = (
+    "The locked implementation recovered the programmed mapping in a correctly "
+    "specified synthetic positive-control.",
+    "Eligible observed participant-by-meal outcomes are unavailable in the audited data.",
+    "The evidence gate implements a computational, fail-closed design.",
+)
+_NEGATIVE_LIMITATION_CUE = re.compile(
+    r"\b(?:does|do|did|is|are|was|were|has|have|had|can|could|will|would)\s+not\b"
+    r"|\b(?:cannot|can't|without|unavailable|absent|unverified|unsupported)\b"
+    r"|\bno\s+(?:evidence|proof|claim|support|completed|eligible|independent)\b"
+    r"|\bnot\s+(?:established|demonstrated|shown|supported|assessed|evaluated|performed|available)\b",
+    flags=re.IGNORECASE,
+)
+_CONTRAST_BOUNDARY = re.compile(
+    r"\b(?:but|however|yet|although)\b|,\s+and\s+|;",
     flags=re.IGNORECASE,
 )
 _DIGEST = re.compile(r"[0-9a-f]{64}")
@@ -83,6 +101,9 @@ def _build_claim_policy_payload(
     """Build policy bytes; only the path-only gate wrapper may authorize them."""
 
     direct = outcome.tier == "direct_external_validity" and outcome.passed is True
+    positive_templates = list(_COMPUTATIONAL_POSITIVE_TEMPLATES)
+    if direct:
+        positive_templates.append(_DIRECT_SCOPED_SENTENCE)
     payload: dict[str, object] = {
         "schema_version": "claim-policy-v2",
         "tier": outcome.tier,
@@ -91,6 +112,7 @@ def _build_claim_policy_payload(
         "forbidden_claims": list(outcome.prohibited_claims),
         "forbidden_patterns": list(_FORBIDDEN_PATTERNS),
         "direct_scope_whitelist": [_DIRECT_SCOPED_SENTENCE] if direct else [],
+        "positive_claim_templates": positive_templates,
         "negative_limitation_sentences_allowed": True,
         "scope": "Phase 3 manuscript and build inputs",
         "phase3_must_consume": True,
@@ -302,6 +324,11 @@ def _validate_bound_bundle() -> dict[str, object]:
     )
     if whitelist != expected_whitelist:
         raise ValueError("claim policy direct scope whitelist is invalid")
+    expected_templates = list(_COMPUTATIONAL_POSITIVE_TEMPLATES)
+    if decision.get("tier") == "direct_external_validity" and decision.get("passed") is True:
+        expected_templates.append(_DIRECT_SCOPED_SENTENCE)
+    if policy.get("positive_claim_templates") != expected_templates:
+        raise ValueError("claim policy positive_claim_templates is invalid")
     if policy.get("negative_limitation_sentences_allowed") is not True:
         raise ValueError("claim policy negative-limitation rule is invalid")
     _validate_registry(decision_raw, policy_raw, decision, policy)
@@ -317,14 +344,24 @@ def _sentences(text: str) -> tuple[str, ...]:
 
 
 def _is_negative_limitation(sentence: str, match: re.Match[str]) -> bool:
-    return _NEGATIVE_LIMITATION_PREFIX.search(sentence[: match.start()]) is not None
+    boundaries = list(_CONTRAST_BOUNDARY.finditer(sentence))
+    start = max(
+        (boundary.end() for boundary in boundaries if boundary.end() <= match.start()),
+        default=0,
+    )
+    end = min(
+        (boundary.start() for boundary in boundaries if boundary.start() >= match.end()),
+        default=len(sentence),
+    )
+    return _NEGATIVE_LIMITATION_CUE.search(sentence[start:end]) is not None
 
 
-def _is_direct_scoped_sentence(sentence: str, policy: dict[str, object]) -> bool:
-    if policy.get("tier") != "direct_external_validity":
-        return False
+def _is_exact_positive_template(sentence: str, policy: dict[str, object]) -> bool:
     normalized = re.sub(r"\s+", " ", sentence).strip().casefold()
-    return normalized == _DIRECT_SCOPED_SENTENCE.casefold()
+    return normalized in {
+        str(template).casefold()
+        for template in policy.get("positive_claim_templates", [])
+    }
 
 
 def check_claim_inputs(
@@ -339,16 +376,20 @@ def check_claim_inputs(
         path = Path(value)
         text = path.read_text(encoding="utf-8")
         for sentence in _sentences(text):
-            for pattern in patterns:
-                match = re.search(pattern, sentence, flags=re.IGNORECASE)
-                if match is None:
-                    continue
-                if _is_negative_limitation(sentence, match):
-                    continue
-                if _is_direct_scoped_sentence(sentence, policy):
-                    continue
-                violations.append(ClaimViolation(path=path, pattern=pattern))
-                break
+            matches = [
+                (pattern, match)
+                for pattern in patterns
+                for match in re.finditer(pattern, sentence, flags=re.IGNORECASE)
+            ]
+            if not matches or _is_exact_positive_template(sentence, policy):
+                continue
+            unnegated = [
+                pattern
+                for pattern, match in matches
+                if not _is_negative_limitation(sentence, match)
+            ]
+            if unnegated:
+                violations.append(ClaimViolation(path=path, pattern=unnegated[0]))
     return tuple(violations)
 
 
