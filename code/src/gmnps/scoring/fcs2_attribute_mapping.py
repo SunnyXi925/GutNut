@@ -1,0 +1,561 @@
+"""Expert-reviewed nutrient mappings for attribute-level GMNPS calibration."""
+from __future__ import annotations
+
+from collections import defaultdict
+from dataclasses import dataclass, replace
+from math import exp, isfinite
+from types import MappingProxyType
+from typing import Iterable, NamedTuple
+
+import pandas as pd
+
+from gmnps.scoring.fcs2_attribute_rules import FCS2_RULES
+
+
+PRIMARY_MAPPING_VERSION = "expert_reviewed_attribute_mapping_v1"
+
+_EFFECT_ROLE = "effect"
+_ZERO_ALLOCATION_ROLES = frozenset(
+    {"applicability_only", "explanatory_only", "sensitivity_proxy_only", "excluded"}
+)
+
+
+@dataclass(frozen=True)
+class AttributeCalibrationMapping:
+    """One immutable nutrient-to-Food-Compass calibration assignment."""
+
+    nutrient: str
+    attribute: str
+    channel: str
+    allocation_weight: float
+    role: str
+    component_policy: str
+    version: str
+
+
+def _mapping(
+    nutrient: str,
+    attribute: str,
+    channel: str,
+    allocation_weight: float = 1.0,
+    *,
+    role: str = _EFFECT_ROLE,
+    component_policy: str = "direct",
+    version: str = PRIMARY_MAPPING_VERSION,
+) -> AttributeCalibrationMapping:
+    return AttributeCalibrationMapping(
+        nutrient=nutrient,
+        attribute=attribute,
+        channel=channel,
+        allocation_weight=allocation_weight,
+        role=role,
+        component_policy=component_policy,
+        version=version,
+    )
+
+
+PRIMARY_ATTRIBUTE_MAPPINGS = (
+    _mapping(
+        "Fiber, total dietary (g)",
+        "fiber_to_carbohydrate_ratio",
+        "MAC",
+        0.5,
+        component_policy="numerator_component",
+    ),
+    _mapping("Fiber, total dietary (g)", "total_fiber", "MAC", 0.5),
+    _mapping("Carotene, alpha (mcg)", "total_carotenoids", "MAC", component_policy="composite_component"),
+    _mapping("Carotene, beta (mcg)", "total_carotenoids", "MAC", component_policy="composite_component"),
+    _mapping("Cryptoxanthin, beta (mcg)", "total_carotenoids", "MAC", component_policy="composite_component"),
+    _mapping("Lycopene (mcg)", "total_carotenoids", "MAC", component_policy="composite_component"),
+    _mapping("Lutein + zeaxanthin (mcg)", "total_carotenoids", "MAC", component_policy="composite_component"),
+    _mapping("Vitamin C (mg)", "vitamin_c", "MAC"),
+    _mapping("Folate, food (mcg)", "folate_dfe_b9", "MAC", component_policy="component_fraction"),
+    _mapping("Magnesium (mg)", "magnesium", "MAC"),
+    _mapping(
+        "Potassium (mg)",
+        "potassium_to_sodium_ratio",
+        "MAC",
+        0.5,
+        component_policy="numerator_component",
+    ),
+    _mapping("Potassium (mg)", "potassium", "MAC", 0.5),
+    _mapping("Vitamin K (phylloquinone) (mcg)", "vitamin_k_phylloquinone", "MAC"),
+    _mapping("Vitamin E (alpha-tocopherol) (mg)", "vitamin_e_alpha_tocopherol", "MAC"),
+    _mapping(
+        "Fatty acids, total saturated (g)",
+        "unsaturated_to_saturated_fat_ratio",
+        "LIPID",
+        component_policy="denominator_component",
+    ),
+    _mapping("Cholesterol (mg)", "cholesterol", "LIPID"),
+    _mapping("Retinol (mcg)", "vitamin_a_rae", "LIPID", component_policy="component_fraction"),
+    _mapping("8:0 (g)", "medium_chain_fatty_acids", "LIPID", component_policy="composite_component"),
+    _mapping("10:0 (g)", "medium_chain_fatty_acids", "LIPID", component_policy="composite_component"),
+    _mapping("12:0 (g)", "medium_chain_fatty_acids", "LIPID", component_policy="composite_component"),
+    _mapping("Choline, total (mg)", "choline_total", "LIPID"),
+    _mapping("Vitamin B-12 (mcg)", "cobalamin_b12", "LIPID"),
+    _mapping(
+        "Total Fat (g)",
+        "unsaturated_to_saturated_fat_ratio",
+        "LIPID",
+        0.0,
+        role="applicability_only",
+        component_policy="gate_input",
+    ),
+    *(
+        _mapping(
+            nutrient,
+            "unsaturated_to_saturated_fat_ratio",
+            "LIPID",
+            0.0,
+            role="explanatory_only",
+            component_policy="denominator_subcomponent",
+        )
+        for nutrient in ("4:0 (g)", "6:0 (g)", "14:0 (g)", "16:0 (g)", "18:0 (g)")
+    ),
+    _mapping(
+        "Carbohydrate (g)",
+        "fiber_to_carbohydrate_ratio",
+        "EXCLUDED",
+        0.0,
+        role="sensitivity_proxy_only",
+        component_policy="denominator_component",
+    ),
+    _mapping("Zinc (mg)", "zinc", "EXCLUDED", 0.0, role="excluded", component_policy="no_calibration"),
+    _mapping("Copper (mg)", "copper", "EXCLUDED", 0.0, role="excluded", component_policy="no_calibration"),
+    _mapping(
+        "Vitamin A, RAE (mcg_RAE)",
+        "vitamin_a_rae",
+        "EXCLUDED",
+        0.0,
+        role="excluded",
+        component_policy="component_total_only",
+    ),
+)
+
+
+def _sensitivity_variant(
+    version: str,
+    reallocated_nutrient: str,
+    selected_attribute: str,
+) -> tuple[AttributeCalibrationMapping, ...]:
+    rows: list[AttributeCalibrationMapping] = []
+    for row in PRIMARY_ATTRIBUTE_MAPPINGS:
+        if row.nutrient == reallocated_nutrient and row.role == _EFFECT_ROLE:
+            if row.attribute == selected_attribute:
+                rows.append(replace(row, allocation_weight=1.0, version=version))
+            continue
+        if row.nutrient == "Carbohydrate (g)":
+            rows.append(replace(row, allocation_weight=1.0, role=_EFFECT_ROLE, version=version))
+            continue
+        rows.append(replace(row, version=version))
+    return tuple(rows)
+
+
+SENSITIVITY_ATTRIBUTE_MAPPINGS = MappingProxyType(
+    {
+        "fiber_all_ratio": _sensitivity_variant(
+            "fiber_all_ratio", "Fiber, total dietary (g)", "fiber_to_carbohydrate_ratio"
+        ),
+        "fiber_all_absolute": _sensitivity_variant(
+            "fiber_all_absolute", "Fiber, total dietary (g)", "total_fiber"
+        ),
+        "potassium_all_ratio": _sensitivity_variant(
+            "potassium_all_ratio", "Potassium (mg)", "potassium_to_sodium_ratio"
+        ),
+        "potassium_all_absolute": _sensitivity_variant(
+            "potassium_all_absolute", "Potassium (mg)", "potassium"
+        ),
+    }
+)
+
+
+class AllocationMatrix(NamedTuple):
+    """Labeled weights and role diagnostics for one mapping version."""
+
+    weights: pd.DataFrame
+    role_diagnostics: pd.DataFrame
+
+
+class FoodSpecificResponse(NamedTuple):
+    """Uncapped attribute responses and per-mapping exposure diagnostics."""
+
+    response: pd.Series
+    diagnostics: pd.DataFrame
+
+
+def validate_attribute_mappings(mappings: Iterable[AttributeCalibrationMapping]) -> None:
+    """Fail closed when a mapping registry violates allocation invariants."""
+
+    rows = tuple(mappings)
+    if not rows:
+        raise ValueError("attribute mappings must not be empty")
+
+    seen: set[tuple[str, str, str]] = set()
+    effect_totals: dict[tuple[str, str], float] = defaultdict(float)
+    for row in rows:
+        key = (row.version, row.nutrient, row.attribute)
+        if key in seen:
+            raise ValueError(f"duplicate attribute mapping: {key}")
+        seen.add(key)
+        if row.nutrient == "OTHER" or row.attribute == "OTHER" or row.channel == "OTHER":
+            raise ValueError("OTHER catch-all mappings are prohibited")
+        if row.attribute not in FCS2_RULES:
+            raise ValueError(f"unknown Food Compass attribute: {row.attribute}")
+        if not FCS2_RULES[row.attribute].active:
+            raise ValueError(f"inactive Food Compass attribute: {row.attribute}")
+        if row.allocation_weight < 0.0:
+            raise ValueError("allocation weights cannot be negative")
+        if row.role == _EFFECT_ROLE:
+            if row.allocation_weight <= 0.0:
+                raise ValueError("effect mappings require a positive allocation weight")
+            effect_totals[(row.version, row.nutrient)] += row.allocation_weight
+        elif row.role in _ZERO_ALLOCATION_ROLES:
+            if row.allocation_weight != 0.0:
+                raise ValueError(f"{row.role} mappings must have zero allocation")
+        else:
+            raise ValueError(f"unknown mapping role: {row.role}")
+
+    invalid = {key: total for key, total in effect_totals.items() if total != 1.0}
+    if invalid:
+        raise ValueError(f"effect allocations must sum exactly to 1 per nutrient: {invalid}")
+
+
+validate_attribute_mappings(PRIMARY_ATTRIBUTE_MAPPINGS)
+for _sensitivity_mappings in SENSITIVITY_ATTRIBUTE_MAPPINGS.values():
+    validate_attribute_mappings(_sensitivity_mappings)
+
+
+def _mappings_for_version(version: str) -> tuple[AttributeCalibrationMapping, ...]:
+    if version == PRIMARY_MAPPING_VERSION:
+        return PRIMARY_ATTRIBUTE_MAPPINGS
+    try:
+        return SENSITIVITY_ATTRIBUTE_MAPPINGS[version]
+    except KeyError as error:
+        choices = (PRIMARY_MAPPING_VERSION, *SENSITIVITY_ATTRIBUTE_MAPPINGS)
+        raise ValueError(f"unknown attribute mapping version: {version}; expected one of {choices}") from error
+
+
+def build_allocation_matrix(
+    nutrient_columns: Iterable[str],
+    version: str = PRIMARY_MAPPING_VERSION,
+) -> AllocationMatrix:
+    """Build aligned nutrient-by-active-attribute weights and role diagnostics."""
+
+    columns = list(nutrient_columns)
+    if len(columns) != len(set(columns)):
+        raise ValueError("nutrient_columns contains duplicate labels")
+    mappings = _mappings_for_version(version)
+    required = {row.nutrient for row in mappings if row.role == _EFFECT_ROLE}
+    missing = sorted(required - set(columns))
+    if missing:
+        raise ValueError(f"missing required mapping nutrients: {missing}")
+
+    active_attributes = [name for name, rule in FCS2_RULES.items() if rule.active]
+    weights = pd.DataFrame(0.0, index=columns, columns=active_attributes)
+    rows_by_nutrient: dict[str, list[AttributeCalibrationMapping]] = defaultdict(list)
+    for row in mappings:
+        rows_by_nutrient[row.nutrient].append(row)
+        if row.role == _EFFECT_ROLE:
+            weights.loc[row.nutrient, row.attribute] = row.allocation_weight
+
+    diagnostic_rows: list[dict[str, object]] = []
+    for nutrient in columns:
+        nutrient_rows = rows_by_nutrient.get(nutrient, [])
+        roles = sorted({row.role for row in nutrient_rows})
+        policies = sorted({row.component_policy for row in nutrient_rows})
+        diagnostic_rows.append(
+            {
+                "nutrient": nutrient,
+                "role": "|".join(roles) if roles else "unmapped",
+                "component_policy": "|".join(policies) if policies else "unmapped",
+                "allocation_total": float(weights.loc[nutrient].sum()),
+                "mapped": bool(nutrient_rows),
+                "version": version,
+            }
+        )
+    diagnostics = pd.DataFrame(diagnostic_rows).set_index("nutrient")
+    return AllocationMatrix(weights=weights, role_diagnostics=diagnostics)
+
+
+_COMPONENT_TOTAL_COLUMNS = {
+    "folate_dfe_b9": "Folate, DFE (mcg_DFE)",
+    "vitamin_a_rae": "Vitamin A, RAE (mcg_RAE)",
+}
+_RATIO_INPUTS = {
+    "fiber_to_carbohydrate_ratio": {
+        "numerators": ("Fiber, total dietary (g)",),
+        "denominator": "Carbohydrate (g)",
+        "gate": "carbohydrate",
+    },
+    "potassium_to_sodium_ratio": {
+        "numerators": ("Potassium (mg)",),
+        "denominator": "Sodium (mg)",
+        "gate": "potassium_sodium",
+    },
+    "unsaturated_to_saturated_fat_ratio": {
+        "numerators": (
+            "Fatty acids, total monounsaturated (g)",
+            "Fatty acids, total polyunsaturated (g)",
+        ),
+        "denominator": "Fatty acids, total saturated (g)",
+        "gate": "fat",
+    },
+}
+
+
+def _as_labeled_series(values: pd.Series, label: str) -> pd.Series:
+    if not isinstance(values, pd.Series):
+        raise TypeError(f"{label} must be a pandas Series with nutrient labels")
+    if not values.index.is_unique:
+        raise ValueError(f"{label} contains duplicate nutrient labels")
+    return values
+
+
+def _finite_nonnegative(value: object, label: str) -> float:
+    if isinstance(value, bool):
+        raise ValueError(f"{label} must be a finite nonnegative number")
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"{label} must be a finite nonnegative number") from error
+    if not isfinite(numeric) or numeric < 0.0:
+        raise ValueError(f"{label} must be a finite nonnegative number")
+    return numeric
+
+
+def _finite_beta(value: object, label: str) -> float:
+    if isinstance(value, bool):
+        raise ValueError(f"{label} must be a finite beta value")
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"{label} must be a finite beta value") from error
+    if not isfinite(numeric):
+        raise ValueError(f"{label} must be a finite beta value")
+    return numeric
+
+
+def _response_mapping_rows(
+    mapping: str | Iterable[AttributeCalibrationMapping] | AllocationMatrix,
+) -> tuple[tuple[AttributeCalibrationMapping, ...], AllocationMatrix | None]:
+    if isinstance(mapping, str):
+        return _mappings_for_version(mapping), None
+    if isinstance(mapping, AllocationMatrix):
+        versions = set(mapping.role_diagnostics["version"])
+        if len(versions) != 1:
+            raise ValueError("allocation role diagnostics must identify exactly one mapping version")
+        return _mappings_for_version(versions.pop()), mapping
+    rows = tuple(mapping)
+    validate_attribute_mappings(rows)
+    return rows, None
+
+
+def _normalization_target(attribute: str) -> float:
+    rule = FCS2_RULES[attribute]
+    targets = [abs(float(value)) for value in (rule.low_target, rule.high_target) if value is not None and value != 0]
+    if not targets:
+        raise ValueError(f"attribute {attribute} has no nonzero exposure normalization target")
+    return max(targets)
+
+
+def _ratio_exposure(attribute: str, exposure: pd.Series) -> tuple[float, bool, str]:
+    definition = _RATIO_INPUTS[attribute]
+    numerator = sum(_finite_nonnegative(exposure[name], name) for name in definition["numerators"])
+    denominator_name = str(definition["denominator"])
+    denominator = _finite_nonnegative(exposure[denominator_name], denominator_name)
+    gate = definition["gate"]
+    if gate == "carbohydrate":
+        gate_passes = denominator * 4.0 >= 10.0
+    elif gate == "potassium_sodium":
+        gate_passes = numerator >= 10.0 and denominator >= 10.0
+    else:
+        total_fat = _finite_nonnegative(exposure["Total Fat (g)"], "Total Fat (g)")
+        gate_passes = total_fat * 9.0 >= 10.0
+    if not gate_passes:
+        return 0.0, False, "applicability_gate_not_met"
+    if denominator == 0.0:
+        return 0.0, True, "zero_total_component"
+    raw_ratio = numerator / denominator
+    target_ratio = exp(float(FCS2_RULES[attribute].high_target))
+    return raw_ratio / target_ratio, numerator == 0.0, "ok" if numerator else "zero_total_component"
+
+
+def build_food_specific_response(
+    beta: pd.Series,
+    food_exposure: pd.Series,
+    mapping: str | Iterable[AttributeCalibrationMapping] | AllocationMatrix = PRIMARY_MAPPING_VERSION,
+    *,
+    allocation: AllocationMatrix | None = None,
+) -> FoodSpecificResponse:
+    """Combine beta and per-100-kcal food dose into uncapped attribute responses."""
+
+    beta = _as_labeled_series(beta, "beta")
+    food_exposure = _as_labeled_series(food_exposure, "food_exposure")
+    if food_exposure.attrs.get("basis") != "per_100_kcal":
+        raise ValueError("food_exposure must declare attrs['basis'] = 'per_100_kcal'")
+    if allocation is not None:
+        if mapping != PRIMARY_MAPPING_VERSION:
+            raise ValueError("pass an allocation either positionally or by keyword, not both")
+        mapping = allocation
+    rows, supplied_allocation = _response_mapping_rows(mapping)
+    effect_rows = [row for row in rows if row.role == _EFFECT_ROLE]
+
+    required_beta = {row.nutrient for row in effect_rows}
+    missing_beta = sorted(required_beta - set(beta.index))
+    if missing_beta:
+        raise ValueError(f"missing required beta nutrients: {missing_beta}")
+
+    required_exposure = set(required_beta)
+    for row in effect_rows:
+        if row.component_policy == "component_fraction":
+            required_exposure.add(_COMPONENT_TOTAL_COLUMNS[row.attribute])
+        if row.attribute in _RATIO_INPUTS:
+            definition = _RATIO_INPUTS[row.attribute]
+            required_exposure.update(definition["numerators"])
+            required_exposure.add(str(definition["denominator"]))
+            if definition["gate"] == "fat":
+                required_exposure.add("Total Fat (g)")
+    missing_exposure = sorted(required_exposure - set(food_exposure.index))
+    if missing_exposure:
+        raise ValueError(f"missing required food exposure nutrients: {missing_exposure}")
+
+    for nutrient in required_beta:
+        _finite_beta(beta[nutrient], nutrient)
+    for nutrient in required_exposure:
+        _finite_nonnegative(food_exposure[nutrient], nutrient)
+
+    active_attributes = [name for name, rule in FCS2_RULES.items() if rule.active]
+    response = pd.Series(0.0, index=active_attributes, name=food_exposure.name, dtype=float)
+    composite_totals = {
+        attribute: sum(
+            _finite_nonnegative(food_exposure[row.nutrient], row.nutrient)
+            for row in effect_rows
+            if row.attribute == attribute and row.component_policy == "composite_component"
+        )
+        for attribute in {row.attribute for row in effect_rows if row.component_policy == "composite_component"}
+    }
+    ratio_exposures = {
+        attribute: _ratio_exposure(attribute, food_exposure)
+        for attribute in {row.attribute for row in effect_rows if row.attribute in _RATIO_INPUTS}
+    }
+
+    diagnostic_rows: list[dict[str, object]] = []
+    for row in effect_rows:
+        nutrient_exposure = _finite_nonnegative(food_exposure[row.nutrient], row.nutrient)
+        zero_total = False
+        status = "ok"
+        if row.component_policy == "component_fraction":
+            total_column = _COMPONENT_TOTAL_COLUMNS[row.attribute]
+            component_total = _finite_nonnegative(food_exposure[total_column], total_column)
+            if component_total == 0.0:
+                if nutrient_exposure != 0.0:
+                    raise ValueError(
+                        f"{row.nutrient} is nonzero while required component total {total_column} is zero"
+                    )
+                normalized_exposure = 0.0
+                zero_total = True
+                status = "zero_total_component"
+            else:
+                if nutrient_exposure > component_total:
+                    raise ValueError(f"{row.nutrient} cannot exceed component total {total_column}")
+                component_fraction = nutrient_exposure / component_total
+                normalized_exposure = component_total / _normalization_target(row.attribute) * component_fraction
+        elif row.component_policy == "composite_component":
+            component_total = composite_totals[row.attribute]
+            if component_total == 0.0:
+                normalized_exposure = 0.0
+                zero_total = True
+                status = "zero_total_component"
+            else:
+                normalized_exposure = nutrient_exposure / _normalization_target(row.attribute)
+        elif row.attribute in _RATIO_INPUTS:
+            normalized_exposure, zero_total, status = ratio_exposures[row.attribute]
+            if row.component_policy == "denominator_component":
+                normalized_exposure *= -1.0
+        else:
+            normalized_exposure = nutrient_exposure / _normalization_target(row.attribute)
+
+        allocation_weight = row.allocation_weight
+        if supplied_allocation is not None:
+            try:
+                allocation_weight = float(supplied_allocation.weights.loc[row.nutrient, row.attribute])
+            except KeyError as error:
+                raise ValueError("allocation matrix is not aligned to its mapping registry") from error
+        contribution = _finite_beta(beta[row.nutrient], row.nutrient) * normalized_exposure * allocation_weight
+        response[row.attribute] += contribution
+        diagnostic_rows.append(
+            {
+                "nutrient": row.nutrient,
+                "attribute": row.attribute,
+                "channel": row.channel,
+                "component_policy": row.component_policy,
+                "allocation_weight": allocation_weight,
+                "normalized_exposure": normalized_exposure,
+                "contribution": contribution,
+                "zero_total_component": zero_total,
+                "status": status,
+                "exposure_basis": "per_100_kcal",
+            }
+        )
+
+    return FoodSpecificResponse(response=response, diagnostics=pd.DataFrame(diagnostic_rows))
+
+
+_FIXED_RESIDUAL_REASONS = {
+    "alpha_linolenic_acid": (
+        "18:3 is not verified ALA in the local source, so alpha-linolenic acid remains in the fixed residual."
+    ),
+    "total_flavonoids": (
+        "Total flavonoids are absent from N_food_nutrient_full and require the separate source database."
+    ),
+}
+_AUXILIARY_REASONS = {
+    "added_sugar_percent_calories": (
+        "An added-sugar source is required; total sugars cannot substitute for added sugar."
+    ),
+    "nova_processing_level": (
+        "The original energy-weighted mixed-dish value is required; rounded NOVA cannot substitute for it."
+    ),
+}
+
+
+def reconstruction_status_table() -> pd.DataFrame:
+    """Classify reconstruction inputs for every active FCS operational rule."""
+
+    rows: list[dict[str, str]] = []
+    auxiliary_domains = {"food_ingredients", "additives", "processing"}
+    for attribute, rule in FCS2_RULES.items():
+        if not rule.active:
+            continue
+        if attribute in _FIXED_RESIDUAL_REASONS:
+            status = "fixed_residual"
+            source = "official Food Compass baseline residual"
+            reason = _FIXED_RESIDUAL_REASONS[attribute]
+        elif rule.domain in auxiliary_domains:
+            status = "auxiliary_ingredient_or_processing_required"
+            if rule.domain == "food_ingredients":
+                source = "FPED ingredient equivalents"
+            elif rule.domain == "additives":
+                source = "ingredient and additive records"
+            else:
+                source = "processing and recipe records"
+            reason = _AUXILIARY_REASONS.get(
+                attribute,
+                "This operational rule requires its named auxiliary ingredient or processing input.",
+            )
+        else:
+            status = "nutrient_derived"
+            source = "verified FNDDS/FoodData Central nutrient fields"
+            reason = "The required nutrient field or verified nutrient components are available."
+        rows.append(
+            {
+                "attribute": attribute,
+                "domain": rule.domain,
+                "reconstruction_status": status,
+                "required_source": source,
+                "reason": reason,
+                "missing_input_policy": "unavailable_or_fixed_residual",
+            }
+        )
+    return pd.DataFrame(rows)
