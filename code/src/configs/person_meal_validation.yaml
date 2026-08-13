@@ -1,31 +1,42 @@
 {
-  "schema_version": "person-meal-validation-v1",
+  "schema_version": "person-meal-validation-v2",
   "frozen_on": "2026-08-13",
   "config_role": "pre-outcome-preregistration",
   "validation_embargo": true,
-  "endpoints": [
-    {
-      "name": "glucose_iAUC_2h",
-      "role": "primary",
-      "unit": "mmol_L_hour",
-      "window_hours": [0, 2],
-      "summary": "incremental_area_under_curve"
-    },
-    {
-      "name": "tg_6h_rise",
-      "role": "primary",
-      "unit": "mmol_L",
-      "window_hours": [0, 6],
-      "summary": "rise_above_baseline"
-    },
-    {
-      "name": "c_peptide_iAUC_2h",
-      "role": "secondary",
-      "unit": "nmol_L_hour",
-      "window_hours": [0, 2],
-      "summary": "incremental_area_under_curve"
-    }
-  ],
+  "outcome_contract": {
+    "contract_version": "person-meal-outcome-contract-v1",
+    "unique_key": ["participant_id", "meal_id"],
+    "column_policy": "exact_trusted_grant_projection",
+    "primary_endpoint_availability": "all_required",
+    "secondary_endpoint_availability": "required_if_trusted_data_dictionary_marks_available_otherwise_omitted",
+    "caller_endpoint_subset": "forbidden",
+    "endpoints": [
+      {
+        "name": "glucose_iAUC_2h",
+        "role": "primary",
+        "unit": "mmol_L_hour",
+        "window_hours": [0, 2],
+        "summary": "incremental_area_under_curve",
+        "derivation": "baseline_subtracted_trapezoidal_auc_signed_excursions"
+      },
+      {
+        "name": "tg_6h_rise",
+        "role": "primary",
+        "unit": "mmol_L",
+        "window_hours": [0, 6],
+        "summary": "rise_above_baseline",
+        "derivation": "six_hour_value_minus_time_zero_baseline"
+      },
+      {
+        "name": "c_peptide_iAUC_2h",
+        "role": "secondary",
+        "unit": "nmol_L_hour",
+        "window_hours": [0, 2],
+        "summary": "incremental_area_under_curve",
+        "derivation": "baseline_subtracted_trapezoidal_auc_signed_excursions"
+      }
+    ]
+  },
   "missingness": {
     "analysis_set": "endpoint_specific_available_case_after_subject_split",
     "outcome_imputation": "forbidden",

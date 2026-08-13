@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import csv
+from dataclasses import replace
+from hashlib import sha256
 from pathlib import Path
 import re
 
@@ -10,9 +12,19 @@ from gmnps.data_sources.predict_zoe_registry import (
     ACCESS_ROUTES,
     ACCESS_STATUSES,
     ANALYTICAL_ROLES,
+    CONTROLLED_OUTCOME_GRANTS,
+    PREDICT1_EH5458_OVERLAP_AUDIT,
     PREDICT_ZOE_SOURCE_REGISTRY,
+    PREDICTOR_ARTIFACT_REGISTRY,
     PROVENANCE_FIELDS,
+    ControlledOutcomeGrant,
+    OutcomeEndpointGrant,
+    PredictorArtifact,
+    canonical_predictor_ids_sha256,
     get_predict_zoe_source,
+    predictor_id_overlap_audit,
+    validate_controlled_outcome_grants,
+    validate_predictor_artifact_registry,
     validate_predict_zoe_registry,
 )
 
@@ -136,11 +148,16 @@ def test_live_zoe_ranking_and_immutable_supplementary_s5_are_separate_resources(
     assert live.sha256 != supplement.sha256
 
 
-def test_synthetic_aggregate_and_controlled_resources_are_never_direct_validation():
-    forbidden_statuses = {"synthetic_local", "aggregate_public", "controlled_real"}
+def test_current_synthetic_aggregate_and_ungranted_controlled_resources_are_not_direct():
+    forbidden_statuses = {"synthetic_local", "aggregate_public"}
     for row in PREDICT_ZOE_SOURCE_REGISTRY:
         if row.real_synthetic_status in forbidden_statuses:
             assert row.allowed_analytical_role != "direct_validation"
+
+    controlled = get_predict_zoe_source("predict_controlled_clinical_zenodo")
+    assert controlled.real_synthetic_status == "controlled_real"
+    assert controlled.access_status == "controlled_not_granted"
+    assert controlled.allowed_analytical_role == "controlled_eligibility_assessment"
 
     audit = _read_csv(REAL_SYNTHETIC_AUDIT)
     by_endpoint = {row["declared_response_endpoint"]: row for row in audit}
@@ -240,7 +257,172 @@ def test_registry_rejects_duplicate_ids_missing_provenance_and_invalid_roles():
     row = PREDICT_ZOE_SOURCE_REGISTRY[0]
     with pytest.raises(ValueError, match="duplicate"):
         validate_predict_zoe_registry((row, row))
-    with pytest.raises(ValueError, match="allowed analytical role"):
+    with pytest.raises(ValueError, match="allowed analytical role|direct validation"):
         validate_predict_zoe_registry(
             (row.__class__(**{**row.as_dict(), "allowed_analytical_role": "direct_validation"}),)
         )
+
+
+def test_repository_predictor_artifacts_pin_locally_audited_digests_and_schema():
+    validate_predictor_artifact_registry(PREDICTOR_ARTIFACT_REGISTRY)
+    by_id = {row.source_id: row for row in PREDICTOR_ARTIFACT_REGISTRY}
+    assert set(by_id) == {
+        "experimenthub_eh5458_relative_abundance",
+        "ena_prjeb39223_sequencing_metadata",
+        "ena_prjeb75460_sequencing_metadata",
+        "ena_prjeb75462_sequencing_metadata",
+        "ena_prjeb75463_sequencing_metadata",
+        "ena_prjeb75464_sequencing_metadata",
+    }
+    expected = {
+        "experimenthub_eh5458_relative_abundance": "89c635061b357583351ca33f520a72d0efced4a2963e73182e529228c8395c54",
+        "ena_prjeb39223_sequencing_metadata": "d630be36c1abd3a71b6aa295dc56e1557557f965f6c8fdaa673759b227b28e36",
+        "ena_prjeb75460_sequencing_metadata": "2ce6d90cd5d380581737a9dc193460b3f5df7f836f443845bba793ecb67de1a9",
+        "ena_prjeb75462_sequencing_metadata": "ca6d7d5a1b7fdcd069a309b5bc8dd076a53ea8bc4016ec98b1b755658fd20f08",
+        "ena_prjeb75463_sequencing_metadata": "ce028e6072e610ad7575ba7e494347892cd66e33a5eaec92dea7177bcb413f56",
+        "ena_prjeb75464_sequencing_metadata": "f81d06da5f9127864967f99bb13a2b7f6eedddc8c56282f88c5b04985cd4bb94",
+    }
+    assert {source_id: row.sha256 for source_id, row in by_id.items()} == expected
+    for row in by_id.values():
+        assert row.content_class == "predictor_only"
+        assert row.allowed_analytical_role == "predictor_reconstruction"
+        assert row.path_policy == "repository_relative_exact_no_symlink"
+        assert row.digest_basis == "locally_audited_sha256_pinned_in_repository"
+        assert SHA256.fullmatch(row.sha256)
+        assert row.allowed_columns
+        assert row.schema_kind
+
+
+def _valid_temporary_grant(tmp_path: Path):
+    outcome = tmp_path / "controlled.csv"
+    outcome.write_bytes(
+        b"participant_id,meal_id,glucose_source,tg_source\nP1,M1,1.0,0.2\n"
+    )
+    dictionary = tmp_path / "data_dictionary.json"
+    dictionary.write_bytes(b'{"version":"test-dictionary-v1"}\n')
+    source = replace(
+        get_predict_zoe_source("predict_controlled_clinical_zenodo"),
+        access_status="controlled_granted",
+        allowed_analytical_role="direct_validation",
+        local_path=str(outcome),
+        sha256=sha256(outcome.read_bytes()).hexdigest(),
+        exclusion_reason="none_after_verified_controlled_grant",
+        evidence_basis="temporary non-production grant fixture",
+    )
+    endpoints = (
+        OutcomeEndpointGrant(
+            name="glucose_iAUC_2h",
+            source_column="glucose_source",
+            availability="available",
+            role="primary",
+            unit="mmol_L_hour",
+            window_hours=(0, 2),
+            summary="incremental_area_under_curve",
+            derivation="baseline_subtracted_trapezoidal_auc_signed_excursions",
+        ),
+        OutcomeEndpointGrant(
+            name="tg_6h_rise",
+            source_column="tg_source",
+            availability="available",
+            role="primary",
+            unit="mmol_L",
+            window_hours=(0, 6),
+            summary="rise_above_baseline",
+            derivation="six_hour_value_minus_time_zero_baseline",
+        ),
+        OutcomeEndpointGrant(
+            name="c_peptide_iAUC_2h",
+            source_column=None,
+            availability="not_available",
+            role="secondary",
+            unit="nmol_L_hour",
+            window_hours=(0, 2),
+            summary="incremental_area_under_curve",
+            derivation="baseline_subtracted_trapezoidal_auc_signed_excursions",
+        ),
+    )
+    grant = ControlledOutcomeGrant(
+        source_id=source.resource_id,
+        access_status="controlled_granted",
+        allowed_analytical_role="direct_validation",
+        verified_local_path=str(outcome),
+        sha256=source.sha256,
+        file_format="csv",
+        version_doi="10.5281/zenodo.17236383",
+        approval_evidence_identifier="DUA-TEST-APPROVED",
+        data_dictionary_path=str(dictionary),
+        data_dictionary_sha256=sha256(dictionary.read_bytes()).hexdigest(),
+        participant_meal_key_contract=("participant_id", "meal_id"),
+        endpoint_contracts=endpoints,
+        microbiome_linkage_evidence_identifier="LINKAGE-TEST-VERIFIED",
+        microbiome_linkage_key_contract=("participant_id",),
+    )
+    return source, grant
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "verified_local_path",
+        "sha256",
+        "file_format",
+        "version_doi",
+        "approval_evidence_identifier",
+        "data_dictionary_path",
+        "data_dictionary_sha256",
+        "participant_meal_key_contract",
+        "endpoint_contracts",
+        "microbiome_linkage_evidence_identifier",
+        "microbiome_linkage_key_contract",
+    ],
+)
+def test_controlled_grant_requires_all_evidence_before_direct_validation(tmp_path, field):
+    source, grant = _valid_temporary_grant(tmp_path)
+    validate_controlled_outcome_grants((grant,), sources=(source,))
+    missing = () if field == "endpoint_contracts" else None
+    with pytest.raises(ValueError, match="grant|evidence|contract|missing"):
+        validate_controlled_outcome_grants(
+            (replace(grant, **{field: missing}),),
+            sources=(source,),
+        )
+
+
+def test_production_controlled_grant_remains_not_granted_but_contract_is_reachable():
+    validate_controlled_outcome_grants(
+        CONTROLLED_OUTCOME_GRANTS,
+        sources=PREDICT_ZOE_SOURCE_REGISTRY,
+    )
+    assert len(CONTROLLED_OUTCOME_GRANTS) == 1
+    grant = CONTROLLED_OUTCOME_GRANTS[0]
+    assert grant.source_id == "predict_controlled_clinical_zenodo"
+    assert grant.access_status == "controlled_not_granted"
+    assert grant.allowed_analytical_role == "controlled_eligibility_assessment"
+    assert grant.verified_local_path is None
+
+
+def test_predict1_overlap_digest_contract_is_exact_case_sorted_newline_without_trailing_newline():
+    assert canonical_predictor_ids_sha256(("b", "A", "a")) == sha256(
+        b"A\na\nb"
+    ).hexdigest()
+    with pytest.raises(ValueError, match="duplicate"):
+        canonical_predictor_ids_sha256(("same", "same"))
+
+    audit = predictor_id_overlap_audit(
+        ("development-only", "SAMEA2", "SAMEA1"),
+        ("SAMEA1", "SAMEA2"),
+    )
+    assert audit == {
+        "development_n": 3,
+        "development_ids_sha256": sha256(
+            b"SAMEA1\nSAMEA2\ndevelopment-only"
+        ).hexdigest(),
+        "candidate_n": 2,
+        "candidate_ids_sha256": sha256(b"SAMEA1\nSAMEA2").hexdigest(),
+        "intersection_n": 2,
+        "intersection_ids_sha256": sha256(b"SAMEA1\nSAMEA2").hexdigest(),
+    }
+
+    recorded = dict(PREDICT1_EH5458_OVERLAP_AUDIT)
+    assert recorded["development_n"] == 15492
+    assert recorded["eh5458_n"] == recorded["intersection_n"] == 1098
+    assert recorded["eh5458_ids_sha256"] == recorded["intersection_ids_sha256"]

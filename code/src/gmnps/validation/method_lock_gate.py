@@ -2,7 +2,8 @@
 
 This module hashes and validates only explicitly declared predictor, method,
 configuration, and trusted-registry artifacts.  It has no outcome/label path,
-performs no outcome loading, and does not write a run-level manifest.
+performs no outcome loading, and writes a run-level manifest only through the
+atomic no-overwrite writer after every predictor-side proof passes.
 """
 from __future__ import annotations
 
@@ -681,6 +682,7 @@ def write_method_lock_manifest(
     ).encode("utf-8")
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary_path: Path | None = None
+    published = False
     try:
         with tempfile.NamedTemporaryFile(
             mode="wb",
@@ -695,14 +697,36 @@ def write_method_lock_manifest(
             temporary_path = Path(handle.name)
         try:
             os.link(temporary_path, destination)
+            published = True
         except FileExistsError as error:
             raise MethodLockError(
                 "method-lock manifest output appeared during write"
             ) from error
+        if destination.read_bytes() != encoded:
+            raise OSError("published method-lock manifest failed byte validation")
+        directory_fd = os.open(destination.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
         temporary_path.unlink()
         temporary_path = None
-    except OSError as error:
-        raise MethodLockError("method-lock manifest could not be written atomically") from error
+    except Exception as error:
+        if published:
+            try:
+                destination.unlink(missing_ok=True)
+                directory_fd = os.open(destination.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+            except OSError:
+                pass
+        if isinstance(error, MethodLockError):
+            raise
+        raise MethodLockError(
+            "method-lock manifest could not be written atomically"
+        ) from error
     finally:
         if temporary_path is not None:
             try:

@@ -6,8 +6,9 @@ Audit date: 2026-08-13
 
 Baseline: `7787d59f3eb5634c73e20b324b1d4277fadc31dd`
 
-Overall status: **Stages 2A and configuration freeze partially completed; Stages
-2B, 2C and 2D blocked.**
+Overall status: **IMPLEMENTATION_COMPLETE_EXECUTION_BLOCKED.** Stage 2A and the
+source-independent configuration contract are implemented; data-dependent
+Stages 2B, 2C and 2D remain blocked.
 
 No `results/phase2/method_lock_manifest.json` was generated. The trusted FNDDS
 release registry remains unchanged and contains no approved production bundle.
@@ -18,10 +19,16 @@ used to construct or evaluate a score.
 
 The implemented acquisition allowlist is restricted to microbiome profiles,
 sequencing accession metadata, Zenodo record metadata, and historical USDA
-food-composition releases. Raw FASTQ files are excluded. The staged loader
-rejects outcome-classified resources before reading their bytes and requires a
-repository-trusted direct-validation registry entry before it will read a
-method-lock manifest. The current registry contains no such entry.
+food-composition releases. Raw FASTQ files are excluded. The committed
+predictor artifact registry—not the mutable local acquisition manifest—is the
+trust root for stable source, exact cache path, locally audited SHA-256,
+content class, analytical role and schema. Loader callers can select only a
+`source_id`; they cannot supply a path, digest, content class or column
+allowlist. The reviewed registry implementation SHA-256 is
+`d7509d6d3349fb4ae144ae771b1ffdb8e88775faa2c510ddd9d678d045ae7837`.
+The staged outcome loader requires a repository-trusted
+direct-validation grant before it will read a method-lock manifest. The current
+production registry contains no such grant.
 
 Two discovery commands crossed the stricter literal label-bearing boundary,
 although neither opened a postprandial outcome table: a broad source search
@@ -37,7 +44,12 @@ reported as clean boundary compliance.
 Artifacts were cached under the ignored directory
 `data/project_data/predict_multi/L2_phenotype/predictor_reconstruction/cache`.
 The acquisition manifest is a generated local audit artifact and is not a
-repository source file.
+repository source file or trust root. Because the official predictor endpoints
+did not supply SHA-256 checksums, the six successful downloads are explicitly
+classified as locally audited digests and their exact values are now pinned in
+the committed predictor artifact registry. A future unpinned download is
+reported as `downloaded_locally_audited_unpinned` and remains ineligible for
+loading until its digest is reviewed and committed.
 
 | Resource | Stable official source | Verified bytes | SHA-256 | Predictor unit |
 | --- | --- | ---: | --- | --- |
@@ -61,6 +73,31 @@ bundle would be the preferred small predictor source, but it was inaccessible
 through the blocked Zenodo endpoint. ENA raw WGS reconstruction was not started
 because it would require large FASTQ downloads and a separately frozen
 profiling pipeline.
+
+### Reproducible PREDICT-1 overlap audit
+
+Only identifier axes were read. The Phase 1 development set was taken from the
+`sample_id` index of
+`data/project_data/predict_multi/L7_nutrient_bridge_beta_i/W_personalized.parquet`
+(artifact SHA-256
+`6552d061524da99e544c55c3d7cfeafd7c2eef999222b755d4c336bc40cec1b1`).
+The EH5458 set was taken from the sample axis (`dim_1`) of the pinned RDA
+(artifact SHA-256
+`89c635061b357583351ca33f520a72d0efced4a2963e73182e529228c8395c54`).
+
+Canonicalization preserves exact case and the complete identifier string,
+rejects empty or duplicate IDs, sorts by Python Unicode code-point order,
+encodes UTF-8, joins records with `\n`, and adds no trailing newline.
+
+| ID set | n | Canonical SHA-256 |
+| --- | ---: | --- |
+| Phase 1 development | 15,492 | `e93e35038391cf56b4781e138841a93bd7f84c5d3ceb532d02aaf2f7dade6082` |
+| EH5458 profiles | 1,098 | `db9a7fabfa390e5d1b91b32c2b9569aa3d1d5e57f9708297bfa91c1e1d92974c` |
+| Exact intersection | 1,098 | `db9a7fabfa390e5d1b91b32c2b9569aa3d1d5e57f9708297bfa91c1e1d92974c` |
+
+Thus the public-only EH5458 scoring set has `n = 0`. The digest helper and
+registry constants are covered by reproducibility tests; no response or label
+column was read for this audit.
 
 ## Stage 2B: historical FNDDS acquisition and food-bundle gate
 
@@ -132,12 +169,15 @@ same-immutable-bytes loader. No entry was added to
 
 `code/src/configs/person_meal_validation.yaml` is JSON-compatible YAML with
 exact SHA-256
-`e2ac50bb4d6f440d51d9c6deea9cb10e6e2238e70c07f0f0dcd5cd9a443a7d3b`.
-It preregisters two primary endpoints (`glucose_iAUC_2h` and `tg_6h_rise`), one
-secondary endpoint (`c_peptide_iAUC_2h`), their units and time windows,
-endpoint-specific missingness, participant/family/twin-aware splitting, nested
-cross-validation and deterministic seeds. These are declarations only; no
-response value or outcome summary was read to define them.
+`12bbe284674cac0cf96344112a5e47a279d87e83fe5727e2841635ec0dc70f6b`.
+It defines the source-independent `participant_id + meal_id` unique key;
+requires both primary endpoints (`glucose_iAUC_2h` and `tg_6h_rise`); applies a
+predeclared availability policy to secondary `c_peptide_iAUC_2h`; and freezes
+each endpoint's role, unit, time window, summary and derivation. Caller-selected
+endpoint subsets are forbidden. It also freezes missingness,
+participant/family/twin-aware splitting, nested cross-validation and seeds.
+These are preregistration declarations only; no response value or outcome
+summary was read to define them.
 
 ## Stages 2C and 2D
 
@@ -148,14 +188,23 @@ empty trusted registry snapshot has SHA-256
 The manifest writer now requires explicit expected hashes for both this
 registry snapshot and the frozen validation config, revalidates all bound
 inputs, writes atomically without overwriting an existing manifest, and leaves
-no output on failure.
+no output on failure. After hard-link publication, byte validation, directory
+`fsync` and temporary-file cleanup are all inside the rollback boundary; any
+failure triggers best-effort destination deletion before the error is raised.
+The reviewed gate implementation SHA-256 is
+`e73c4601bb102215b20e0e9435a56615714bb0389ee1275f4edc89c3065c62a3`.
 
 Stage 2D is blocked because controlled access to Zenodo version DOI
 `10.5281/zenodo.17236383` has not been granted and the trusted registry records
-the source only for controlled eligibility assessment. The loader will not
-open it until the registry records a verified local path and SHA-256, granted
-access, and the `direct_validation` role, and until the complete method-lock
-instance passes revalidation immediately before the read.
+the source only for controlled eligibility assessment. The production grant
+record remains `controlled_not_granted`. Promotion to `controlled_granted` and
+`direct_validation` is structurally reachable only when one trusted record
+simultaneously binds a verified local path and SHA-256, version DOI, DUA or
+approval evidence identifier, data-dictionary path and hash, participant/meal
+key contract, complete endpoint schema/units/windows/summary/derivation
+contract, and microbiome-linkage evidence. Missing any element is rejected.
+Only after that contract and the complete method-lock instance pass does the
+loader inspect the controlled header and bytes.
 
 Required manual action is to request access to the controlled Zenodo record and
 obtain: the participant-by-meal files; the endpoint data dictionary with units,

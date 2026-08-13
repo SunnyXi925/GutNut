@@ -16,10 +16,21 @@ import json
 import os
 from pathlib import Path
 import re
+import sys
 import tempfile
 from typing import Iterable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+
+SRC_ROOT = Path(__file__).resolve().parents[1]
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
+from gmnps.data_sources.predict_zoe_registry import (  # noqa: E402
+    PREDICTOR_ARTIFACT_REGISTRY,
+    PredictorArtifact,
+)
 
 
 ACCESSED_ON = "2026-08-13"
@@ -53,6 +64,7 @@ class OfficialArtifact:
     content_scope: str
     expected_sha256: str | None = None
     expected_size: int | None = None
+    digest_basis: str = "unverified_no_upstream_checksum_requires_repository_pin"
 
     def __post_init__(self) -> None:
         if self.group not in {"predictor", "fndds"}:
@@ -71,38 +83,30 @@ class OfficialArtifact:
             raise ValueError("expected_sha256 must be a lowercase SHA-256 digest")
         if self.expected_size is not None and self.expected_size <= 0:
             raise ValueError("expected_size must be positive")
+        if self.expected_sha256 is not None and self.digest_basis != (
+            "locally_audited_sha256_pinned_in_repository"
+        ):
+            raise ValueError("fixed predictor digest must identify its audit basis")
 
 
-def _ena_metadata(accession: str) -> OfficialArtifact:
-    fields = (
-        "study_accession,sample_accession,run_accession,instrument_platform,"
-        "library_strategy,library_source,library_layout"
-    )
-    url = (
-        "https://www.ebi.ac.uk/ena/portal/api/search?result=read_run&"
-        f"query=study_accession%3D%22{accession}%22&fields={fields}&"
-        "format=tsv&limit=0"
-    )
+def _trusted_predictor_artifact(record: PredictorArtifact) -> OfficialArtifact:
     return OfficialArtifact(
-        artifact_id=f"ena_{accession.lower()}_sequencing_metadata",
+        artifact_id=record.source_id,
         group="predictor",
-        source="European Nucleotide Archive",
-        stable_url=url,
-        filename=f"{accession}_read_run_metadata.tsv",
-        content_scope="sequencing accession and library metadata only",
+        source=record.resource_id,
+        stable_url=record.stable_source,
+        filename=Path(record.expected_cache_path).name,
+        content_scope=record.schema_kind,
+        expected_sha256=record.sha256,
+        expected_size=record.size_bytes,
+        digest_basis=record.digest_basis,
     )
 
 
 PREDICTOR_ARTIFACTS = (
-    OfficialArtifact(
-        artifact_id="experimenthub_eh5458_relative_abundance",
-        group="predictor",
-        source="Bioconductor ExperimentHub EH5458",
-        stable_url="https://experimenthub.bioconductor.org/fetch/5501",
-        filename="2021-03-31.AsnicarF_2021.relative_abundance.rda",
-        content_scope="microbiome relative-abundance profiles only",
-        expected_sha256="89c635061b357583351ca33f520a72d0efced4a2963e73182e529228c8395c54",
-        expected_size=755545,
+    *tuple(
+        _trusted_predictor_artifact(record)
+        for record in PREDICTOR_ARTIFACT_REGISTRY
     ),
     OfficialArtifact(
         artifact_id="zenodo_15308000_public_predictor_record_metadata",
@@ -111,16 +115,6 @@ PREDICTOR_ARTIFACTS = (
         stable_url="https://zenodo.org/api/records/15308000",
         filename="zenodo_15308000_record_metadata.json",
         content_scope="public record and file metadata only",
-    ),
-    *tuple(
-        _ena_metadata(accession)
-        for accession in (
-            "PRJEB39223",
-            "PRJEB75460",
-            "PRJEB75462",
-            "PRJEB75463",
-            "PRJEB75464",
-        )
     ),
 )
 
@@ -165,6 +159,13 @@ FNDDS_ARTIFACTS = (
     ),
 )
 
+_OFFICIAL_ARTIFACTS_BY_ID = {
+    artifact.artifact_id: artifact
+    for artifact in PREDICTOR_ARTIFACTS + FNDDS_ARTIFACTS
+}
+if len(_OFFICIAL_ARTIFACTS_BY_ID) != len(PREDICTOR_ARTIFACTS + FNDDS_ARTIFACTS):
+    raise ValueError("official artifact allowlist contains duplicate source IDs")
+
 
 def _digest_file(path: Path) -> tuple[str, str, int]:
     sha = sha256()
@@ -199,13 +200,14 @@ def _known_digest(
     artifact: OfficialArtifact,
     previous: dict[str, dict[str, object]],
 ) -> str | None:
-    if artifact.expected_sha256 is not None:
-        return artifact.expected_sha256
-    prior = previous.get(artifact.artifact_id, {})
-    if prior.get("stable_url") != artifact.stable_url:
-        return None
-    value = prior.get("sha256")
-    return value if isinstance(value, str) and _SHA256.fullmatch(value) else None
+    """Return only a digest pinned in the repository trust root.
+
+    Acquisition manifests are mutable run logs and can never promote bytes to
+    trusted status, even when they contain a syntactically valid digest.
+    """
+
+    del previous
+    return artifact.expected_sha256
 
 
 def _cached_record(
@@ -213,7 +215,7 @@ def _cached_record(
     destination: Path,
     expected_sha256: str,
 ) -> dict[str, object] | None:
-    if not destination.is_file():
+    if destination.is_symlink() or not destination.is_file():
         return None
     digest, md5_digest, size = _digest_file(destination)
     if digest != expected_sha256:
@@ -230,23 +232,29 @@ def _cached_record(
         "final_url": artifact.stable_url,
         "etag": None,
         "last_modified": None,
-        "upstream_checksum_basis": (
-            "fixed_expected_sha256"
-            if artifact.expected_sha256 is not None
-            else "prior_acquisition_manifest_sha256"
-        ),
+        "upstream_checksum_basis": artifact.digest_basis,
     }
 
 
+def _official_artifact(source_id: str) -> OfficialArtifact:
+    if not isinstance(source_id, str) or not source_id:
+        raise ValueError("source_id must be a nonempty string")
+    try:
+        return _OFFICIAL_ARTIFACTS_BY_ID[source_id]
+    except KeyError as error:
+        raise ValueError(f"unknown official artifact source_id: {source_id}") from error
+
+
 def fetch_artifact(
-    artifact: OfficialArtifact,
+    source_id: str,
     *,
     cache_dir: Path,
     previous: dict[str, dict[str, object]],
     timeout_seconds: int,
 ) -> dict[str, object]:
-    """Fetch one allowlisted artifact into a content-verified cache."""
+    """Fetch one allowlisted artifact; trust only repository-pinned digests."""
 
+    artifact = _official_artifact(source_id)
     destination = cache_dir / artifact.group / artifact.filename
     known_digest = _known_digest(artifact, previous)
     if known_digest is not None:
@@ -290,13 +298,18 @@ def fetch_artifact(
             )
         if known_digest is not None and digest != known_digest:
             raise ValueError(
-                f"remote bytes changed from prior manifest for {artifact.artifact_id}"
+                f"remote bytes differ from the repository-pinned digest for "
+                f"{artifact.artifact_id}"
             )
         os.replace(temporary_path, destination)
         temporary_path = None
         return {
             **asdict(artifact),
-            "status": "downloaded_verified",
+            "status": (
+                "downloaded_verified"
+                if artifact.expected_sha256 is not None
+                else "downloaded_locally_audited_unpinned"
+            ),
             "sha256": digest,
             "md5": md5_digest,
             "size_bytes": size,
@@ -304,11 +317,7 @@ def fetch_artifact(
             "final_url": final_url,
             "etag": etag,
             "last_modified": last_modified,
-            "upstream_checksum_basis": (
-                "fixed_expected_sha256"
-                if artifact.expected_sha256 is not None
-                else "official_url_plus_response_metadata_and_local_sha256"
-            ),
+            "upstream_checksum_basis": artifact.digest_basis,
         }
     finally:
         if temporary_path is not None:
@@ -318,24 +327,29 @@ def fetch_artifact(
                 pass
 
 
-def _select_artifacts(group: str) -> tuple[OfficialArtifact, ...]:
+def _select_artifacts(group: str) -> tuple[str, ...]:
     if group == "predictor":
-        return PREDICTOR_ARTIFACTS
-    if group == "fndds":
-        return FNDDS_ARTIFACTS
-    return PREDICTOR_ARTIFACTS + FNDDS_ARTIFACTS
+        selected = PREDICTOR_ARTIFACTS
+    elif group == "fndds":
+        selected = FNDDS_ARTIFACTS
+    else:
+        selected = PREDICTOR_ARTIFACTS + FNDDS_ARTIFACTS
+    return tuple(artifact.artifact_id for artifact in selected)
 
 
 def run_acquisition(
-    artifacts: Iterable[OfficialArtifact],
+    source_ids: Iterable[str],
     *,
     cache_dir: Path,
     manifest_path: Path,
     timeout_seconds: int,
     max_workers: int = 4,
 ) -> dict[str, object]:
+    selected = tuple(source_ids)
+    if not selected:
+        raise ValueError("at least one official source_id is required")
+    artifacts = tuple(_official_artifact(source_id) for source_id in selected)
     previous = _load_previous_manifest(manifest_path)
-    selected = tuple(artifacts)
     if max_workers <= 0:
         raise ValueError("max_workers must be positive")
     by_id: dict[str, dict[str, object]] = {}
@@ -343,7 +357,7 @@ def run_acquisition(
     def attempt(artifact: OfficialArtifact) -> dict[str, object]:
         try:
             return fetch_artifact(
-                artifact,
+                artifact.artifact_id,
                 cache_dir=cache_dir,
                 previous=previous,
                 timeout_seconds=timeout_seconds,
@@ -356,25 +370,26 @@ def run_acquisition(
                 "error": str(error),
             }
 
-    with ThreadPoolExecutor(max_workers=min(max_workers, len(selected))) as executor:
-        futures = {executor.submit(attempt, artifact): artifact for artifact in selected}
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(artifacts))) as executor:
+        futures = {executor.submit(attempt, artifact): artifact for artifact in artifacts}
         for future in as_completed(futures):
             artifact = futures[future]
             by_id[artifact.artifact_id] = future.result()
             checkpoint = _acquisition_payload(
-                [by_id[item.artifact_id] for item in selected if item.artifact_id in by_id]
+                [by_id[item.artifact_id] for item in artifacts if item.artifact_id in by_id]
             )
             _write_acquisition_manifest(manifest_path, checkpoint)
-    payload = _acquisition_payload([by_id[item.artifact_id] for item in selected])
+    payload = _acquisition_payload([by_id[item.artifact_id] for item in artifacts])
     _write_acquisition_manifest(manifest_path, payload)
     return payload
 
 
 def _acquisition_payload(records: list[dict[str, object]]) -> dict[str, object]:
     return {
-        "schema_version": "predictor-acquisition-manifest-v1",
+        "schema_version": "predictor-acquisition-manifest-v2",
         "accessed_on": ACCESSED_ON,
         "nature_data_boundary": "predictor_only_no_outcome_or_label_tables",
+        "trust_root": "repository_pinned_artifact_registry_not_this_manifest",
         "raw_fastq_downloaded": False,
         "artifacts": records,
     }
@@ -429,15 +444,26 @@ def main() -> None:
     blocked = [
         record for record in payload["artifacts"] if record["status"] == "blocked"
     ]
+    verified = [
+        record
+        for record in payload["artifacts"]
+        if record["status"] in {"cached_verified", "downloaded_verified"}
+    ]
+    unpinned = [
+        record
+        for record in payload["artifacts"]
+        if record["status"] == "downloaded_locally_audited_unpinned"
+    ]
     summary = {
         "manifest": str(manifest_path),
         "n_artifacts": len(payload["artifacts"]),
-        "n_verified": len(payload["artifacts"]) - len(blocked),
+        "n_verified": len(verified),
+        "n_locally_audited_unpinned": len(unpinned),
         "n_blocked": len(blocked),
         "blocked_ids": [record["artifact_id"] for record in blocked],
     }
     print(json.dumps(summary, indent=2, sort_keys=True))
-    if blocked and not args.allow_partial:
+    if (blocked or unpinned) and not args.allow_partial:
         raise SystemExit(2)
 
 

@@ -137,6 +137,29 @@ package identifier is pending and they are not represented as already public.
 The current `PROVENANCE.md` does not prove a meal/food key or an audited
 participant-to-microbiome key map, so both eligibility fields remain `unknown`.
 
+## Executable trust and future controlled-grant contract
+
+Task 2 adds two repository-trusted executable subregistries without changing
+the outcome audit classification. The predictor artifact registry pins the
+canonical stable source, exact repository-relative cache path, locally audited
+SHA-256, predictor-only content class, reconstruction role and allowed schema
+for each successfully audited public predictor artifact. A generated local
+acquisition manifest is an audit log, not an authority that can approve new
+bytes.
+
+The production controlled record remains `controlled_not_granted` with the
+`controlled_eligibility_assessment` role. The contract permits a future
+`controlled_granted` plus `direct_validation` state only if one trusted record
+simultaneously provides a verified local path and SHA-256, version DOI,
+DUA/approval evidence identifier, data-dictionary path and hash, canonical
+participant/meal key contract, complete endpoint schema/units/windows/summary/
+derivation contract, and microbiome-linkage evidence. The loader derives its
+required columns from that grant and the source-independent frozen config; a
+caller cannot provide a replacement path, digest, key or endpoint subset.
+Because none of this evidence is currently available for version DOI
+`10.5281/zenodo.17236383`, direct outcome access remains blocked and no outcome
+audit was repeated.
+
 ## FAIR audit
 
 | Principle | Finding | Required action |

@@ -525,3 +525,36 @@ def test_task2_manifest_writer_is_atomic_and_leaves_no_output_on_gate_failure(
             expected_person_meal_validation_config_sha256="0" * 64,
         )
     assert not output.exists()
+
+
+def test_manifest_writer_rolls_back_destination_if_temp_cleanup_fails_after_link(
+    tmp_path,
+    monkeypatch,
+):
+    paths, _ = _fixture(tmp_path / "inputs", monkeypatch=monkeypatch)
+    output = tmp_path / "results/phase2/method_lock_manifest.json"
+    expected_registry_sha256 = sha256(paths.release_registry.read_bytes()).hexdigest()
+    original_unlink = Path.unlink
+    faulted = False
+
+    def fail_first_temp_cleanup(path, *args, **kwargs):
+        nonlocal faulted
+        if not faulted and path.suffix == ".tmp" and output.exists():
+            faulted = True
+            raise OSError("injected temporary cleanup failure after link")
+        return original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", fail_first_temp_cleanup)
+    with pytest.raises(MethodLockError, match="atomically"):
+        gate_module.write_method_lock_manifest(
+            paths,
+            output_path=output,
+            beta_fit_cohort_id="development-v1",
+            expected_release_registry_sha256=expected_registry_sha256,
+            expected_person_meal_validation_config_sha256=sha256(
+                paths.person_meal_validation_config.read_bytes()
+            ).hexdigest(),
+        )
+
+    assert faulted is True
+    assert not output.exists()
