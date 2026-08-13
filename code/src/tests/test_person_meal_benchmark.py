@@ -468,8 +468,16 @@ def test_registry_constants_are_compared_with_live_registry_bytes(tmp_path, monk
     assert outcome_reads == []
 
 
-def _run_testing_only_benchmark(tmp_path, monkeypatch):
-    predictors, outcomes = _testing_only_tables()
+def _run_testing_only_benchmark(
+    tmp_path,
+    monkeypatch,
+    *,
+    predictors: pd.DataFrame | None = None,
+    outcomes: pd.DataFrame | None = None,
+):
+    default_predictors, default_outcomes = _testing_only_tables()
+    predictors = default_predictors if predictors is None else predictors
+    outcomes = default_outcomes if outcomes is None else outcomes
     paths, manifest_path, _ = _testing_only_lock_fixture(tmp_path, predictors)
     validation_calls: list[str] = []
 
@@ -761,6 +769,110 @@ def test_primary_failure_is_reported_only_after_all_four_modes_are_attempted(
     with pytest.raises(ValueError, match="primary analysis is not estimable"):
         _run_testing_only_benchmark(tmp_path, monkeypatch)
     assert attempted == [None, "food_id", "meal_id", "cohort_id"]
+
+
+def test_predictor_opportunity_missing_an_entire_outcome_row_stays_in_split_universe(
+    tmp_path, monkeypatch
+):
+    predictors, outcomes = _testing_only_tables()
+    participant_id = "testing-p05"
+    meal_id = "testing-meal-7"
+    missing_key = outcomes["participant_id"].eq(participant_id) & outcomes[
+        "meal_id"
+    ].eq(meal_id)
+    outcomes = outcomes.loc[~missing_key].reset_index(drop=True)
+
+    result = _run_testing_only_benchmark(
+        tmp_path,
+        monkeypatch,
+        predictors=predictors,
+        outcomes=outcomes,
+    )
+
+    target_position = predictors.index[
+        predictors["participant_id"].eq(participant_id)
+        & predictors["meal_id"].eq(meal_id)
+    ].item()
+    primary_test_universe = {
+        position
+        for nested in result.splits["subject_held_out"]
+        for position in nested.outer.test_positions
+    }
+    assert primary_test_universe == set(range(len(predictors)))
+    assert target_position in primary_test_universe
+    assert not result.predictions["row_id"].eq(
+        f"{participant_id}::{meal_id}"
+    ).any()
+
+    tg_status = result.analysis_status.loc[
+        result.analysis_status["endpoint"].eq("tg_6h_rise")
+    ]
+    assert tg_status["n_predictor_opportunities"].eq(len(predictors)).all()
+    assert tg_status["n_missing_outcome_opportunities"].eq(1).all()
+    missingness = result.missingness_source.loc[
+        result.missingness_source["endpoint"].eq("tg_6h_rise")
+        & result.missingness_source["variable"].eq("tg_6h_rise")
+    ]
+    assert missingness.loc[
+        missingness["denominator_scope"].eq("split_all_rows"), "missing_n"
+    ].gt(0).any()
+    assert missingness.loc[
+        missingness["denominator_scope"].eq("finite_outcome_analysis_set"),
+        "missing_n",
+    ].eq(0).all()
+
+
+def test_outcomeless_relative_bridge_still_connects_split_components(
+    tmp_path, monkeypatch
+):
+    predictors, outcomes = _testing_only_tables()
+    bridge_participant = "testing-p01"
+    predictors.loc[
+        predictors["participant_id"].eq(bridge_participant), "twin_id"
+    ] = "testing-outcomeless-bridge"
+    predictors.loc[
+        predictors["participant_id"].eq("testing-p02"), "twin_id"
+    ] = "testing-outcomeless-bridge"
+    outcomes = outcomes.loc[
+        ~outcomes["participant_id"].eq(bridge_participant)
+    ].reset_index(drop=True)
+
+    result = _run_testing_only_benchmark(
+        tmp_path,
+        monkeypatch,
+        predictors=predictors,
+        outcomes=outcomes,
+    )
+
+    participant_fold: dict[str, int] = {}
+    for nested in result.splits["subject_held_out"]:
+        held_out = predictors.iloc[list(nested.outer.test_positions)]
+        for participant in held_out["participant_id"].astype(str).unique():
+            participant_fold[participant] = nested.outer.fold_id
+    connected = {
+        "testing-p00",
+        bridge_participant,
+        "testing-p02",
+        "testing-p03",
+    }
+    assert len({participant_fold[participant] for participant in connected}) == 1
+
+    observed = result.predictions.loc[
+        result.predictions["analysis_mode"].eq("subject_held_out")
+        & result.predictions["endpoint"].eq("tg_6h_rise")
+        & result.predictions["comparator"].eq("fcs_only")
+        & result.predictions["participant_id"].isin(
+            {"testing-p00", "testing-p02"}
+        )
+    ]
+    assert observed.groupby("participant_id")["outer_fold"].first().nunique() == 1
+    assert observed.groupby("participant_id")[
+        "inference_cluster_id"
+    ].first().nunique() == 1
+    bridge_status = result.analysis_status.loc[
+        result.analysis_status["endpoint"].eq("tg_6h_rise")
+    ]
+    assert bridge_status["n_missing_outcome_opportunities"].eq(12).all()
 
 
 def test_benchmark_api_requires_trusted_path_contract_not_caller_object():

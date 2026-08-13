@@ -1391,14 +1391,24 @@ def _missingness_source_table(
                             ),
                         )
                         for denominator_scope, denominator_rows in denominator_sets:
-                            for variable in (*predictor_columns, endpoint_name):
+                            for variable in (
+                                *predictor_columns,
+                                "__outcome_row_present__",
+                                endpoint_name,
+                            ):
                                 values = denominator_rows[variable]
                                 if variable == endpoint_name:
                                     missing = ~_outcome_available(values)
                                     variable_role = "outcome"
+                                    reported_variable = variable
+                                elif variable == "__outcome_row_present__":
+                                    missing = ~values.to_numpy(dtype=bool)
+                                    variable_role = "outcome_availability"
+                                    reported_variable = "__outcome_row__"
                                 else:
                                     missing = values.isna().to_numpy()
                                     variable_role = "predictor"
+                                    reported_variable = variable
                                 n_rows = len(denominator_rows)
                                 records.append(
                                     {
@@ -1408,7 +1418,7 @@ def _missingness_source_table(
                                         "outer_fold": nested.outer.fold_id,
                                         "split": split_name,
                                         "denominator_scope": denominator_scope,
-                                        "variable": variable,
+                                        "variable": reported_variable,
                                         "variable_role": variable_role,
                                         "n_rows": n_rows,
                                         "n_participants": int(
@@ -1453,15 +1463,33 @@ def _prepare_joined_frame(
     outcome_projection = outcome.loc[
         :, [*_KEY_COLUMNS, *[name for name in endpoint_names if name in outcome.columns]]
     ]
-    joined = outcome_projection.merge(
-        predictors,
+    leaked_endpoints = set(endpoint_names).intersection(predictors.columns)
+    if leaked_endpoints:
+        raise ValueError(
+            "predictor opportunity universe contains outcome columns: "
+            f"{sorted(leaked_endpoints)}"
+        )
+    outcome_key_check = outcome_projection.loc[:, list(_KEY_COLUMNS)].merge(
+        predictors.loc[:, list(_KEY_COLUMNS)],
         on=list(_KEY_COLUMNS),
         how="left",
         validate="one_to_one",
         indicator=True,
     )
-    if not joined["_merge"].eq("both").all():
-        raise ValueError("one or more outcome rows lack the same predictor opportunity")
+    if not outcome_key_check["_merge"].eq("both").all():
+        raise ValueError(
+            "one or more outcome rows are outside the frozen predictor "
+            "opportunity universe"
+        )
+    joined = predictors.merge(
+        outcome_projection,
+        on=list(_KEY_COLUMNS),
+        how="left",
+        sort=False,
+        validate="one_to_one",
+        indicator=True,
+    )
+    joined["__outcome_row_present__"] = joined["_merge"].eq("both")
     joined = joined.drop(columns="_merge").reset_index(drop=True)
     joined.insert(
         0,
@@ -1472,6 +1500,30 @@ def _prepare_joined_frame(
     )
     joined["inference_cluster_id"] = family_twin_component_ids(joined).to_numpy()
     return joined
+
+
+def _endpoint_opportunity_counts(
+    frame: pd.DataFrame,
+    endpoint_name: str,
+) -> dict[str, int]:
+    total = len(frame)
+    finite = (
+        int(np.sum(_outcome_available(frame[endpoint_name])))
+        if endpoint_name in frame.columns
+        else 0
+    )
+    present = (
+        int(frame["__outcome_row_present__"].sum())
+        if "__outcome_row_present__" in frame.columns
+        else 0
+    )
+    return {
+        "n_predictor_opportunities": total,
+        "n_outcome_rows_present": present,
+        "n_missing_outcome_rows": total - present,
+        "n_finite_outcome_opportunities": finite,
+        "n_missing_outcome_opportunities": total - finite,
+    }
 
 
 def _benchmark_predictions_for_mode(
@@ -1516,6 +1568,7 @@ def _benchmark_predictions_for_mode(
 
     for endpoint in endpoints:
         endpoint_name = str(endpoint["name"])
+        opportunity_counts = _endpoint_opportunity_counts(frame, endpoint_name)
         if endpoint_name not in frame.columns:
             status_rows.append(
                 {
@@ -1527,6 +1580,7 @@ def _benchmark_predictions_for_mode(
                     "n_prediction_rows": 0,
                     "outer_split_seed": outer_split_seed,
                     "inner_cv_seed": inner_cv_seed,
+                    **opportunity_counts,
                 }
             )
             continue
@@ -1705,6 +1759,7 @@ def _benchmark_predictions_for_mode(
                     "n_prediction_rows": 0,
                     "outer_split_seed": outer_split_seed,
                     "inner_cv_seed": inner_cv_seed,
+                    **opportunity_counts,
                 }
             )
         else:
@@ -1722,6 +1777,7 @@ def _benchmark_predictions_for_mode(
                     "n_prediction_rows": len(prediction_rows) - prediction_start,
                     "outer_split_seed": outer_split_seed,
                     "inner_cv_seed": inner_cv_seed,
+                    **opportunity_counts,
                 }
             )
     predictions = pd.DataFrame.from_records(prediction_rows)
@@ -1833,6 +1889,9 @@ def _benchmark_predictions(
                     "inner_cv_seed": (
                         int(config.payload["seeds"]["inner_cv"])
                         + mode_index * _MODE_SEED_STRIDE
+                    ),
+                    **_endpoint_opportunity_counts(
+                        frame, str(endpoint["name"])
                     ),
                 }
                 for endpoint in endpoints

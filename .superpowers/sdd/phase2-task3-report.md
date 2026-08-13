@@ -254,3 +254,48 @@ result or placeholder was created. Execution remains blocked by those missing
 pre-outcome artifacts, unavailable approved scoring/food inputs and absent
 controlled outcome authorization. Therefore this second review also reports no
 empirical metric, p-value, ranking or superiority claim.
+
+## Final predictor-universe split correction
+
+**Status remains:** `implementation_complete_execution_blocked`
+
+The final Major finding is closed in implementation. The benchmark now treats
+the frozen, validated predictor frame as the complete opportunity universe.
+Participant/family/twin connected components and all outer/inner split plans
+are constructed from every predictor person-meal key before outcome
+availability is considered. Outcomes are then left-joined onto this frozen
+universe. An outcome-only key outside the predictor contract fails closed, but
+a predictor key with no outcome row remains in every applicable split plan.
+
+Endpoint-specific finite available-case filtering still occurs only after the
+split has been fixed. Consequently, missing outcome rows cannot remove an
+outcomeless participant that bridges two family/twin links or change component
+membership. Such rows do not enter model fitting, tuning, prediction or metric
+calculation for the affected endpoint.
+
+Missingness output now explicitly reports `__outcome_row__` availability in
+addition to endpoint finite-value missingness. Endpoint-by-mode status records
+the frozen predictor opportunity count, present and missing outcome-row counts,
+and finite and missing/nonfinite endpoint opportunity counts.
+
+### Final RED/GREEN evidence
+
+- RED: after deleting one complete testing-only outcome row, the primary split
+  universe contained 239 rather than all 240 frozen predictor opportunities:
+  `1 failed in 8.87s`.
+- Focused GREEN for the two new tests: `2 passed in 16.45s`. The first proves a
+  predictor key with no outcome row remains in the split universe, is excluded
+  only from endpoint analysis and is reported as missing. The second proves an
+  outcomeless relative still bridges transitive family/twin components and
+  keeps both observed endpoints in the same outer fold.
+- Final focused Task 3/gate/loader suite: `123 passed in 80.94s`.
+- Final related tracked method-lock/scoring suite: `381 passed, 63 warnings in
+  94.95s`.
+- Final full repository suite: `580 passed, 69 warnings in 98.07s`.
+
+The final `person_meal_benchmark.py` SHA-256 is
+`896470854c1109ac6d5e4100cdcd2d15df442603d6ad03edda1cd4da91a52b83`,
+superseding the preceding implementation hash in this report. No real,
+on-disk synthetic or aggregate outcome file was opened, and no benchmark result
+or placeholder artifact was generated. Execution remains blocked for the same
+pre-outcome artifact and controlled-access reasons documented above.

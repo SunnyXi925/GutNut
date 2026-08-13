@@ -203,7 +203,7 @@ and the reviewed gate implementation SHA-256 is
 The reviewed cohort-split and benchmark implementation SHA-256 values are
 `510d5a584a9fa27067baa60758438ab6dfb7a1f2d3c2afb8284a627520d1df25`
 and
-`294ae374c3507e7591c9c4b73930b844b429dc07d80e4577d3543b70d7726202`,
+`896470854c1109ac6d5e4100cdcd2d15df442603d6ad03edda1cd4da91a52b83`,
 respectively. The schema now requires predictor-frame/feature-contract hashes,
 both Task 3 implementation hashes and the canonical benchmark specification
 hash. The existing Phase 1 `implementation_source_sha256` constants were not
