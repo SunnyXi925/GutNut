@@ -55,3 +55,25 @@ __all__ = [
     "calibration_objective",
     "food_group_direction_pass_fraction",
 ]
+
+from gmnps.scoring.attribute_gmnps import (
+    ATTRIBUTE_GMNPS_SCORING_VERSION,
+    AttributeGMNPSConfig,
+    AttributeGMNPSModel,
+    AttributeGMNPSResult,
+    FoodAttributeBundle,
+    fit_attribute_gmnps,
+    score_attribute_gmnps,
+    summarize_attribute_gmnps_foods,
+)
+
+__all__ += [
+    "ATTRIBUTE_GMNPS_SCORING_VERSION",
+    "AttributeGMNPSConfig",
+    "AttributeGMNPSModel",
+    "AttributeGMNPSResult",
+    "FoodAttributeBundle",
+    "fit_attribute_gmnps",
+    "score_attribute_gmnps",
+    "summarize_attribute_gmnps_foods",
+]
