@@ -1,0 +1,42 @@
+.superpowers/sdd/phase2-task5-report.md
+  s_4d75bbbcc79dac::t_a795fd904fdac2 177-185,267-363
+results/phase2/evidence-gate/claim_policy.json
+  s_4d75bbbcc79dac::t_04b7541a1e5fb4 3-14,20-21,23,25,29
+code/src/gmnps/validation/claim_policy.py
+  s_4d75bbbcc79dac::t_1c2b375d924198 15,19-22,25-31,60-69,72-76,92,106,158-161,163
+  s_4d75bbbcc79dac::t_9d346ed0c8e6c0 142-147
+code/src/tests/test_evidence_gate.py
+  s_4d75bbbcc79dac::t_8768d022afae74 11,17,21-24,30-31,34,37-40,43-45,48-49,56-92,94-103,105-144,163-164,173-174,177-178,180,183,192,197-210,212,215-216,219-229,231-232,234-242,244-262,264,268-272,280,282-329,332-348,356-375,380-387,390-394,396,400,402,412-433,436-437,439-443,445,448-453,474-479,481-487,489-491,494-499,502-533,535,539-540,544
+  s_4d75bbbcc79dac::t_79018677137cfa 376-378
+  s_4d75bbbcc79dac::t_98170df790d85f 456,459-463,465-471
+  s_4d75bbbcc79dac::t_e6b82ae853e30e 93,145-156,160,195,218,281
+  s_4d75bbbcc79dac::t_b6cd3b04708de1 379
+  s_4d75bbbcc79dac::t_58fa934e133085 403-411
+results/phase2/evidence-gate/current_gate_decision.json
+  s_4d75bbbcc79dac::t_04b7541a1e5fb4 12-14,18,27,30
+docs/data/validation_evidence_matrix.md
+  s_4d75bbbcc79dac::t_a795fd904fdac2 31-32,52-54,62-65
+code/src/gmnps/validation/evidence_gate.py
+  s_4d75bbbcc79dac::t_e6b82ae853e30e 57-68,221-238,261-264,827-828
+  s_4d75bbbcc79dac::t_98170df790d85f 608-614
+  s_4d75bbbcc79dac::t_849ed47a03e331 1,4,15,19-22,24-28,79-141,149-150,159-160,182-183,202-220,239-260,265-299,307,313,333-338,351,365-367,395-410,415,418,420-422,426,429,435-436,438-508,511-512,514-517,519-521,526-530,532,534-536,546-556,558-576,578-607,615-720,724-740,744,747-750,769-770,782-784,787,789-795,799-800,803,807-817,819-826,829-845,847-849,852,864,888,898-899,902
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "f97df397e24d5da2f8c836abc104eb9c2cb2248c",
+  "prompts": {},
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 1309,
+      "total_deletions": 484,
+      "accepted_lines": 1309
+    }
+  }
+}
