@@ -13,8 +13,10 @@ from dataclasses import dataclass
 from hashlib import sha256
 from io import BytesIO, StringIO
 import json
+import os
 from pathlib import Path
 import re
+import stat
 from types import MappingProxyType
 from typing import Mapping
 
@@ -152,6 +154,14 @@ class FrozenValidationConfig:
 
 
 @dataclass(frozen=True)
+class _PredictorSnapshot:
+    """One immutable read used for digest, schema validation and parsing."""
+
+    raw: bytes
+    sha256: str
+
+
+@dataclass(frozen=True)
 class _OutcomeTableContract:
     source_columns: tuple[str, ...]
     canonical_columns: tuple[str, ...]
@@ -226,77 +236,153 @@ def _lookup_predictor(source_id: str) -> PredictorArtifact:
     return record
 
 
-def _tabular_header(path: Path, record: PredictorArtifact) -> tuple[str, ...]:
-    if record.file_format == "parquet":
-        try:
-            import pyarrow.parquet as pq
-
-            columns = tuple(pq.ParquetFile(path).schema_arrow.names)
-        except Exception as error:
-            raise PredictorLoadError("trusted predictor parquet header is unreadable") from error
-    else:
-        delimiter = "," if record.file_format == "csv" else "\t"
-        try:
-            with path.open("rb") as handle:
-                first_line = handle.readline(1024 * 1024 + 1)
-            if len(first_line) > 1024 * 1024:
-                raise PredictorLoadError("trusted predictor header exceeds the safety limit")
-            decoded = first_line.decode("utf-8-sig")
-            columns = tuple(next(csv.reader(StringIO(decoded), delimiter=delimiter)))
-        except PredictorLoadError:
-            raise
-        except Exception as error:
-            raise PredictorLoadError("trusted predictor header is unreadable") from error
+def _validate_predictor_columns(
+    columns: tuple[str, ...],
+    record: PredictorArtifact,
+) -> None:
     if not columns or any(not column for column in columns) or len(set(columns)) != len(columns):
         raise PredictorLoadError("trusted predictor header contains invalid columns")
-    if columns != record.allowed_columns:
-        forbidden = sorted(
-            column
-            for column in columns
-            if any(token in column.lower() for token in _FORBIDDEN_COLUMN_TOKENS)
+    forbidden = sorted(
+        column
+        for column in columns
+        if any(token in column.lower() for token in _FORBIDDEN_COLUMN_TOKENS)
+    )
+    if forbidden:
+        raise OutcomeAccessBlocked(
+            f"predictor header declares outcome/label columns: {forbidden}"
         )
-        if forbidden:
-            raise OutcomeAccessBlocked(
-                f"predictor header declares outcome/label columns: {forbidden}"
-            )
+    if columns != record.allowed_columns:
         raise PredictorLoadError(
             "predictor header does not match the repository-trusted schema/column order"
         )
-    return columns
 
 
-def _hash_trusted_predictor(path: Path, record: PredictorArtifact) -> str:
+def _read_predictor_snapshot(
+    path: Path,
+    record: PredictorArtifact,
+) -> _PredictorSnapshot:
+    """Read a trusted regular file once through one descriptor and pin its bytes."""
+
+    if not isinstance(record.size_bytes, int) or record.size_bytes < 1:
+        raise PredictorLoadError("trusted predictor artifact has an invalid expected size")
     try:
-        size = path.stat().st_size
+        before = os.stat(path, follow_symlinks=False)
+        if not stat.S_ISREG(before.st_mode):
+            raise PredictorLoadError(
+                "trusted predictor artifact is not a non-symlink regular file"
+            )
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags)
+        with os.fdopen(descriptor, "rb", closefd=True) as handle:
+            opened = os.fstat(handle.fileno())
+            if not stat.S_ISREG(opened.st_mode):
+                raise PredictorLoadError("trusted predictor descriptor is not a regular file")
+            identity_fields = ("st_dev", "st_ino")
+            if any(getattr(before, field) != getattr(opened, field) for field in identity_fields):
+                raise PredictorLoadError("trusted predictor path changed before snapshot read")
+            if opened.st_size != record.size_bytes:
+                raise PredictorLoadError(
+                    "predictor artifact size mismatch: "
+                    f"expected {record.size_bytes}, observed {opened.st_size}"
+                )
+            raw = handle.read(record.size_bytes + 1)
+            after = os.fstat(handle.fileno())
+            stable_fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+            if any(getattr(opened, field) != getattr(after, field) for field in stable_fields):
+                raise PredictorLoadError("trusted predictor artifact changed during snapshot read")
+    except PredictorLoadError:
+        raise
     except OSError as error:
-        raise PredictorLoadError("trusted predictor artifact is unreadable") from error
-    if size != record.size_bytes:
+        raise PredictorLoadError("trusted predictor artifact snapshot is unreadable") from error
+    if len(raw) != record.size_bytes:
         raise PredictorLoadError(
-            f"predictor artifact size mismatch: expected {record.size_bytes}, observed {size}"
+            "predictor artifact size mismatch: "
+            f"expected {record.size_bytes}, observed {len(raw)}"
         )
-    digest = sha256()
+    expected = _validate_sha256(record.sha256, "trusted predictor SHA-256")
+    observed = sha256(raw).hexdigest()
+    if observed != expected:
+        raise PredictorLoadError(
+            f"predictor artifact SHA-256 mismatch: expected {expected}, observed {observed}"
+        )
+    return _PredictorSnapshot(raw=raw, sha256=observed)
+
+
+def _decode_json_records(raw: bytes) -> list[dict[str, object]]:
+    def reject_duplicate_keys(pairs):
+        keys = [key for key, _ in pairs]
+        if len(set(keys)) != len(keys):
+            raise PredictorLoadError("trusted predictor JSON contains duplicate keys")
+        return dict(pairs)
+
     try:
-        with path.open("rb") as handle:
-            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                digest.update(chunk)
-    except OSError as error:
-        raise PredictorLoadError("trusted predictor artifact is unreadable") from error
-    observed = digest.hexdigest()
-    if observed != record.sha256:
-        raise PredictorLoadError(
-            f"predictor artifact SHA-256 mismatch: expected {record.sha256}, observed {observed}"
+        payload = json.loads(raw.decode("utf-8-sig"), object_pairs_hook=reject_duplicate_keys)
+    except PredictorLoadError:
+        raise
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise PredictorLoadError("trusted predictor JSON is unreadable") from error
+    if not isinstance(payload, list) or any(not isinstance(row, dict) for row in payload):
+        raise PredictorLoadError("trusted predictor JSON must be a list of row objects")
+    return payload
+
+
+def _validate_predictor_snapshot_schema(
+    raw: bytes,
+    record: PredictorArtifact,
+) -> None:
+    """Validate the trusted header/schema from the same bytes later parsed."""
+
+    if record.file_format == "rdata":
+        expected_schema = (
+            "microbiome_feature_id_axis",
+            "sample_id_axis",
+            "relative_abundance_value",
         )
-    return observed
+        if (
+            record.schema_kind != "relative_abundance_matrix_feature_by_sample"
+            or record.allowed_columns != expected_schema
+        ):
+            raise PredictorLoadError("trusted RData matrix schema contract is invalid")
+        return
+    try:
+        if record.file_format == "parquet":
+            import pyarrow.parquet as pq
+
+            columns = tuple(pq.ParquetFile(BytesIO(raw)).schema_arrow.names)
+            _validate_predictor_columns(columns, record)
+            return
+        if record.file_format == "json":
+            records = _decode_json_records(raw)
+            if not records:
+                raise PredictorLoadError("trusted predictor JSON must contain rows")
+            for row in records:
+                _validate_predictor_columns(tuple(row), record)
+            return
+        if record.file_format not in {"csv", "tsv"}:
+            raise PredictorLoadError("trusted predictor table format is unsupported")
+        first_line = BytesIO(raw).readline(1024 * 1024 + 1)
+        if len(first_line) > 1024 * 1024:
+            raise PredictorLoadError("trusted predictor header exceeds the safety limit")
+        delimiter = "," if record.file_format == "csv" else "\t"
+        decoded = first_line.decode("utf-8-sig")
+        columns = tuple(next(csv.reader(StringIO(decoded), delimiter=delimiter)))
+        _validate_predictor_columns(columns, record)
+    except (PredictorLoadError, OutcomeAccessBlocked):
+        raise
+    except Exception as error:
+        raise PredictorLoadError("trusted predictor header is unreadable") from error
 
 
-def _parse_trusted_table(path: Path, record: PredictorArtifact) -> pd.DataFrame:
+def _parse_trusted_table(raw: bytes, record: PredictorArtifact) -> pd.DataFrame:
     try:
         if record.file_format == "csv":
-            frame = pd.read_csv(path)
+            frame = pd.read_csv(BytesIO(raw))
         elif record.file_format == "tsv":
-            frame = pd.read_csv(path, sep="\t")
+            frame = pd.read_csv(BytesIO(raw), sep="\t")
+        elif record.file_format == "json":
+            frame = pd.DataFrame.from_records(_decode_json_records(raw))
         elif record.file_format == "parquet":
-            frame = pd.read_parquet(path)
+            frame = pd.read_parquet(BytesIO(raw))
         else:
             raise PredictorLoadError("RData matrices use the dedicated trusted parser")
     except PredictorLoadError:
@@ -330,19 +416,28 @@ def _validate_table_frame(frame: pd.DataFrame, record: PredictorArtifact) -> Non
         raise PredictorLoadError("predictor ID set does not match the trusted digest")
 
 
-def _parse_trusted_rdata(path: Path, record: PredictorArtifact) -> pd.DataFrame:
+def _parse_trusted_rdata(raw: bytes, record: PredictorArtifact) -> pd.DataFrame:
     try:
         import rdata
 
-        objects = rdata.conversion.convert(rdata.parser.parse_file(path))
+        parsed = rdata.parser.parse_data(raw, extension=".rda")
+        objects = rdata.conversion.convert(parsed)
         if not isinstance(objects, dict) or len(objects) != 1:
             raise PredictorLoadError("trusted RData must contain exactly one matrix")
-        matrix = next(iter(objects.values()))
+        object_name, matrix = next(iter(objects.items()))
+        if any(token in str(object_name).lower() for token in _FORBIDDEN_COLUMN_TOKENS):
+            raise OutcomeAccessBlocked("trusted RData declares an outcome/label object")
         if getattr(matrix, "ndim", None) != 2:
             raise PredictorLoadError("trusted RData object is not a two-dimensional matrix")
-        feature_dim, sample_dim = matrix.dims
-        feature_ids = tuple(str(value) for value in matrix.coords[feature_dim].values)
-        sample_ids = tuple(str(value) for value in matrix.coords[sample_dim].values)
+        if isinstance(matrix, pd.DataFrame):
+            feature_ids = tuple(str(value) for value in matrix.index)
+            sample_ids = tuple(str(value) for value in matrix.columns)
+            matrix_values = matrix.to_numpy()
+        else:
+            feature_dim, sample_dim = matrix.dims
+            feature_ids = tuple(str(value) for value in matrix.coords[feature_dim].values)
+            sample_ids = tuple(str(value) for value in matrix.coords[sample_dim].values)
+            matrix_values = matrix.values
         if len(sample_ids) != record.expected_records:
             raise PredictorLoadError("trusted RData sample count does not match registry")
         if canonical_predictor_ids_sha256(sample_ids) != record.id_sha256:
@@ -352,8 +447,8 @@ def _parse_trusted_rdata(path: Path, record: PredictorArtifact) -> pd.DataFrame:
             or canonical_predictor_ids_sha256(feature_ids) != record.feature_id_sha256
         ):
             raise PredictorLoadError("trusted RData feature IDs do not match registry")
-        frame = pd.DataFrame(matrix.values, index=feature_ids, columns=sample_ids)
-    except PredictorLoadError:
+        frame = pd.DataFrame(matrix_values, index=feature_ids, columns=sample_ids)
+    except (PredictorLoadError, OutcomeAccessBlocked):
         raise
     except Exception as error:
         raise PredictorLoadError("trusted RData matrix could not be parsed") from error
@@ -365,15 +460,14 @@ def load_predictor_table(source_id: str) -> LoadedTable:
 
     record = _lookup_predictor(source_id)
     path = _trusted_predictor_path(record)
-    if record.file_format != "rdata":
-        _tabular_header(path, record)
-    digest = _hash_trusted_predictor(path, record)
+    snapshot = _read_predictor_snapshot(path, record)
+    _validate_predictor_snapshot_schema(snapshot.raw, record)
     if record.file_format == "rdata":
-        frame = _parse_trusted_rdata(path, record)
+        frame = _parse_trusted_rdata(snapshot.raw, record)
     else:
-        frame = _parse_trusted_table(path, record)
+        frame = _parse_trusted_table(snapshot.raw, record)
         _validate_table_frame(frame, record)
-    return LoadedTable(frame=frame, sha256=digest, source_id=record.source_id)
+    return LoadedTable(frame=frame, sha256=snapshot.sha256, source_id=record.source_id)
 
 
 def load_frozen_validation_config(

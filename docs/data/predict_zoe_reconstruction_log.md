@@ -15,6 +15,16 @@ release registry remains unchanged and contains no approved production bundle.
 No controlled, synthetic-response, or Nature/ZOE aggregate-outcome table was
 used to construct or evaluate a score.
 
+Final review hardening closes the predictor loader TOCTOU boundary. After the
+repository registry and exact no-symlink path policy pass, each predictor is
+read once through a single regular-file descriptor into immutable bytes.
+SHA-256 verification, header/schema checks and parsing all consume that same
+snapshot; CSV, TSV, JSON, Parquet and RData never reopen the source path after
+hashing. Twenty adversarial tests replace the original path with a malicious
+regular file or symlink after snapshot hashing and after schema validation;
+all return only the original snapshot. Focused, related and full verification
+passed with 95, 216 and 526 tests, respectively.
+
 ## Data boundary
 
 The implemented acquisition allowlist is restricted to microbiome profiles,

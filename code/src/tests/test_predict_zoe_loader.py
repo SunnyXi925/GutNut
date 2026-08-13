@@ -60,7 +60,27 @@ def _write_csv(path: Path, rows: list[dict[str, object]]) -> None:
     pd.DataFrame(rows).to_csv(path, index=False)
 
 
-def _predictor_record(path: Path) -> PredictorArtifact:
+def _predictor_record(
+    path: Path,
+    *,
+    file_format: str = "csv",
+) -> PredictorArtifact:
+    if file_format == "rdata":
+        required_columns = (
+            "microbiome_feature_id_axis",
+            "sample_id_axis",
+            "relative_abundance_value",
+        )
+        schema_kind = "relative_abundance_matrix_feature_by_sample"
+        unique_key = ("microbiome_feature_id_axis", "sample_id_axis")
+        id_column = "sample_id_axis"
+        feature_id_sha256 = sha256(b"0\n1").hexdigest()
+    else:
+        required_columns = ("participant_id", "meal_id", "fiber_g")
+        schema_kind = "delimited_table_exact_header"
+        unique_key = ("participant_id", "meal_id")
+        id_column = "participant_id"
+        feature_id_sha256 = None
     return PredictorArtifact(
         source_id="official-test-predictors",
         resource_id="predict1_ena_raw_metagenomes",
@@ -72,15 +92,15 @@ def _predictor_record(path: Path) -> PredictorArtifact:
         size_bytes=path.stat().st_size,
         content_class="predictor_only",
         allowed_analytical_role="predictor_reconstruction",
-        file_format="csv",
-        schema_kind="delimited_table_exact_header",
-        required_columns=("participant_id", "meal_id", "fiber_g"),
-        allowed_columns=("participant_id", "meal_id", "fiber_g"),
-        unique_key=("participant_id", "meal_id"),
+        file_format=file_format,
+        schema_kind=schema_kind,
+        required_columns=required_columns,
+        allowed_columns=required_columns,
+        unique_key=unique_key,
         expected_records=2,
-        id_column="participant_id",
+        id_column=id_column,
         id_sha256=sha256(b"p1\np2").hexdigest(),
-        feature_id_sha256=None,
+        feature_id_sha256=feature_id_sha256,
     )
 
 
@@ -91,6 +111,48 @@ def _install_predictor_registry(monkeypatch, root: Path, record: PredictorArtifa
         "_PREDICTOR_ARTIFACTS_BY_ID",
         MappingProxyType({record.source_id: record}),
     )
+
+
+def _write_predictor_fixture(
+    path: Path,
+    *,
+    file_format: str,
+    participant_ids: tuple[str, str],
+) -> None:
+    rows = [
+        {"participant_id": participant_ids[0], "meal_id": "m1", "fiber_g": 4.5},
+        {"participant_id": participant_ids[1], "meal_id": "m1", "fiber_g": 7.0},
+    ]
+    if file_format == "csv":
+        pd.DataFrame(rows).to_csv(path, index=False)
+    elif file_format == "tsv":
+        pd.DataFrame(rows).to_csv(path, index=False, sep="\t")
+    elif file_format == "json":
+        path.write_text(json.dumps(rows) + "\n", encoding="utf-8")
+    elif file_format == "parquet":
+        pd.DataFrame(rows).to_parquet(path, index=False)
+    elif file_format == "rdata":
+        import rdata
+
+        matrix = pd.DataFrame(
+            [[1.0, 2.0], [3.0, 4.0]],
+            columns=list(participant_ids),
+        )
+        rdata.write_rda(path, {"matrix": matrix})
+    else:
+        raise AssertionError(f"unsupported fixture format: {file_format}")
+
+
+def _assert_original_predictor_snapshot(
+    frame: pd.DataFrame,
+    *,
+    file_format: str,
+) -> None:
+    if file_format == "rdata":
+        assert tuple(frame.columns) == ("p1", "p2")
+        assert frame.to_numpy().tolist() == [[1.0, 2.0], [3.0, 4.0]]
+    else:
+        assert frame["participant_id"].tolist() == ["p1", "p2"]
 
 
 def _endpoint_grants() -> tuple[OutcomeEndpointGrant, ...]:
@@ -375,6 +437,57 @@ def test_unknown_label_column_is_rejected_from_header_before_table_parse(
     with pytest.raises(OutcomeAccessBlocked, match="schema|column|label"):
         load_predictor_table(trusted.source_id)
     assert parsed == []
+
+
+@pytest.mark.parametrize("file_format", ["csv", "tsv", "json", "parquet", "rdata"])
+@pytest.mark.parametrize(
+    "replacement_phase",
+    ["after_snapshot_hash", "after_header_schema"],
+)
+@pytest.mark.parametrize("replacement_kind", ["regular_file", "symlink"])
+def test_predictor_load_uses_one_snapshot_across_hash_schema_and_parse(
+    tmp_path,
+    monkeypatch,
+    file_format,
+    replacement_phase,
+    replacement_kind,
+):
+    suffix = {"rdata": "rda"}.get(file_format, file_format)
+    path = tmp_path / f"predictors.{suffix}"
+    attacker = tmp_path / f"attacker.{suffix}"
+    _write_predictor_fixture(
+        path,
+        file_format=file_format,
+        participant_ids=("p1", "p2"),
+    )
+    _write_predictor_fixture(
+        attacker,
+        file_format=file_format,
+        participant_ids=("attacker-1", "attacker-2"),
+    )
+    record = _predictor_record(path, file_format=file_format)
+    _install_predictor_registry(monkeypatch, tmp_path, record)
+
+    hook_name = {
+        "after_snapshot_hash": "_read_predictor_snapshot",
+        "after_header_schema": "_validate_predictor_snapshot_schema",
+    }[replacement_phase]
+    original_hook = getattr(loader_module, hook_name)
+
+    def replace_path_after_phase(*args, **kwargs):
+        result = original_hook(*args, **kwargs)
+        path.unlink()
+        if replacement_kind == "regular_file":
+            attacker.replace(path)
+        else:
+            path.symlink_to(attacker)
+        return result
+
+    monkeypatch.setattr(loader_module, hook_name, replace_path_after_phase)
+
+    loaded = load_predictor_table(record.source_id)
+    assert loaded.sha256 == record.sha256
+    _assert_original_predictor_snapshot(loaded.frame, file_format=file_format)
 
 
 def test_fetcher_uses_pinned_repository_digest_not_mutable_acquisition_manifest():
