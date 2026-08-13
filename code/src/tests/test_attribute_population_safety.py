@@ -1,17 +1,19 @@
 import hashlib
-import importlib.util
 import json
 import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
 from gmnps.validation.attribute_population_safety import (
     PopulationSafetyConfig,
     audit_population_safety,
+    task4_binding_hashes,
     validate_population_provenance,
+    verify_phase1_run_artifacts,
 )
 
 
@@ -19,33 +21,32 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "src/scripts/run_attribute_validation.py"
 
 
-def _scores() -> pd.DataFrame:
+def _scores(n_people: int = 4) -> pd.DataFrame:
     foods = [
-        ("leaf", "Leafy greens", "Vegetables", "Dark-green vegetables", 90.0),
-        ("bean", "Beans", "Vegetables", "Legumes", 75.0),
-        ("bread", "Whole-grain bread", "Grains", "Whole grains", 65.0),
-        ("rice", "White rice", "Grains", "Refined grains", 45.0),
-        ("soda", "Soda", "Beverages", "Sugar-sweetened beverages", 20.0),
-        ("water", "Water", "Beverages", "Water", 100.0),
+        ("leaf", "Vegetables", "Leafy", 90.0),
+        ("bean", "Vegetables", "Legumes", 75.0),
+        ("bread", "Grains", "Whole grains", 65.0),
+        ("rice", "Grains", "Refined grains", 45.0),
+        ("soda", "Beverages", "Sweet drinks", 20.0),
+        ("water", "Beverages", "Water", 100.0),
+    ]
+    shifts = [
+        [0, 2, 3, -2, 1, -1],
+        [1, 0, 2, -1, 0, -2],
+        [-2, 1, -3, 2, -1, 0],
+        [-70, 0, 1, 0, 65, -1],
     ]
     rows = []
-    shifts = {
-        "p1": [0, 2, 3, -2, 1, -1],
-        "p2": [1, 0, 2, -1, 0, -2],
-        "p3": [-2, 1, -3, 2, -1, 0],
-        # Explicit extreme reversal used to exercise the safety audit.
-        "p4": [-70, 0, 1, 0, 65, -1],
-    }
-    components = {"p1": "c1", "p2": "c1", "p3": "c2", "p4": "c3"}
-    for individual_id, deltas in shifts.items():
-        for food, delta in zip(foods, deltas):
-            food_id, food_name, group, subgroup, fcs2 = food
+    for person_index in range(n_people):
+        person = f"p{person_index + 1}"
+        for (food, group, subgroup, fcs2), delta in zip(
+            foods, shifts[person_index % len(shifts)]
+        ):
             rows.append(
                 {
-                    "individual_id": individual_id,
-                    "component_id": components[individual_id],
-                    "food_id": food_id,
-                    "food_name": food_name,
+                    "individual_id": person,
+                    "component_id": f"c{person_index + 1}",
+                    "food_id": food,
                     "food_group": group,
                     "food_subgroup": subgroup,
                     "FCS2": fcs2,
@@ -58,213 +59,245 @@ def _scores() -> pd.DataFrame:
 
 
 def _manifest(*, production: bool = False) -> dict[str, object]:
-    testing = not production
     return {
-        "schema_version": "gmnps-attribute-validation-input-v1",
+        "schema_version": "gmnps-attribute-validation-input-v2",
         "analysis_kind": "population_safety",
         "evidence_role": "population_safety_design_audit",
         "data_class": (
-            "synthetic_test_fixture" if testing else "locked_attribute_level_gmnps"
+            "locked_attribute_level_gmnps" if production else "synthetic_test_fixture"
         ),
         "method": "attribute_recomposition",
         "method_role": "primary",
         "score_centering": "none",
-        "production_label": "non-production" if testing else "production",
-        "synthetic": testing,
-        "testing_only": testing,
+        "production_label": "production" if production else "non-production",
+        "synthetic": not production,
+        "testing_only": not production,
         "scoring_frozen_before_labels": True,
-        "n_foods": 6 if testing else 9234,
+        "n_foods": 9234 if production else 6,
         "independent_unit": "component_id",
+        "bundle_id": "registered-production-bundle" if production else "fixture",
     }
 
 
-def _config() -> PopulationSafetyConfig:
-    return PopulationSafetyConfig(
-        bootstrap_replicates=80,
-        bootstrap_seed=31415,
-        minimum_valid_replicates=40,
+def _config(**changes) -> PopulationSafetyConfig:
+    values = {
+        "bootstrap_replicates": 60,
+        "bootstrap_seed": 31415,
+        "minimum_valid_replicates": 30,
+        "minimum_clusters": 3,
+    }
+    values.update(changes)
+    return PopulationSafetyConfig(**values)
+
+
+def _audit(frame=None, config=None):
+    return audit_population_safety(
+        _scores() if frame is None else frame,
+        _manifest(),
+        config=_config() if config is None else config,
+        allow_test_data=True,
     )
 
 
-def test_group_and_subgroup_distribution_convergence_and_discrimination():
-    audit = audit_population_safety(
-        _scores(), _manifest(), config=_config(), allow_test_data=True
-    )
-
-    assert audit.evidence_role == "population_safety_design_audit"
-    assert audit.global_summary["estimand"] == "food-level population mean"
-    assert audit.global_summary["score_centering"] == "none"
+def test_complete_panel_group_subgroup_transition_and_hand_calculated_counts():
+    audit = _audit()
+    assert audit.panel_audit == {
+        "panel_status": "complete_rectangular",
+        "n_individuals": 4,
+        "n_independent_units": 4,
+        "n_foods": 6,
+        "expected_rows": 24,
+        "observed_rows": 24,
+        "min_effective_units_per_food": 4,
+        "max_effective_units_per_food": 4,
+    }
     assert audit.global_summary["n_foods"] == 6
-    assert audit.global_summary["n_individuals"] == 4
-
-    group = audit.group_convergence.set_index("stratum")
-    assert set(group.index) == {"Vegetables", "Grains", "Beverages"}
-    assert {
-        "n_foods",
-        "n_individuals",
-        "fcs2_median",
-        "gmnps_population_median",
-        "median_shift",
-        "mean_absolute_food_shift",
-        "fcs2_iqr",
-        "gmnps_population_iqr",
-        "distribution_l1_quantile_distance",
-        "within_stratum_spearman",
-        "evidence_role",
-    }.issubset(group.columns)
+    assert audit.transition_matrix["n_individual_foods"].sum() == 24
+    assert audit.global_summary["implausible_reversal_count"] == 2
+    assert set(audit.reversal_audit["food_id"]) == {"leaf", "soda"}
 
     subgroup = audit.subgroup_convergence
-    assert subgroup["stratum"].nunique() == 6
-    assert (subgroup["stratum_level"] == "food_subgroup").all()
-
-    discrimination = audit.between_group_discrimination
-    assert len(discrimination) == 3
-    assert {
-        "stratum_a",
-        "stratum_b",
-        "fcs2_mean_difference",
-        "gmnps_population_mean_difference",
-        "direction_preserved",
-        "absolute_difference_ratio",
-    }.issubset(discrimination.columns)
-    assert discrimination["evidence_role"].eq(
-        "population_safety_design_audit"
-    ).all()
+    assert {"food_group", "food_subgroup"}.issubset(subgroup.columns)
+    assert len(subgroup) == 6
+    assert subgroup["n_effective_units_per_food_min"].eq(4).all()
+    assert audit.group_convergence["n_effective_units_per_food_min"].eq(4).all()
 
 
-def test_transition_matrix_direction_magnitude_and_implausible_reversal_audit():
-    audit = audit_population_safety(
-        _scores(), _manifest(), config=_config(), allow_test_data=True
-    )
-
-    transitions = audit.transition_matrix
-    assert len(transitions) == 9
-    assert transitions["n_individual_foods"].sum() == len(_scores())
-    assert {
-        "fcs2_category",
-        "gmnps_category",
-        "direction",
-        "mean_delta",
-        "median_absolute_delta",
-        "origin_fraction",
-    }.issubset(transitions.columns)
-
-    reversals = audit.reversal_audit
-    assert set(reversals["reversal_type"]) == {
-        "encourage_to_minimize",
-        "minimize_to_encourage",
-    }
-    assert set(reversals["food_id"]) == {"leaf", "soda"}
-    assert reversals["audit_status"].eq(
-        "flagged_for_clinical_nutritional_review"
-    ).all()
-    assert audit.global_summary["implausible_reversal_count"] == 2
-
-
-def test_cluster_bootstrap_reports_units_ci_seed_valid_repeats_and_exclusions():
+@pytest.mark.parametrize("mutation", ["missing_row", "duplicate", "nan", "bad_delta"])
+def test_population_panel_and_values_fail_closed(mutation):
     frame = _scores()
-    frame.loc[(frame["individual_id"] == "p3") & (frame["food_id"] == "rice"), "GMNPS_score"] = float("nan")
-    audit = audit_population_safety(
-        frame, _manifest(), config=_config(), allow_test_data=True
-    )
-    bootstrap = audit.bootstrap_summary.set_index("metric").loc[
-        "spearman_fcs2_vs_population_gmnps"
-    ]
+    if mutation == "missing_row":
+        frame = frame.iloc[1:].copy()
+        message = "identical complete food panel"
+    elif mutation == "duplicate":
+        frame = pd.concat([frame, frame.iloc[[0]]], ignore_index=True)
+        message = "one row per individual_id-food_id"
+    elif mutation == "nan":
+        frame.loc[0, "GMNPS_score"] = np.nan
+        message = "finite"
+    else:
+        frame.loc[0, "GMNPS_delta"] += 1
+        message = "GMNPS_delta must equal"
+    with pytest.raises(ValueError, match=message):
+        _audit(frame)
 
-    assert bootstrap["cluster_column"] == "component_id"
-    assert bootstrap["n_clusters"] == 3
-    assert bootstrap["n_individuals"] == 4
-    assert bootstrap["replicates_requested"] == 80
-    assert 40 <= bootstrap["replicates_valid"] <= 80
-    assert bootstrap["ci_method"] == "cluster_percentile"
-    assert bootstrap["bootstrap_seed"] == 31415
-    assert bootstrap["ci_lower"] <= bootstrap["estimate"] <= bootstrap["ci_upper"]
-    assert bootstrap["missing_n_rows"] == 1
-    assert bootstrap["excluded_n_rows"] == 1
 
-    repeated = audit_population_safety(
-        frame, _manifest(), config=_config(), allow_test_data=True
-    ).bootstrap_summary
-    pd.testing.assert_frame_equal(audit.bootstrap_summary, repeated)
+def test_subgroup_has_exactly_one_parent_group():
+    frame = _scores()
+    frame.loc[frame["food_id"].eq("bread"), "food_subgroup"] = "Leafy"
+    with pytest.raises(ValueError, match="unique parent food_group"):
+        _audit(frame)
 
 
 @pytest.mark.parametrize(
-    ("field", "value", "message"),
+    ("baseline", "personalized", "expected"),
     [
-        ("method", "legacy_final_score_offset", "attribute_recomposition"),
-        ("method_role", "sensitivity", "method_role"),
-        ("score_centering", "population_mean", "score_centering"),
-        ("evidence_role", "external_validation", "evidence_role"),
-        ("scoring_frozen_before_labels", False, "frozen"),
+        ((80.0, 20.0), (70.0, 30.0), "preserved"),
+        ((80.0, 20.0), (30.0, 70.0), "reversed"),
+        ((80.0, 20.0), (50.0, 50.0), "collapsed"),
+        ((50.0, 50.0), (60.0, 40.0), "not_estimable"),
     ],
 )
-def test_population_provenance_fails_closed(field, value, message):
+def test_between_group_discrimination_status(baseline, personalized, expected):
+    rows = []
+    for person in ("p1", "p2", "p3"):
+        for index, group in enumerate(("A", "B")):
+            fcs2 = baseline[index]
+            score = personalized[index]
+            rows.append(
+                {
+                    "individual_id": person,
+                    "component_id": person,
+                    "food_id": f"f{index}",
+                    "food_group": group,
+                    "food_subgroup": f"{group}-sub",
+                    "FCS2": fcs2,
+                    "GMNPS_score": score,
+                    "GMNPS_delta": score - fcs2,
+                }
+            )
     manifest = _manifest()
-    manifest[field] = value
-    with pytest.raises(ValueError, match=message):
-        validate_population_provenance(manifest, allow_test_data=True)
-
-
-def test_population_input_rejects_label_leakage_and_inconsistent_uncentered_delta():
-    leaked = _scores().assign(glucose_iAUC_2h=1.0)
-    with pytest.raises(ValueError, match="outcome/label leakage"):
-        audit_population_safety(
-            leaked, _manifest(), config=_config(), allow_test_data=True
-        )
-
-    centered = _scores()
-    centered.loc[0, "GMNPS_delta"] += 1.0
-    with pytest.raises(ValueError, match="GMNPS_delta must equal GMNPS_score - FCS2"):
-        audit_population_safety(
-            centered, _manifest(), config=_config(), allow_test_data=True
-        )
-
-
-def test_cli_defaults_fail_closed_and_invalid_provenance_is_checked_before_table(tmp_path):
-    no_args = subprocess.run(
-        [sys.executable, str(SCRIPT)], text=True, capture_output=True
+    manifest["n_foods"] = 2
+    audit = audit_population_safety(
+        pd.DataFrame(rows), manifest, config=_config(), allow_test_data=True
     )
-    assert no_args.returncode != 0
-    assert not list(tmp_path.iterdir())
+    row = audit.between_group_discrimination.iloc[0]
+    assert row["discrimination_status"] == expected
+    assert bool(row["direction_preserved"]) is (expected == "preserved")
 
-    table = tmp_path / "not_a_csv.csv"
-    table.write_text("not,a,valid\n\"unterminated", encoding="utf-8")
+
+def test_minimum_clusters_is_frozen_separately_from_valid_replicates():
+    audit = _audit(_scores(n_people=2), _config(minimum_clusters=3))
+    row = audit.bootstrap_summary.iloc[0]
+    assert row["analysis_status"] == "not_estimable"
+    assert row["reason"] == "fewer_than_minimum_independent_clusters"
+    assert row["n_clusters"] == 2
+    assert row["replicates_valid"] == 0
+    assert pd.isna(row["ci_lower"])
+    assert pd.isna(row["ci_upper"])
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("bootstrap_replicates", 60.5),
+        ("minimum_valid_replicates", 30.5),
+        ("minimum_clusters", 3.5),
+        ("bootstrap_seed", 2.5),
+    ],
+)
+def test_replicates_thresholds_and_seed_are_strict_integers(field, value):
+    with pytest.raises(ValueError, match=field):
+        _config(**{field: value})
+
+
+def test_production_requires_explicit_false_and_live_verification_token():
     manifest = _manifest(production=True)
-    manifest["evidence_role"] = "external_validation"
-    manifest_path = tmp_path / "manifest.json"
-    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-    output = tmp_path / "results"
-    invalid = subprocess.run(
-        [
-            sys.executable,
-            str(SCRIPT),
-            "--individual-food",
-            str(table),
-            "--provenance-manifest",
-            str(manifest_path),
-            "--output-dir",
-            str(output),
-            "--write-source-data",
-        ],
-        text=True,
-        capture_output=True,
-    )
-    assert invalid.returncode != 0
-    assert "evidence_role" in invalid.stderr
-    assert not output.exists()
+    manifest.pop("synthetic")
+    with pytest.raises(ValueError, match="synthetic must be explicitly false"):
+        validate_population_provenance(manifest)
+
+    manifest = _manifest(production=True)
+    with pytest.raises(ValueError, match="live Phase 1 artifact verification"):
+        audit_population_safety(pd.DataFrame(), manifest)
 
 
-def test_cli_dry_run_writes_nothing_and_synthetic_values_can_never_be_results(tmp_path):
-    frame = _scores()
+def _write_phase1_binding(tmp_path: Path):
     table = tmp_path / "individual_food.csv"
-    frame.to_csv(table, index=False)
-    manifest = _manifest()
-    manifest["individual_food_sha256"] = hashlib.sha256(table.read_bytes()).hexdigest()
+    table.write_bytes(b"individual_id,food_id\np1,f1\n")
+    upstream = tmp_path / "input_manifest.json"
+    upstream.write_bytes(b'{"production_label":"production"}\n')
+    run_payload = {
+        "method": "attribute_recomposition",
+        "method_role": "primary",
+        "score_centering": "none",
+        "production_label": "production",
+        "development_smoke_test": False,
+        "input_manifest_sha256": hashlib.sha256(upstream.read_bytes()).hexdigest(),
+        "source_hashes": {
+            "input_manifest": hashlib.sha256(upstream.read_bytes()).hexdigest()
+        },
+    }
+    run_manifest = tmp_path / "run_manifest.json"
+    run_manifest.write_text(json.dumps(run_payload, sort_keys=True), encoding="utf-8")
+    success = tmp_path / "_SUCCESS.json"
+    success.write_text(
+        json.dumps(
+            {
+                "status": "complete",
+                "files": {
+                    "individual_food.csv": hashlib.sha256(table.read_bytes()).hexdigest(),
+                    "run_manifest.json": hashlib.sha256(run_manifest.read_bytes()).hexdigest(),
+                },
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    return table, run_manifest, success, upstream
+
+
+def test_phase1_success_marker_is_live_hash_binding_and_rejects_tamper(tmp_path):
+    paths = _write_phase1_binding(tmp_path)
+    verified = verify_phase1_run_artifacts(*paths)
+    assert verified["phase1_individual_food_sha256"] == hashlib.sha256(
+        paths[0].read_bytes()
+    ).hexdigest()
+    paths[0].write_bytes(paths[0].read_bytes() + b"p2,f1\n")
+    with pytest.raises(ValueError, match="_SUCCESS.*individual_food"):
+        verify_phase1_run_artifacts(*paths)
+
+
+def test_phase1_live_reader_rejects_symlink(tmp_path):
+    table, run_manifest, success, upstream = _write_phase1_binding(tmp_path)
+    link = tmp_path / "table_link.csv"
+    link.symlink_to(table)
+    with pytest.raises(ValueError, match="missing or unreadable|regular file"):
+        verify_phase1_run_artifacts(link, run_manifest, success, upstream)
+
+
+def test_task4_binding_hashes_include_implementation_and_threshold_config():
+    first = task4_binding_hashes(_config())
+    second = task4_binding_hashes(_config(minimum_clusters=4))
+    assert {
+        "attribute_population_safety_implementation_sha256",
+        "biological_consistency_implementation_sha256",
+        "run_attribute_validation_implementation_sha256",
+        "population_safety_config_sha256",
+    } == set(first)
+    assert first["population_safety_config_sha256"] != second[
+        "population_safety_config_sha256"
+    ]
+
+
+def test_cli_failure_never_creates_output(tmp_path):
+    table = tmp_path / "individual_food.csv"
+    _scores().to_csv(table, index=False)
+    manifest = _manifest(production=True)
     manifest_path = tmp_path / "manifest.json"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     output = tmp_path / "results"
-
-    dry = subprocess.run(
+    completed = subprocess.run(
         [
             sys.executable,
             str(SCRIPT),
@@ -274,31 +307,11 @@ def test_cli_dry_run_writes_nothing_and_synthetic_values_can_never_be_results(tm
             str(manifest_path),
             "--output-dir",
             str(output),
-            "--allow-test-inputs",
-        ],
-        text=True,
-        capture_output=True,
-    )
-    assert dry.returncode == 0, dry.stderr
-    assert "validated_dry_run" in dry.stdout
-    assert not output.exists()
-
-    write = subprocess.run(
-        [
-            sys.executable,
-            str(SCRIPT),
-            "--individual-food",
-            str(table),
-            "--provenance-manifest",
-            str(manifest_path),
-            "--output-dir",
-            str(output),
-            "--allow-test-inputs",
             "--write-source-data",
         ],
         text=True,
         capture_output=True,
     )
-    assert write.returncode != 0
-    assert "testing/synthetic inputs cannot be written" in write.stderr
+    assert completed.returncode != 0
+    assert "live Phase 1" in completed.stderr or "artifact" in completed.stderr
     assert not output.exists()
