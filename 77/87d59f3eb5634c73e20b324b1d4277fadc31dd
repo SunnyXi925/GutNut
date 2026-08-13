@@ -1,0 +1,47 @@
+code/src/gmnps/validation/method_lock_gate.py
+  s_4d75bbbcc79dac::t_3ec59a074f77ee 17-19,47-56,102,198,211-243,245-251
+  s_4d75bbbcc79dac::t_0dc4cfd0717720 343-396,457,549
+code/src/tests/test_predict_zoe_registry.py
+  s_4d75bbbcc79dac::t_6096799a7c8a11 96-136,151-166,177,189-216,227-231,235-237
+  s_4d75bbbcc79dac::t_d6c2a1f237e264 11,45,174
+docs/data/eligible_for_main_validation.csv
+  s_4d75bbbcc79dac::t_82b785a180bf9c 1-16
+docs/data/predict_zoe_source_manifest.csv
+  s_4d75bbbcc79dac::t_82b785a180bf9c 1-18
+docs/data/data_availability_audit.md
+  s_4d75bbbcc79dac::t_82b785a180bf9c 24-26,61,70-71,73-75,133-138,144,176-183
+code/src/tests/test_method_lock_gate.py
+  s_4d75bbbcc79dac::t_6ed085c97e31a4 8,11,34-36,43-66,123-130,186-192,255-331
+  s_4d75bbbcc79dac::t_5f93ccea66412d 332-333
+code/src/gmnps/data_sources/predict_zoe_registry.py
+  s_4d75bbbcc79dac::t_390391156c054b 143-145,151,174-176,180,203-205,209,221,235-237,241,260-262,266,285-287,291,310-312,316,335-337,341
+  s_4d75bbbcc79dac::t_915e90b6a706a3 26-34,69-71,75,99-101,105
+  s_4d75bbbcc79dac::t_05d1addbb6947e 354-362,364,366,368-370,373-374,382-411,424-426,432,455-457,461
+  s_4d75bbbcc79dac::t_f78eaaa81e21d3 486-488,492,515-517,521,534-536,542-544,547-548,563-565,571-573,576-577,592-594,600-602,605-606
+  s_4d75bbbcc79dac::t_dee5f67544db2d 639-640,651-672,703
+docs/data/predict1_real_vs_synthetic_audit.csv
+  s_4d75bbbcc79dac::t_82b785a180bf9c 1-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "7787d59f3eb5634c73e20b324b1d4277fadc31dd",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  },
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 2,
+      "accepted_lines": 2
+    }
+  }
+}
