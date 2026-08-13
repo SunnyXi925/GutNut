@@ -133,6 +133,51 @@ def test_optional_secondary_holdout_keeps_subjects_and_requested_unit_disjoint(
         assert set(nested.outer.dropped_positions).isdisjoint(
             set(nested.outer.train_positions) | set(nested.outer.test_positions)
         )
+        for inner in nested.inner:
+            assert _values(
+                frame, inner.train_positions, secondary_unit
+            ).isdisjoint(_values(frame, inner.test_positions, secondary_unit))
+
+
+def test_cohort_holdout_uses_whole_cohorts_and_connects_cross_cohort_relatives():
+    frame = _testing_only_participant_meals()
+    frame.loc[frame["participant_id"].eq("testing-p01"), "cohort_id"] = "testing-cross-a"
+    frame.loc[frame["participant_id"].eq("testing-p02"), "cohort_id"] = "testing-cross-b"
+    plan = make_nested_group_splits(
+        frame,
+        outer_folds=3,
+        inner_folds=2,
+        outer_seed=1729,
+        inner_seed=2718,
+        secondary_holdout="cohort_id",
+    )
+
+    all_cohorts = set(frame["cohort_id"].astype(str))
+    for nested in plan:
+        train_cohorts = _values(frame, nested.outer.train_positions, "cohort_id")
+        test_cohorts = _values(frame, nested.outer.test_positions, "cohort_id")
+        assert train_cohorts.isdisjoint(test_cohorts)
+        assert train_cohorts | test_cohorts == all_cohorts
+        assert not nested.outer.dropped_positions
+        linked = {"testing-cross-a", "testing-cross-b"}
+        assert linked.issubset(train_cohorts) or linked.issubset(test_cohorts)
+
+
+def test_family_and_twin_links_are_closed_transitively():
+    frame = _testing_only_participant_meals()
+    frame.loc[frame["participant_id"].eq("testing-p02"), "twin_id"] = "testing-bridge"
+    frame.loc[frame["participant_id"].eq("testing-p03"), "twin_id"] = "testing-bridge"
+    plan = make_nested_group_splits(
+        frame,
+        outer_folds=3,
+        inner_folds=2,
+        outer_seed=1729,
+        inner_seed=2718,
+    )
+    linked = {"testing-p01", "testing-p02", "testing-p03", "testing-p04"}
+    for nested in plan:
+        test = _values(frame, nested.outer.test_positions, "participant_id")
+        assert linked.isdisjoint(test) or linked.issubset(test)
 
 
 def test_split_plan_is_deterministic_and_rejects_inconsistent_participant_metadata():

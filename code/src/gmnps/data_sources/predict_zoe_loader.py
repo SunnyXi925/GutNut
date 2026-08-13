@@ -109,15 +109,79 @@ _LOCKED_PERSON_MEAL_CONFIG = {
         "outcome_imputation": "forbidden",
         "predictor_imputation": "median_or_mode_with_missing_indicator",
         "predictor_fit_scope": "development_fold_only",
-        "report_missingness_by": ["endpoint", "cohort", "split"],
+        "report_missingness_by": [
+            "endpoint",
+            "cohort",
+            "analysis_mode",
+            "outer_fold",
+            "split",
+        ],
     },
+    "feature_contract": {
+        "schema_version": "person-meal-feature-contract-v1",
+        "generated_stage": "pre-outcome_predictor_only",
+        "column_policy": "exact_contract_columns_only",
+        "source_artifact_hashes": "required",
+        "block_artifact_hashes": "required",
+        "comparator_block_mapping": "required",
+        "mapping_unit_as_predictor": "forbidden",
+    },
+    "analysis_modes": [
+        {
+            "name": "subject_held_out",
+            "role": "primary",
+            "secondary_unit": None,
+        },
+        {
+            "name": "subject_plus_food_held_out",
+            "role": "secondary",
+            "secondary_unit": "food_id",
+        },
+        {
+            "name": "subject_plus_meal_held_out",
+            "role": "secondary",
+            "secondary_unit": "meal_id",
+        },
+        {
+            "name": "cohort_held_out",
+            "role": "secondary",
+            "secondary_unit": "cohort_id",
+        },
+    ],
     "split": {
         "primary_unit": "participant",
         "family_twin_grouping": True,
         "outer_folds": 5,
         "inner_folds": 5,
-        "secondary_generalization": ["meal_or_food_held_out", "cohort_held_out"],
+        "cohort_holdout_policy": "whole_cohort_with_linked_cohorts_connected",
         "development_scoring_overlap": "forbidden",
+    },
+    "primary_tests": {
+        "multiplicity_method": "holm",
+        "correction_family": (
+            "two_primary_endpoints_locked_gmnps_vs_fcs_microbiome_rmse"
+        ),
+        "tests": [
+            {
+                "endpoint": "glucose_iAUC_2h",
+                "analysis_mode": "subject_held_out",
+                "model": "locked_attribute_gmnps",
+                "reference": "fcs_microbiome",
+                "metric": "rmse",
+            },
+            {
+                "endpoint": "tg_6h_rise",
+                "analysis_mode": "subject_held_out",
+                "model": "locked_attribute_gmnps",
+                "reference": "fcs_microbiome",
+                "metric": "rmse",
+            },
+        ],
+    },
+    "other_tests": {
+        "secondary_correction": "holm_within_analysis_mode_endpoint_metric",
+        "null_comparators": ["random_microbiome", "shuffled_mapping"],
+        "null_test_role": "exploratory",
     },
     "seeds": {
         "outer_split": 1729,

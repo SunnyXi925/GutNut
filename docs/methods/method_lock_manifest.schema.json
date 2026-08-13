@@ -25,6 +25,11 @@
     "fixed_parameters",
     "validation_embargo"
   ],
+  "allOf": [
+    {
+      "required": ["feature_contract_sha256"]
+    }
+  ],
   "properties": {
     "manifest_schema_version": {
       "const": "attribute-gmnps-method-lock-v1"
@@ -192,6 +197,11 @@
     },
     "person_meal_validation_config_sha256": {
       "description": "SHA-256 of the canonical bytes of frozen person_meal_validation.yaml supplied by this run instance.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "feature_contract_sha256": {
+      "description": "SHA-256 of immutable canonical pre-outcome predictor-only feature-contract JSON bytes supplied by this run instance.",
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
     },

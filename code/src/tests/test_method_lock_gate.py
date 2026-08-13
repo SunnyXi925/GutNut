@@ -184,11 +184,16 @@ def _fixture(
     _write_json(registry_path, registry)
     config = tmp_path / "person_meal_validation.yaml"
     config.write_text("schema_version: person-meal-validation-v1\n", encoding="utf-8")
+    feature_contract = tmp_path / "feature_contract.json"
+    feature_contract.write_bytes(
+        b'{"generated_stage":"pre-outcome_predictor_only","schema_version":"testing-only"}\n'
+    )
     schema = tmp_path / "method_lock_manifest.schema.json"
     schema.write_bytes(SCHEMA_PATH.read_bytes())
     paths = MethodLockArtifactPaths(
         method_lock_schema=schema,
         person_meal_validation_config=config,
+        feature_contract=feature_contract,
         release_registry=registry_path,
         gate_implementation=GATE_PATH,
         development_beta=development_beta,
@@ -219,6 +224,7 @@ def test_artifact_contract_is_explicit_and_has_no_outcome_or_label_path():
     assert names == {
         "method_lock_schema",
         "person_meal_validation_config",
+        "feature_contract",
         "release_registry",
         "gate_implementation",
         "development_beta",
@@ -255,6 +261,9 @@ def test_generator_binds_external_schema_config_registry_gate_and_approved_entry
     ).hexdigest()
     assert manifest["person_meal_validation_config_sha256"] == sha256(
         paths.person_meal_validation_config.read_bytes()
+    ).hexdigest()
+    assert manifest["feature_contract_sha256"] == sha256(
+        paths.feature_contract.read_bytes()
     ).hexdigest()
     assert manifest["method_lock_gate_implementation_sha256"] == sha256(
         GATE_PATH.read_bytes()
@@ -378,6 +387,7 @@ def test_generator_fails_closed_on_overlap_or_missing_approved_entry(
     [
         "method_lock_schema",
         "person_meal_validation_config",
+        "feature_contract",
         "release_registry",
         "scoring_beta",
         "food_exposures",
@@ -407,10 +417,28 @@ def test_validator_rejects_manifest_schema_failure_and_gate_hash_tampering(
     with pytest.raises(MethodLockError, match="schema|required"):
         _validate(missing, paths)
 
+    missing_contract = dict(manifest)
+    missing_contract.pop("feature_contract_sha256")
+    with pytest.raises(MethodLockError, match="schema|required|feature"):
+        _validate(missing_contract, paths)
+
     changed = dict(manifest)
     changed["method_lock_gate_implementation_sha256"] = "0" * 64
     with pytest.raises(MethodLockError, match="gate|implementation"):
         _validate(changed, paths)
+
+
+def test_feature_contract_is_required_and_tamper_evident(tmp_path, monkeypatch):
+    paths, _ = _fixture(tmp_path, monkeypatch=monkeypatch)
+    manifest = _generate(paths)
+
+    paths.feature_contract.unlink()
+    with pytest.raises(MethodLockError, match="feature.contract.*(missing|unreadable)"):
+        _generate(paths)
+
+    paths.feature_contract.write_bytes(b'{"testing_only":"changed"}\n')
+    with pytest.raises(MethodLockError, match="feature.contract.*hash|bound artifacts"):
+        _validate(manifest, paths)
 
 
 def test_generator_does_not_create_a_run_level_manifest_or_open_outcomes(

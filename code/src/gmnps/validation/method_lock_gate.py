@@ -77,6 +77,7 @@ class MethodLockArtifactPaths:
 
     method_lock_schema: Path
     person_meal_validation_config: Path
+    feature_contract: Path
     release_registry: Path
     gate_implementation: Path
     development_beta: Path
@@ -272,6 +273,16 @@ def _validate_schema_value(value: object, schema: Mapping[str, object], path: st
     if "const" in schema and value != schema["const"]:
         raise MethodLockError(f"schema const mismatch at {path}")
     expected_type = schema.get("type")
+    all_of = schema.get("allOf", [])
+    if not isinstance(all_of, list):
+        raise MethodLockError(f"schema allOf definition is invalid at {path}")
+    for index, child in enumerate(all_of):
+        if not isinstance(child, dict):
+            raise MethodLockError(f"schema allOf entry is invalid at {path}[{index}]")
+        merged = dict(child)
+        if expected_type is not None and "type" not in merged:
+            merged["type"] = expected_type
+        _validate_schema_value(value, merged, f"{path}.allOf[{index}]")
     if expected_type == "object":
         if not isinstance(value, dict):
             raise MethodLockError(f"schema type mismatch at {path}: expected object")
@@ -473,6 +484,10 @@ def _expected_manifest(
         paths.person_meal_validation_config,
         "person-meal validation config",
     )
+    feature_contract_bytes = _read_bytes(
+        paths.feature_contract,
+        "feature-contract artifact",
+    )
     _require_trusted_path(
         paths.release_registry,
         trusted_path=_TRUSTED_RELEASE_REGISTRY_PATH,
@@ -564,6 +579,7 @@ def _expected_manifest(
         "normalization_state_fingerprint": normalization["state_fingerprint"],
         "scoring_beta_sha256": scoring_beta.canonical_sha256,
         "person_meal_validation_config_sha256": sha256(config_bytes).hexdigest(),
+        "feature_contract_sha256": sha256(feature_contract_bytes).hexdigest(),
         "mapping_version": _schema_const(schema, "mapping_version"),
         "implementation_source_sha256": implementation_source_sha256,
         "method_lock_gate_implementation_sha256": sha256(gate_bytes).hexdigest(),
@@ -613,6 +629,7 @@ def validate_method_lock_manifest(
     targeted = (
         ("method_lock_schema_sha256", "method-lock schema hash"),
         ("person_meal_validation_config_sha256", "validation config hash"),
+        ("feature_contract_sha256", "feature-contract hash"),
         (
             "method_lock_gate_implementation_sha256",
             "gate implementation hash",

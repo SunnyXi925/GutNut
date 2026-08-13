@@ -7,22 +7,27 @@ from outcomes and never writes benchmark results.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from hashlib import sha256
 import json
 import math
+import os
 from pathlib import Path
 import re
-from typing import Mapping, Sequence
+import stat
+import sys
+from types import MappingProxyType
+from typing import Mapping
 
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_numeric_dtype
 from sklearn.compose import ColumnTransformer
-from sklearn.impute import SimpleImputer
+from sklearn.impute import MissingIndicator, SimpleImputer
 from sklearn.linear_model import Ridge
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+import sklearn
 
 from gmnps.data_sources.predict_zoe_loader import (
     FrozenValidationConfig,
@@ -63,20 +68,33 @@ BOOTSTRAP_REPLICATES = 2_000
 PERMUTATION_REPLICATES = 2_000
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _KEY_COLUMNS = ("participant_id", "meal_id")
-_NONPREDICTOR_IDENTIFIERS = frozenset(
-    {
-        "participant_id",
-        "meal_id",
-        "food_id",
-        "family_id",
-        "twin_id",
-        "cohort_id",
-        "row_id",
-        "outer_fold",
-        "inner_fold",
-    }
+_FEATURE_BLOCKS = (
+    "clinical_demographic_diet",
+    "fcs",
+    "microbiome",
+    "legacy_final_score_offset",
+    "locked_attribute_gmnps",
 )
-_LEAKAGE_TOKENS = ("response", "outcome", "target", "label", "post_split")
+_COLUMN_ROLES = frozenset({"predictor", "identifier", "grouping", "mapping_unit"})
+_DATA_TYPES = frozenset({"number", "string", "category", "boolean"})
+_STRUCTURAL_ROLES = {
+    "participant_id": "identifier",
+    "meal_id": "identifier",
+    "food_id": "mapping_unit",
+    "family_id": "grouping",
+    "twin_id": "grouping",
+    "cohort_id": "grouping",
+}
+_COMPARATOR_SEMANTICS = {
+    "clinical_demographic_diet": (("clinical_demographic_diet",), "identity", "baseline"),
+    "fcs_only": (("fcs",), "identity", "baseline"),
+    "microbiome_only": (("microbiome",), "identity", "baseline"),
+    "fcs_microbiome": (("fcs", "microbiome"), "identity", "baseline"),
+    "legacy_final_score_offset": (("legacy_final_score_offset",), "identity", "baseline"),
+    "locked_attribute_gmnps": (("locked_attribute_gmnps",), "identity", "primary_model"),
+    "random_microbiome": (("microbiome",), "random_null", "null"),
+    "shuffled_mapping": (("locked_attribute_gmnps",), "development_derangement", "null"),
+}
 
 
 class BenchmarkAccessBlocked(PermissionError):
@@ -84,30 +102,41 @@ class BenchmarkAccessBlocked(PermissionError):
 
 
 @dataclass(frozen=True)
+class FeatureColumn:
+    """One exact column declared by the pre-outcome predictor-only stage."""
+
+    name: str
+    data_type: str
+    role: str
+    nullable: bool
+    source_artifact_id: str
+
+
+@dataclass(frozen=True)
 class FeatureContract:
-    """Predeclared feature blocks for the eight locked comparators."""
+    """Immutable semantic projection of canonical feature-contract bytes."""
 
-    clinical_demographic_diet: tuple[str, ...]
-    fcs: tuple[str, ...]
-    microbiome: tuple[str, ...]
-    legacy_final_score_offset: tuple[str, ...]
-    locked_attribute_gmnps: tuple[str, ...]
+    schema_version: str
+    construction_version: str
+    generated_stage: str
+    columns: tuple[FeatureColumn, ...]
+    source_artifact_sha256: tuple[tuple[str, str], ...]
+    block_artifact_sha256: tuple[tuple[str, str], ...]
+    feature_blocks: tuple[tuple[str, tuple[str, ...]], ...]
+    allowed_overlaps: tuple[tuple[str, str], ...]
     mapping_unit: str
+    comparators: tuple[tuple[str, tuple[str, ...], str, str], ...]
+    sha256: str
 
-    def __post_init__(self) -> None:
-        for field in fields(self):
-            value = getattr(self, field.name)
-            if field.name == "mapping_unit":
-                if not isinstance(value, str) or not value:
-                    raise TypeError("mapping_unit must be a nonempty string")
-                continue
-            if (
-                not isinstance(value, tuple)
-                or not value
-                or any(not isinstance(column, str) or not column for column in value)
-                or len(set(value)) != len(value)
-            ):
-                raise TypeError(f"{field.name} must contain unique feature names")
+    @property
+    def block_columns(self) -> Mapping[str, tuple[str, ...]]:
+        return MappingProxyType(dict(self.feature_blocks))
+
+    @property
+    def comparator_blocks(self) -> Mapping[str, tuple[str, ...]]:
+        return MappingProxyType(
+            {name: blocks for name, blocks, _, _ in self.comparators}
+        )
 
 
 @dataclass(frozen=True)
@@ -115,7 +144,9 @@ class VerifiedBenchmarkLock:
     """Task 3 verification result bound to the live frozen configuration."""
 
     manifest: Mapping[str, object]
+    manifest_sha256: str
     config: FrozenValidationConfig
+    feature_contract: FeatureContract
 
 
 @dataclass(frozen=True)
@@ -132,6 +163,8 @@ class BootstrapInterval:
     lower: float
     upper: float
     n_participants: int
+    requested_replicates: int
+    valid_replicates: int
 
 
 @dataclass(frozen=True)
@@ -140,6 +173,8 @@ class PermutationTestResult:
     p_value: float
     null_distribution: tuple[float, ...]
     n_participants: int
+    requested_replicates: int
+    valid_replicates: int
 
 
 @dataclass(frozen=True)
@@ -148,21 +183,38 @@ class BenchmarkResult:
     absolute_metrics: pd.DataFrame
     paired_metrics: pd.DataFrame
     fit_audit: pd.DataFrame
-    splits: tuple[NestedGroupSplit, ...]
+    splits: Mapping[str, tuple[NestedGroupSplit, ...]]
+    split_audit: pd.DataFrame
+    missingness_source: pd.DataFrame
 
 
 def _read_regular_bytes(path: Path, label: str) -> bytes:
+    descriptor: int | None = None
     try:
-        if path.is_symlink() or not path.is_file():
-            raise BenchmarkAccessBlocked(f"benchmark method-lock {label} is missing")
-        return path.read_bytes()
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags)
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise BenchmarkAccessBlocked(
+                f"benchmark method-lock {label} is missing or is not a regular file"
+            )
+        chunks = []
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        return b"".join(chunks)
     except OSError as error:
         raise BenchmarkAccessBlocked(
             f"benchmark method-lock {label} is missing or unreadable"
         ) from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
 
 
-def _read_manifest(path: Path) -> dict[str, object]:
+def _read_manifest(path: Path) -> tuple[bytes, dict[str, object]]:
     raw = _read_regular_bytes(path, "manifest")
     try:
         payload = json.loads(raw)
@@ -170,7 +222,217 @@ def _read_manifest(path: Path) -> dict[str, object]:
         raise BenchmarkAccessBlocked("benchmark method-lock manifest is invalid") from error
     if not isinstance(payload, dict):
         raise BenchmarkAccessBlocked("benchmark method-lock manifest must be an object")
-    return payload
+    return raw, payload
+
+
+def _json_without_duplicate_keys(raw: bytes, label: str) -> object:
+    def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"{label} contains duplicate JSON key {key}")
+            result[key] = value
+        return result
+
+    try:
+        return json.loads(raw, object_pairs_hook=unique_object)
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"{label} is not valid JSON") from error
+
+
+def _canonical_json_bytes(payload: object) -> bytes:
+    return (
+        json.dumps(
+            payload,
+            ensure_ascii=True,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
+def _parse_feature_contract(raw: bytes, digest: str) -> FeatureContract:
+    payload = _json_without_duplicate_keys(raw, "feature contract")
+    if not isinstance(payload, dict) or raw != _canonical_json_bytes(payload):
+        raise ValueError("feature contract must use canonical JSON bytes")
+    required = {
+        "schema_version",
+        "construction_version",
+        "generated_stage",
+        "columns",
+        "source_artifact_sha256",
+        "block_artifact_sha256",
+        "feature_blocks",
+        "allowed_overlaps",
+        "mapping_unit",
+        "comparators",
+    }
+    if set(payload) != required:
+        raise ValueError("feature contract top-level fields are not exact")
+    if payload["schema_version"] != "person-meal-feature-contract-v1":
+        raise ValueError("feature contract schema version is unsupported")
+    if payload["generated_stage"] != "pre-outcome_predictor_only":
+        raise ValueError("feature contract was not generated at the pre-outcome stage")
+    if not isinstance(payload["construction_version"], str) or not payload[
+        "construction_version"
+    ]:
+        raise ValueError("feature contract construction version is invalid")
+
+    raw_columns = payload["columns"]
+    if not isinstance(raw_columns, list) or not raw_columns:
+        raise ValueError("feature contract columns must be a nonempty array")
+    columns = []
+    seen_columns: set[str] = set()
+    for raw_column in raw_columns:
+        if not isinstance(raw_column, dict) or set(raw_column) != {
+            "name",
+            "data_type",
+            "role",
+            "nullable",
+            "source_artifact_id",
+        }:
+            raise ValueError("feature contract column fields are not exact")
+        name = raw_column["name"]
+        if not isinstance(name, str) or not name or name in seen_columns:
+            raise ValueError("feature contract contains duplicate or invalid column names")
+        seen_columns.add(name)
+        if raw_column["data_type"] not in _DATA_TYPES:
+            raise ValueError(f"feature contract column {name} has invalid data type")
+        if raw_column["role"] not in _COLUMN_ROLES:
+            raise ValueError(f"feature contract column {name} has forbidden role")
+        if not isinstance(raw_column["nullable"], bool):
+            raise ValueError(f"feature contract column {name} nullable flag is invalid")
+        if not isinstance(raw_column["source_artifact_id"], str) or not raw_column[
+            "source_artifact_id"
+        ]:
+            raise ValueError(f"feature contract column {name} source is invalid")
+        columns.append(FeatureColumn(**raw_column))
+    role_by_column = {column.name: column.role for column in columns}
+    for name, role in _STRUCTURAL_ROLES.items():
+        if role_by_column.get(name) != role:
+            raise ValueError(f"feature contract structural column {name} has invalid role")
+
+    def digest_map(field: str) -> dict[str, str]:
+        value = payload[field]
+        if not isinstance(value, dict) or not value:
+            raise ValueError(f"feature contract {field} is invalid")
+        for key, item in value.items():
+            if (
+                not isinstance(key, str)
+                or not key
+                or not isinstance(item, str)
+                or _SHA256_PATTERN.fullmatch(item) is None
+            ):
+                raise ValueError(f"feature contract {field} contains invalid hash")
+        return dict(value)
+
+    source_hashes = digest_map("source_artifact_sha256")
+    if set(source_hashes) != {column.source_artifact_id for column in columns}:
+        raise ValueError("feature contract source artifact hashes are incomplete or extra")
+    block_hashes = digest_map("block_artifact_sha256")
+
+    raw_blocks = payload["feature_blocks"]
+    if not isinstance(raw_blocks, dict) or tuple(sorted(raw_blocks)) != tuple(
+        sorted(_FEATURE_BLOCKS)
+    ):
+        raise ValueError("feature contract feature block set is not exact")
+    if set(block_hashes) != set(_FEATURE_BLOCKS):
+        raise ValueError("feature contract block artifact hashes are incomplete or extra")
+    blocks: dict[str, tuple[str, ...]] = {}
+    for block in _FEATURE_BLOCKS:
+        specification = raw_blocks[block]
+        if not isinstance(specification, dict) or set(specification) != {
+            "artifact_id",
+            "columns",
+        }:
+            raise ValueError(f"feature contract block {block} fields are not exact")
+        if specification["artifact_id"] != block:
+            raise ValueError(f"feature contract block {block} artifact ID is invalid")
+        names = specification["columns"]
+        if (
+            not isinstance(names, list)
+            or not names
+            or any(not isinstance(name, str) for name in names)
+            or len(set(names)) != len(names)
+        ):
+            raise ValueError(f"feature contract block {block} columns are invalid")
+        for name in names:
+            if name not in role_by_column:
+                raise ValueError(f"feature contract block {block} references unknown column")
+            if role_by_column[name] != "predictor":
+                raise ValueError(
+                    f"feature contract block {block} uses nonpredictor role column {name}"
+                )
+        blocks[block] = tuple(names)
+
+    raw_overlaps = payload["allowed_overlaps"]
+    if not isinstance(raw_overlaps, list):
+        raise ValueError("feature contract allowed overlaps must be an array")
+    allowed_overlaps: set[tuple[str, str]] = set()
+    for pair in raw_overlaps:
+        if (
+            not isinstance(pair, list)
+            or len(pair) != 2
+            or any(value not in blocks for value in pair)
+            or pair[0] >= pair[1]
+        ):
+            raise ValueError("feature contract allowed overlap entry is invalid")
+        allowed_overlaps.add((pair[0], pair[1]))
+    if len(allowed_overlaps) != len(raw_overlaps):
+        raise ValueError("feature contract contains duplicate allowed overlaps")
+    observed_overlaps: set[tuple[str, str]] = set()
+    for left_index, left in enumerate(_FEATURE_BLOCKS):
+        for right in _FEATURE_BLOCKS[left_index + 1 :]:
+            if set(blocks[left]).intersection(blocks[right]):
+                observed_overlaps.add(tuple(sorted((left, right))))
+    if observed_overlaps != allowed_overlaps:
+        raise ValueError("feature contract contains illegal or stale feature-block overlap")
+
+    mapping = payload["mapping_unit"]
+    if not isinstance(mapping, dict) or set(mapping) != {"column", "role"}:
+        raise ValueError("feature contract mapping unit fields are not exact")
+    if mapping["role"] != "mapping_unit" or role_by_column.get(mapping["column"]) != "mapping_unit":
+        raise ValueError("feature contract mapping unit role is invalid")
+
+    raw_comparators = payload["comparators"]
+    if not isinstance(raw_comparators, dict) or set(raw_comparators) != set(
+        REQUIRED_COMPARATORS
+    ):
+        raise ValueError("feature contract comparator set is not exact")
+    comparators = []
+    for name in REQUIRED_COMPARATORS:
+        specification = raw_comparators[name]
+        if not isinstance(specification, dict) or set(specification) != {
+            "feature_blocks",
+            "transform",
+            "role",
+        }:
+            raise ValueError(f"feature contract comparator {name} fields are not exact")
+        observed = (
+            tuple(specification["feature_blocks"])
+            if isinstance(specification["feature_blocks"], list)
+            else (),
+            specification["transform"],
+            specification["role"],
+        )
+        if observed != _COMPARATOR_SEMANTICS[name]:
+            raise ValueError(f"feature contract comparator {name} semantics changed")
+        comparators.append((name, *observed))
+    return FeatureContract(
+        schema_version=str(payload["schema_version"]),
+        construction_version=str(payload["construction_version"]),
+        generated_stage=str(payload["generated_stage"]),
+        columns=tuple(columns),
+        source_artifact_sha256=tuple(sorted(source_hashes.items())),
+        block_artifact_sha256=tuple(sorted(block_hashes.items())),
+        feature_blocks=tuple((block, blocks[block]) for block in _FEATURE_BLOCKS),
+        allowed_overlaps=tuple(sorted(allowed_overlaps)),
+        mapping_unit=str(mapping["column"]),
+        comparators=tuple(comparators),
+        sha256=digest,
+    )
 
 
 def _require_digest(value: object, label: str) -> str:
@@ -193,7 +455,7 @@ def validate_benchmark_method_lock(
 ) -> VerifiedBenchmarkLock:
     """Reuse Task 2 validation, then independently recheck live trust bytes."""
 
-    manifest = _read_manifest(Path(manifest_path))
+    manifest_bytes, manifest = _read_manifest(Path(manifest_path))
     snapshot = manifest.get("release_registry_snapshot")
     if not isinstance(snapshot, dict):
         raise BenchmarkAccessBlocked(
@@ -219,15 +481,21 @@ def validate_benchmark_method_lock(
     schema_path = _path_from_lock(method_lock_paths, "method_lock_schema")
     registry_path = _path_from_lock(method_lock_paths, "release_registry")
     gate_path = _path_from_lock(method_lock_paths, "gate_implementation")
+    feature_contract_path = _path_from_lock(method_lock_paths, "feature_contract")
     config_bytes = _read_regular_bytes(config_path, "validation config")
     schema_bytes = _read_regular_bytes(schema_path, "schema")
     registry_bytes = _read_regular_bytes(registry_path, "release registry")
     gate_bytes = _read_regular_bytes(gate_path, "gate implementation")
+    feature_contract_bytes = _read_regular_bytes(
+        feature_contract_path,
+        "feature contract",
+    )
 
     live_hashes = {
         "person_meal_validation_config_sha256": sha256(config_bytes).hexdigest(),
         "method_lock_schema_sha256": sha256(schema_bytes).hexdigest(),
         "method_lock_gate_implementation_sha256": sha256(gate_bytes).hexdigest(),
+        "feature_contract_sha256": sha256(feature_contract_bytes).hexdigest(),
     }
     for field, observed in live_hashes.items():
         expected = _require_digest(manifest.get(field), field)
@@ -277,7 +545,21 @@ def validate_benchmark_method_lock(
         raise BenchmarkAccessBlocked(
             "benchmark method-lock frozen validation config is invalid"
         ) from error
-    return VerifiedBenchmarkLock(manifest=manifest, config=config)
+    try:
+        feature_contract = _parse_feature_contract(
+            feature_contract_bytes,
+            live_hashes["feature_contract_sha256"],
+        )
+    except (TypeError, ValueError) as error:
+        raise BenchmarkAccessBlocked(
+            "benchmark method-lock feature contract is invalid"
+        ) from error
+    return VerifiedBenchmarkLock(
+        manifest=MappingProxyType(manifest),
+        manifest_sha256=sha256(manifest_bytes).hexdigest(),
+        config=config,
+        feature_contract=feature_contract,
+    )
 
 
 def load_locked_outcomes_for_benchmark(
@@ -305,40 +587,34 @@ def load_locked_outcomes_for_benchmark(
 def validate_feature_contract(
     frame: pd.DataFrame,
     feature_contract: FeatureContract,
-    *,
-    endpoint_names: Sequence[str],
 ) -> None:
-    """Reject identifiers, outcomes, and post-split statistics as predictors."""
+    """Enforce the exact predictor table and role allowlist in trusted bytes."""
 
     if not isinstance(frame, pd.DataFrame):
         raise TypeError("predictors must be a pandas DataFrame")
     if not isinstance(feature_contract, FeatureContract):
         raise TypeError("feature_contract must be a FeatureContract")
-    endpoints = set(endpoint_names)
-    feature_blocks = (
-        feature_contract.clinical_demographic_diet,
-        feature_contract.fcs,
-        feature_contract.microbiome,
-        feature_contract.legacy_final_score_offset,
-        feature_contract.locked_attribute_gmnps,
-    )
-    feature_columns = tuple(column for block in feature_blocks for column in block)
-    missing = sorted(set(feature_columns).difference(frame.columns))
-    if missing:
-        raise ValueError(f"feature contract references missing columns: {missing}")
-    if feature_contract.mapping_unit not in frame.columns:
-        raise ValueError("feature contract mapping unit is missing")
-    for column in feature_columns:
-        normalized = column.lower()
-        if (
-            column in endpoints
-            or column in _NONPREDICTOR_IDENTIFIERS
-            or column.endswith("_id")
-            or any(token in normalized for token in _LEAKAGE_TOKENS)
-        ):
-            raise ValueError(
-                f"feature contract contains forbidden leakage/identifier column {column}"
-            )
+    expected = tuple(column.name for column in feature_contract.columns)
+    observed = tuple(str(column) for column in frame.columns)
+    if len(set(observed)) != len(observed):
+        raise ValueError("predictor table contains duplicate column names")
+    if set(observed) != set(expected):
+        missing = sorted(set(expected).difference(observed))
+        unknown = sorted(set(observed).difference(expected))
+        raise ValueError(
+            f"predictor table violates exact feature contract: missing={missing}, "
+            f"unknown={unknown}"
+        )
+    for column in feature_contract.columns:
+        values = frame[column.name]
+        if not column.nullable and values.isna().any():
+            raise ValueError(f"nonnullable contract column {column.name} contains missing values")
+        if column.data_type == "number" and not is_numeric_dtype(values):
+            raise ValueError(f"contract column {column.name} is not numeric")
+        if column.data_type == "number":
+            numeric = values.to_numpy(dtype=float)
+            if np.isinf(numeric).any():
+                raise ValueError(f"contract column {column.name} contains infinite values")
 
 
 def _finite_vectors(
@@ -352,8 +628,9 @@ def _finite_vectors(
     if any(array.shape != arrays[0].shape for array in arrays[1:]):
         raise ValueError("metric inputs must have the same shape")
     numeric = tuple(np.asarray(array, dtype=float) for array in arrays)
-    finite = np.logical_and.reduce([np.isfinite(array) for array in numeric])
-    return tuple(array[finite] for array in numeric)
+    if not all(np.isfinite(array).all() for array in numeric):
+        raise ValueError("metric inputs must contain only finite values")
+    return numeric
 
 
 def compute_regression_metrics(
@@ -428,14 +705,11 @@ def participant_bootstrap_ci(
         arrays.append(np.asarray(reference_prediction))
     if identifiers.ndim != 1 or any(array.shape != identifiers.shape for array in arrays):
         raise ValueError("bootstrap inputs must have the same shape")
-    numeric = [np.asarray(array, dtype=float) for array in arrays]
-    finite = np.logical_and.reduce([np.isfinite(array) for array in numeric])
-    if not finite.any():
-        return BootstrapInterval(math.nan, math.nan, math.nan, 0)
-    y = numeric[0][finite]
-    pred = numeric[1][finite]
-    reference = numeric[2][finite] if reference_prediction is not None else None
-    ids = identifiers[finite].astype(str)
+    numeric = _finite_vectors(*arrays)
+    y = numeric[0]
+    pred = numeric[1]
+    reference = numeric[2] if reference_prediction is not None else None
+    ids = identifiers.astype(str)
     unique = np.asarray(sorted(set(ids)))
     group_indices = {value: np.flatnonzero(ids == value) for value in unique}
     estimate = _metric_delta(y, pred, reference, metric)
@@ -459,6 +733,8 @@ def participant_bootstrap_ci(
         lower=float(lower),
         upper=float(upper),
         n_participants=len(unique),
+        requested_replicates=n_bootstrap,
+        valid_replicates=len(finite_replicates),
     )
 
 
@@ -487,16 +763,9 @@ def participant_permutation_test(
         reference_prediction,
     )
     original_shape = np.asarray(y_true).shape
-    finite = np.logical_and.reduce(
-        [
-            np.isfinite(np.asarray(y_true, dtype=float)),
-            np.isfinite(np.asarray(prediction, dtype=float)),
-            np.isfinite(np.asarray(reference_prediction, dtype=float)),
-        ]
-    )
     if identifiers.shape != original_shape:
         raise ValueError("permutation inputs must have the same shape")
-    ids = identifiers[finite].astype(str)
+    ids = identifiers.astype(str)
     unique = np.asarray(sorted(set(ids)))
     observed = _metric_delta(y, pred, reference, metric)
     rng = np.random.default_rng(seed)
@@ -532,6 +801,8 @@ def participant_permutation_test(
         p_value=p_value,
         null_distribution=tuple(float(value) for value in null),
         n_participants=len(unique),
+        requested_replicates=n_permutations,
+        valid_replicates=int(np.isfinite(null).sum()),
     )
 
 
@@ -545,6 +816,125 @@ def _canonical_hash(payload: object) -> str:
             separators=(",", ":"),
         ).encode("utf-8")
     ).hexdigest()
+
+
+def _predictor_frame_sha256(frame: pd.DataFrame) -> str:
+    metadata = _canonical_json_bytes(
+        {
+            "columns": [str(column) for column in frame.columns],
+            "dtypes": [str(dtype) for dtype in frame.dtypes],
+            "n_rows": len(frame),
+        }
+    )
+    row_hashes = pd.util.hash_pandas_object(
+        frame,
+        index=False,
+        categorize=True,
+    ).to_numpy(dtype=np.uint64)
+    return sha256(metadata + row_hashes.tobytes()).hexdigest()
+
+
+def _software_versions() -> str:
+    return json.dumps(
+        {
+            "numpy": np.__version__,
+            "pandas": pd.__version__,
+            "python": ".".join(str(value) for value in sys.version_info[:3]),
+            "scikit_learn": sklearn.__version__,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _holm_adjust(p_values: np.ndarray) -> np.ndarray:
+    values = np.asarray(p_values, dtype=float)
+    adjusted = np.full(values.shape, np.nan, dtype=float)
+    finite_positions = np.flatnonzero(np.isfinite(values))
+    if not len(finite_positions):
+        return adjusted
+    order = finite_positions[np.argsort(values[finite_positions], kind="mergesort")]
+    running = 0.0
+    total = len(order)
+    for rank, position in enumerate(order):
+        running = max(running, (total - rank) * float(values[position]))
+        adjusted[position] = min(1.0, running)
+    return adjusted
+
+
+def _annotate_paired_tests(
+    paired: pd.DataFrame,
+    config: FrozenValidationConfig,
+) -> pd.DataFrame:
+    primary = config.payload.get("primary_tests")
+    if not isinstance(primary, dict) or primary.get("multiplicity_method") != "holm":
+        raise ValueError("frozen primary statistical-test contract is invalid")
+    raw_tests = primary.get("tests")
+    if not isinstance(raw_tests, list) or len(raw_tests) != 2:
+        raise ValueError("frozen primary statistical-test family is invalid")
+    primary_keys = {
+        (
+            test["endpoint"],
+            test["analysis_mode"],
+            test["model"],
+            test["reference"],
+            test["metric"],
+        )
+        for test in raw_tests
+    }
+    roles = []
+    families = []
+    methods = []
+    null_comparators = set(config.payload["other_tests"]["null_comparators"])
+    for row in paired.itertuples(index=False):
+        key = (
+            row.endpoint,
+            row.analysis_mode,
+            row.comparator,
+            row.reference,
+            row.metric,
+        )
+        if key in primary_keys:
+            roles.append("primary")
+            families.append(str(primary["correction_family"]))
+            methods.append("holm")
+        elif row.reference in null_comparators:
+            roles.append("exploratory")
+            families.append(
+                f"exploratory_null::{row.analysis_mode}::{row.endpoint}::{row.metric}"
+            )
+            methods.append("holm")
+        else:
+            roles.append("secondary")
+            families.append(
+                f"secondary::{row.analysis_mode}::{row.endpoint}::{row.metric}"
+            )
+            methods.append("holm")
+    paired = paired.copy()
+    paired["test_role"] = roles
+    paired["correction_family"] = families
+    paired["multiplicity_method"] = methods
+    paired["adjusted_p_value"] = np.nan
+    for _, positions in paired.groupby("correction_family", sort=False).groups.items():
+        index = np.asarray(list(positions), dtype=int)
+        paired.loc[index, "adjusted_p_value"] = _holm_adjust(
+            paired.loc[index, "permutation_p_value"].to_numpy(dtype=float)
+        )
+    observed_primary = {
+        (
+            row.endpoint,
+            row.analysis_mode,
+            row.comparator,
+            row.reference,
+            row.metric,
+        )
+        for row in paired.loc[paired["test_role"].eq("primary")].itertuples(index=False)
+    }
+    if observed_primary != primary_keys:
+        raise ValueError(
+            "benchmark output does not contain the complete preregistered primary family"
+        )
+    return paired
 
 
 def _endpoint_specs(config: FrozenValidationConfig) -> tuple[dict[str, object], ...]:
@@ -564,15 +954,14 @@ def _endpoint_specs(config: FrozenValidationConfig) -> tuple[dict[str, object], 
 def _comparator_columns(
     contract: FeatureContract,
 ) -> dict[str, tuple[str, ...]]:
+    blocks = contract.block_columns
     return {
-        "clinical_demographic_diet": contract.clinical_demographic_diet,
-        "fcs_only": contract.fcs,
-        "microbiome_only": contract.microbiome,
-        "fcs_microbiome": contract.fcs + contract.microbiome,
-        "legacy_final_score_offset": contract.legacy_final_score_offset,
-        "locked_attribute_gmnps": contract.locked_attribute_gmnps,
-        "random_microbiome": contract.microbiome,
-        "shuffled_mapping": contract.locked_attribute_gmnps,
+        comparator: tuple(
+            column
+            for block in contract.comparator_blocks[comparator]
+            for column in blocks[block]
+        )
+        for comparator in REQUIRED_COMPARATORS
     }
 
 
@@ -609,6 +998,13 @@ def _pipeline(frame: pd.DataFrame, alpha: float) -> Pipeline:
                 categorical,
             )
         )
+        transformers.append(
+            (
+                "categorical_missing_indicator",
+                MissingIndicator(features="all", error_on_new=False),
+                categorical,
+            )
+        )
     if not transformers:
         raise ValueError("comparator has no usable feature columns")
     return Pipeline(
@@ -617,7 +1013,7 @@ def _pipeline(frame: pd.DataFrame, alpha: float) -> Pipeline:
                 "preprocess",
                 ColumnTransformer(transformers, remainder="drop"),
             ),
-            ("model", Ridge(alpha=float(alpha))),
+            ("model", Ridge(alpha=float(alpha), solver="lsqr")),
         ]
     )
 
@@ -662,8 +1058,18 @@ def _shuffled_mapping(
     if unit_profiles.empty:
         raise ValueError("shuffled mapping has no development mapping units")
     units = unit_profiles.index.to_numpy(dtype=str)
+    if len(units) < 2:
+        raise ValueError("shuffled mapping is not estimable with fewer than two units")
     rng = np.random.default_rng(seed)
-    permuted_units = units[rng.permutation(len(units))]
+    permuted_units = units.copy()
+    for position in range(len(permuted_units) - 1, 0, -1):
+        swap_position = int(rng.integers(0, position))
+        permuted_units[position], permuted_units[swap_position] = (
+            permuted_units[swap_position],
+            permuted_units[position],
+        )
+    if np.any(permuted_units == units):
+        raise RuntimeError("Sattolo derangement unexpectedly retained a mapping unit")
     mapping = dict(zip(units, permuted_units))
 
     def project(rows: pd.DataFrame) -> pd.DataFrame:
@@ -689,8 +1095,18 @@ def _feature_pair(
     *,
     seed: int,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    train = frame.iloc[train_positions].loc[:, list(columns)].copy()
-    evaluation = frame.iloc[evaluation_positions].loc[:, list(columns)].copy()
+    train = (
+        frame.iloc[train_positions]
+        .loc[:, list(columns)]
+        .copy()
+        .replace({None: np.nan})
+    )
+    evaluation = (
+        frame.iloc[evaluation_positions]
+        .loc[:, list(columns)]
+        .copy()
+        .replace({None: np.nan})
+    )
     if comparator == "random_microbiome":
         return _random_microbiome(train, evaluation, seed=seed)
     if comparator == "shuffled_mapping":
@@ -709,6 +1125,79 @@ def _fit_participant_ids(frame: pd.DataFrame, positions: np.ndarray) -> tuple[st
     return tuple(sorted(frame.iloc[positions]["participant_id"].astype(str).unique()))
 
 
+def _outcome_available(values: pd.Series) -> np.ndarray:
+    numeric = pd.to_numeric(values, errors="coerce").to_numpy(dtype=float)
+    return np.isfinite(numeric)
+
+
+def _missingness_source_table(
+    frame: pd.DataFrame,
+    feature_contract: FeatureContract,
+    endpoints: tuple[dict[str, object], ...],
+    splits: Mapping[str, tuple[NestedGroupSplit, ...]],
+) -> pd.DataFrame:
+    predictor_columns = tuple(
+        column.name for column in feature_contract.columns if column.role == "predictor"
+    )
+    endpoint_names = tuple(
+        str(endpoint["name"])
+        for endpoint in endpoints
+        if str(endpoint["name"]) in frame.columns
+    )
+    records = []
+    for analysis_mode, mode_splits in splits.items():
+        for nested in mode_splits:
+            split_positions = {
+                "train": nested.outer.train_positions,
+                "test": nested.outer.test_positions,
+                "dropped": nested.outer.dropped_positions,
+            }
+            for split_name, positions in split_positions.items():
+                if not positions:
+                    continue
+                rows = frame.iloc[list(positions)]
+                for cohort_id, cohort_rows in rows.groupby("cohort_id", sort=True):
+                    for endpoint_name in endpoint_names:
+                        for variable in (*predictor_columns, endpoint_name):
+                            values = cohort_rows[variable]
+                            if variable == endpoint_name:
+                                missing = ~_outcome_available(values)
+                                variable_role = "outcome"
+                            else:
+                                missing = values.isna().to_numpy()
+                                variable_role = "predictor"
+                            n_rows = len(cohort_rows)
+                            records.append(
+                                {
+                                    "endpoint": endpoint_name,
+                                    "cohort": str(cohort_id),
+                                    "analysis_mode": analysis_mode,
+                                    "outer_fold": nested.outer.fold_id,
+                                    "split": split_name,
+                                    "variable": variable,
+                                    "variable_role": variable_role,
+                                    "n_rows": n_rows,
+                                    "n_participants": int(
+                                        cohort_rows["participant_id"].nunique()
+                                    ),
+                                    "missing_n": int(np.sum(missing)),
+                                    "missing_rate": float(np.mean(missing)),
+                                }
+                            )
+    return pd.DataFrame.from_records(records).sort_values(
+        [
+            "analysis_mode",
+            "endpoint",
+            "outer_fold",
+            "split",
+            "cohort",
+            "variable_role",
+            "variable",
+        ],
+        kind="mergesort",
+    ).reset_index(drop=True)
+
+
 def _prepare_joined_frame(
     predictors: pd.DataFrame,
     outcome: pd.DataFrame,
@@ -720,18 +1209,6 @@ def _prepare_joined_frame(
             raise ValueError(f"{label} missing person-meal keys: {sorted(missing)}")
         if frame.duplicated(list(_KEY_COLUMNS)).any():
             raise ValueError(f"{label} person-meal keys must be unique")
-    forbidden_predictor_columns = set(endpoint_names).intersection(predictors.columns)
-    forbidden_predictor_columns.update(
-        column
-        for column in predictors.columns
-        if column not in _KEY_COLUMNS
-        and any(token in column.lower() for token in _LEAKAGE_TOKENS)
-    )
-    if forbidden_predictor_columns:
-        raise ValueError(
-            "predictor table contains response/post-split leakage columns: "
-            f"{sorted(forbidden_predictor_columns)}"
-        )
     outcome_projection = outcome.loc[
         :, [*_KEY_COLUMNS, *[name for name in endpoint_names if name in outcome.columns]]
     ]
@@ -755,11 +1232,14 @@ def _prepare_joined_frame(
     return joined
 
 
-def _benchmark_predictions(
+def _benchmark_predictions_for_mode(
     frame: pd.DataFrame,
     config: FrozenValidationConfig,
     feature_contract: FeatureContract,
     endpoints: tuple[dict[str, object], ...],
+    *,
+    analysis_mode: str,
+    secondary_holdout: str | None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, tuple[NestedGroupSplit, ...]]:
     split_config = config.payload["split"]
     seeds = config.payload["seeds"]
@@ -769,6 +1249,7 @@ def _benchmark_predictions(
         inner_folds=int(split_config["inner_folds"]),
         outer_seed=int(seeds["outer_split"]),
         inner_seed=int(seeds["inner_cv"]),
+        secondary_holdout=secondary_holdout,
     )
     comparator_columns = _comparator_columns(feature_contract)
     prediction_rows: list[dict[str, object]] = []
@@ -797,10 +1278,12 @@ def _benchmark_predictions(
                 for inner in nested.inner:
                     inner_train = np.asarray(inner.train_positions, dtype=int)
                     inner_validation = np.asarray(inner.test_positions, dtype=int)
-                    train_available = frame.iloc[inner_train][endpoint_name].notna().to_numpy()
-                    validation_available = frame.iloc[inner_validation][
-                        endpoint_name
-                    ].notna().to_numpy()
+                    train_available = _outcome_available(
+                        frame.iloc[inner_train][endpoint_name]
+                    )
+                    validation_available = _outcome_available(
+                        frame.iloc[inner_validation][endpoint_name]
+                    )
                     inner_train = inner_train[train_available]
                     inner_validation = inner_validation[validation_available]
                     if len(inner_train) == 0 or len(inner_validation) == 0:
@@ -838,6 +1321,7 @@ def _benchmark_predictions(
                         )
                         audit_rows.append(
                             {
+                                "analysis_mode": analysis_mode,
                                 "endpoint": endpoint_name,
                                 "comparator": comparator,
                                 "outer_fold": nested.outer.fold_id,
@@ -862,10 +1346,10 @@ def _benchmark_predictions(
                 outer_train = np.asarray(nested.outer.train_positions, dtype=int)
                 outer_test = np.asarray(nested.outer.test_positions, dtype=int)
                 outer_train = outer_train[
-                    frame.iloc[outer_train][endpoint_name].notna().to_numpy()
+                    _outcome_available(frame.iloc[outer_train][endpoint_name])
                 ]
                 outer_test = outer_test[
-                    frame.iloc[outer_test][endpoint_name].notna().to_numpy()
+                    _outcome_available(frame.iloc[outer_test][endpoint_name])
                 ]
                 if len(outer_train) == 0 or len(outer_test) == 0:
                     raise ValueError(
@@ -892,6 +1376,7 @@ def _benchmark_predictions(
                 prediction = estimator.predict(x_test)
                 audit_rows.append(
                     {
+                        "analysis_mode": analysis_mode,
                         "endpoint": endpoint_name,
                         "comparator": comparator,
                         "outer_fold": nested.outer.fold_id,
@@ -908,6 +1393,7 @@ def _benchmark_predictions(
                 for row, y_pred in zip(test_rows.itertuples(index=False), prediction):
                     prediction_rows.append(
                         {
+                            "analysis_mode": analysis_mode,
                             "row_id": row.row_id,
                             "participant_id": row.participant_id,
                             "meal_id": row.meal_id,
@@ -923,7 +1409,7 @@ def _benchmark_predictions(
     comparator_order = {value: index for index, value in enumerate(REQUIRED_COMPARATORS)}
     predictions["__comparator_order__"] = predictions["comparator"].map(comparator_order)
     predictions = predictions.sort_values(
-        ["endpoint", "outer_fold", "__comparator_order__", "row_id"],
+        ["analysis_mode", "endpoint", "outer_fold", "__comparator_order__", "row_id"],
         kind="mergesort",
     ).drop(columns="__comparator_order__").reset_index(drop=True)
     audit = pd.DataFrame.from_records(audit_rows)
@@ -931,6 +1417,7 @@ def _benchmark_predictions(
     audit = audit.sort_values(
         [
             "endpoint",
+            "analysis_mode",
             "outer_fold",
             "__comparator_order__",
             "stage",
@@ -947,17 +1434,123 @@ def _benchmark_predictions(
     return predictions, audit, splits
 
 
+def _benchmark_predictions(
+    frame: pd.DataFrame,
+    config: FrozenValidationConfig,
+    feature_contract: FeatureContract,
+    endpoints: tuple[dict[str, object], ...],
+) -> tuple[
+    pd.DataFrame,
+    pd.DataFrame,
+    Mapping[str, tuple[NestedGroupSplit, ...]],
+    pd.DataFrame,
+]:
+    raw_modes = config.payload.get("analysis_modes")
+    if not isinstance(raw_modes, list):
+        raise ValueError("frozen validation config omits analysis modes")
+    prediction_tables = []
+    audit_tables = []
+    split_plans: dict[str, tuple[NestedGroupSplit, ...]] = {}
+    split_audit_rows = []
+    expected_modes = (
+        "subject_held_out",
+        "subject_plus_food_held_out",
+        "subject_plus_meal_held_out",
+        "cohort_held_out",
+    )
+    if tuple(mode.get("name") for mode in raw_modes if isinstance(mode, dict)) != expected_modes:
+        raise ValueError("frozen analysis mode names or order changed")
+    for mode in raw_modes:
+        mode_name = str(mode["name"])
+        secondary_holdout = mode.get("secondary_unit")
+        predictions, audit, splits = _benchmark_predictions_for_mode(
+            frame,
+            config,
+            feature_contract,
+            endpoints,
+            analysis_mode=mode_name,
+            secondary_holdout=(
+                None if secondary_holdout is None else str(secondary_holdout)
+            ),
+        )
+        prediction_tables.append(predictions)
+        audit_tables.append(audit)
+        split_plans[mode_name] = splits
+        for nested in splits:
+            outer = nested.outer
+            dropped_reason = (
+                "participant_family_twin_or_secondary_unit_fold_mismatch"
+                if outer.dropped_positions
+                else None
+            )
+            split_audit_rows.append(
+                {
+                    "analysis_mode": mode_name,
+                    "analysis_role": str(mode["role"]),
+                    "secondary_unit": secondary_holdout,
+                    "outer_fold": outer.fold_id,
+                    "train_n_rows": len(outer.train_positions),
+                    "test_n_rows": len(outer.test_positions),
+                    "dropped_n_rows": len(outer.dropped_positions),
+                    "dropped_n_participants": int(
+                        frame.iloc[list(outer.dropped_positions)]["participant_id"].nunique()
+                        if outer.dropped_positions
+                        else 0
+                    ),
+                    "dropped_n_person_meals": len(outer.dropped_positions),
+                    "dropped_row_ids": tuple(
+                        frame.iloc[list(outer.dropped_positions)]["row_id"].astype(str)
+                    ),
+                    "dropped_reason": dropped_reason,
+                }
+            )
+    return (
+        pd.concat(prediction_tables, ignore_index=True),
+        pd.concat(audit_tables, ignore_index=True),
+        MappingProxyType(split_plans),
+        pd.DataFrame.from_records(split_audit_rows),
+    )
+
+
 def _metric_tables(
     predictions: pd.DataFrame,
     config: FrozenValidationConfig,
     endpoints: tuple[dict[str, object], ...],
+    provenance: Mapping[str, object],
+    feature_contract: FeatureContract,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     seeds = config.payload["seeds"]
     endpoint_by_name = {str(endpoint["name"]): endpoint for endpoint in endpoints}
     absolute_rows = []
     paired_rows = []
-    for endpoint_name, endpoint_predictions in predictions.groupby(
-        "endpoint", sort=False
+    contract_comparators = {
+        name: {"blocks": blocks, "transform": transform, "role": role}
+        for name, blocks, transform, role in feature_contract.comparators
+    }
+    block_hashes = dict(feature_contract.block_artifact_sha256)
+
+    def opportunity(comparator: str) -> str:
+        specification = contract_comparators[comparator]
+        blocks = specification["blocks"]
+        return json.dumps(
+            {
+                "blocks": list(blocks),
+                "columns": [
+                    column
+                    for block in blocks
+                    for column in feature_contract.block_columns[block]
+                ],
+                "block_artifact_sha256": {
+                    block: block_hashes[block] for block in blocks
+                },
+                "transform": specification["transform"],
+                "role": specification["role"],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    for (analysis_mode, endpoint_name), endpoint_predictions in predictions.groupby(
+        ["analysis_mode", "endpoint"], sort=False
     ):
         endpoint_hash = _canonical_hash(endpoint_by_name[endpoint_name])
         for comparator_index, comparator in enumerate(REQUIRED_COMPARATORS):
@@ -968,10 +1561,13 @@ def _metric_tables(
             pred = comparator_frame["y_pred"].to_numpy(dtype=float)
             participants = comparator_frame["participant_id"].astype(str).to_numpy()
             metadata = {
+                **provenance,
                 "endpoint": endpoint_name,
+                "analysis_mode": analysis_mode,
                 "comparator": comparator,
+                "comparator_information_opportunity": opportunity(comparator),
                 "n_participants": int(comparator_frame["participant_id"].nunique()),
-                "n_meals": int(comparator_frame["row_id"].nunique()),
+                "n_person_meals": int(comparator_frame["row_id"].nunique()),
                 "split_seed": int(seeds["outer_split"]),
                 "endpoint_config_sha256": endpoint_hash,
                 "validation_config_sha256": config.sha256,
@@ -994,6 +1590,15 @@ def _metric_tables(
                         "estimate": interval.estimate,
                         "ci_lower": interval.lower,
                         "ci_upper": interval.upper,
+                        "ci_method": "participant_cluster_percentile_bootstrap_95",
+                        "bootstrap_replicates_requested": interval.requested_replicates,
+                        "bootstrap_replicates_valid": interval.valid_replicates,
+                        "permutation_replicates_requested": 0,
+                        "permutation_replicates_valid": 0,
+                        "test_role": "descriptive",
+                        "correction_family": "none",
+                        "multiplicity_method": "none",
+                        "adjusted_p_value": math.nan,
                     }
                 )
 
@@ -1015,11 +1620,17 @@ def _metric_tables(
             reference_prediction = reference_frame["y_pred"].to_numpy(dtype=float)
             participants = model_frame["participant_id"].astype(str).to_numpy()
             metadata = {
+                **provenance,
                 "endpoint": endpoint_name,
+                "analysis_mode": analysis_mode,
                 "comparator": "locked_attribute_gmnps",
                 "reference": reference_name,
+                "comparator_information_opportunity": opportunity(
+                    "locked_attribute_gmnps"
+                ),
+                "reference_information_opportunity": opportunity(reference_name),
                 "n_participants": int(model_frame["participant_id"].nunique()),
-                "n_meals": int(model_frame["row_id"].nunique()),
+                "n_person_meals": int(model_frame["row_id"].nunique()),
                 "split_seed": int(seeds["outer_split"]),
                 "endpoint_config_sha256": endpoint_hash,
                 "validation_config_sha256": config.sha256,
@@ -1062,6 +1673,11 @@ def _metric_tables(
                         "estimate_delta": interval.estimate,
                         "ci_lower": interval.lower,
                         "ci_upper": interval.upper,
+                        "ci_method": "paired_participant_cluster_percentile_bootstrap_95",
+                        "bootstrap_replicates_requested": interval.requested_replicates,
+                        "bootstrap_replicates_valid": interval.valid_replicates,
+                        "permutation_replicates_requested": permutation.requested_replicates,
+                        "permutation_replicates_valid": permutation.valid_replicates,
                         "permutation_p_value": permutation.p_value,
                         "permutation_null_mean": (
                             float(np.mean(finite_null))
@@ -1070,10 +1686,9 @@ def _metric_tables(
                         ),
                     }
                 )
-    return (
-        pd.DataFrame.from_records(absolute_rows),
-        pd.DataFrame.from_records(paired_rows),
-    )
+    absolute = pd.DataFrame.from_records(absolute_rows)
+    paired = _annotate_paired_tests(pd.DataFrame.from_records(paired_rows), config)
+    return absolute, paired
 
 
 def run_person_meal_benchmark(
@@ -1082,7 +1697,6 @@ def run_person_meal_benchmark(
     manifest_path: Path,
     method_lock_paths: object,
     predictors: pd.DataFrame,
-    feature_contract: FeatureContract,
 ) -> BenchmarkResult:
     """Run every locked comparator after the fail-closed production gate."""
 
@@ -1093,26 +1707,47 @@ def run_person_meal_benchmark(
     )
     endpoint_specs = _endpoint_specs(locked.verified_lock.config)
     endpoint_names = tuple(str(endpoint["name"]) for endpoint in endpoint_specs)
+    feature_contract = locked.verified_lock.feature_contract
     validate_feature_contract(
         predictors,
         feature_contract,
-        endpoint_names=endpoint_names,
     )
     joined = _prepare_joined_frame(
         predictors,
         locked.outcome.frame,
         endpoint_names,
     )
-    predictions, fit_audit, splits = _benchmark_predictions(
+    predictions, fit_audit, splits, split_audit = _benchmark_predictions(
         joined,
         locked.verified_lock.config,
         feature_contract,
         endpoint_specs,
     )
+    missingness_source = _missingness_source_table(
+        joined,
+        feature_contract,
+        endpoint_specs,
+        splits,
+    )
+    provenance = {
+        "manifest_sha256": locked.verified_lock.manifest_sha256,
+        "outcome_source_id": locked.outcome.source_id,
+        "outcome_source_sha256": locked.outcome.sha256,
+        "predictor_frame_sha256": _predictor_frame_sha256(predictors),
+        "feature_contract_sha256": feature_contract.sha256,
+        "predictor_source_artifact_sha256": json.dumps(
+            dict(feature_contract.source_artifact_sha256),
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+        "software_versions": _software_versions(),
+    }
     absolute_metrics, paired_metrics = _metric_tables(
         predictions,
         locked.verified_lock.config,
         endpoint_specs,
+        provenance,
+        feature_contract,
     )
     return BenchmarkResult(
         predictions=predictions,
@@ -1120,6 +1755,8 @@ def run_person_meal_benchmark(
         paired_metrics=paired_metrics,
         fit_audit=fit_audit,
         splits=splits,
+        split_audit=split_audit,
+        missingness_source=missingness_source,
     )
 
 

@@ -178,16 +178,28 @@ same-immutable-bytes loader. No entry was added to
 ## Frozen analysis configuration
 
 `code/src/configs/person_meal_validation.yaml` is JSON-compatible YAML with
-exact SHA-256
-`12bbe284674cac0cf96344112a5e47a279d87e83fe5727e2841635ec0dc70f6b`.
+review-hardened pre-outcome SHA-256
+`291946d087998dfac7e43c7edd719a8be8a86f8744700b9bac4718bde3964018`.
 It defines the source-independent `participant_id + meal_id` unique key;
 requires both primary endpoints (`glucose_iAUC_2h` and `tg_6h_rise`); applies a
 predeclared availability policy to secondary `c_peptide_iAUC_2h`; and freezes
 each endpoint's role, unit, time window, summary and derivation. Caller-selected
 endpoint subsets are forbidden. It also freezes missingness,
-participant/family/twin-aware splitting, nested cross-validation and seeds.
+participant/family/twin-aware splitting, the four fixed subject, subject-plus-
+food, subject-plus-meal and whole-cohort analysis modes, nested cross-validation,
+two primary endpoint tests with Holm correction, and seeds. It also defines the
+required schema and generation stage for a future canonical predictor-only
+feature contract. The current real feature contract does not exist.
 These are preregistration declarations only; no response value or outcome
 summary was read to define them.
+
+The synchronized method-lock schema SHA-256 is
+`b9894ccf1ac57c2b37603c05566c320d02f6b966d113691ebb105bfd66b59ee5`,
+and the reviewed gate implementation SHA-256 is
+`91a0c2721c002a7395f2f1165996e63541b88efc13f98f6dca67c29fadc7fec2`.
+The schema now requires `feature_contract_sha256`; the existing Phase 1
+`implementation_source_sha256` constants were not changed. No placeholder
+feature contract or run manifest was created.
 
 ## Stages 2C and 2D
 
@@ -201,8 +213,8 @@ inputs, writes atomically without overwriting an existing manifest, and leaves
 no output on failure. After hard-link publication, byte validation, directory
 `fsync` and temporary-file cleanup are all inside the rollback boundary; any
 failure triggers best-effort destination deletion before the error is raised.
-The reviewed gate implementation SHA-256 is
-`e73c4601bb102215b20e0e9435a56615714bb0389ee1275f4edc89c3065c62a3`.
+The gate hashes shown above supersede the earlier pre-review implementation
+digest because the pre-outcome feature-contract binding is now mandatory.
 
 Stage 2D is blocked because controlled access to Zenodo version DOI
 `10.5281/zenodo.17236383` has not been granted and the trusted registry records

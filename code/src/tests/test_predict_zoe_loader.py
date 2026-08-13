@@ -31,6 +31,7 @@ from gmnps.validation.method_lock_gate import (
     canonical_ids_sha256,
     generate_method_lock_manifest,
 )
+from gmnps.validation.person_meal_benchmark import validate_benchmark_method_lock
 from scripts import fetch_official_predict_zoe as fetcher
 
 
@@ -58,6 +59,103 @@ def _write_json(path: Path, payload: object) -> None:
 
 def _write_csv(path: Path, rows: list[dict[str, object]]) -> None:
     pd.DataFrame(rows).to_csv(path, index=False)
+
+
+def _testing_only_feature_contract_bytes() -> bytes:
+    structural = {
+        "participant_id": "identifier",
+        "meal_id": "identifier",
+        "food_id": "mapping_unit",
+        "family_id": "grouping",
+        "twin_id": "grouping",
+        "cohort_id": "grouping",
+    }
+    blocks = {
+        "clinical_demographic_diet": ["clinical_feature"],
+        "fcs": ["fcs_score"],
+        "microbiome": ["microbiome_feature"],
+        "legacy_final_score_offset": ["legacy_score"],
+        "locked_attribute_gmnps": ["gmnps_score"],
+    }
+    source_id = "testing-only-predictor-source"
+    columns = [
+        {
+            "name": name,
+            "data_type": "string",
+            "role": role,
+            "nullable": name == "twin_id",
+            "source_artifact_id": source_id,
+        }
+        for name, role in structural.items()
+    ] + [
+        {
+            "name": name,
+            "data_type": "number",
+            "role": "predictor",
+            "nullable": True,
+            "source_artifact_id": source_id,
+        }
+        for names in blocks.values()
+        for name in names
+    ]
+    comparators = {
+        "clinical_demographic_diet": {
+            "feature_blocks": ["clinical_demographic_diet"],
+            "transform": "identity",
+            "role": "baseline",
+        },
+        "fcs_only": {"feature_blocks": ["fcs"], "transform": "identity", "role": "baseline"},
+        "microbiome_only": {
+            "feature_blocks": ["microbiome"],
+            "transform": "identity",
+            "role": "baseline",
+        },
+        "fcs_microbiome": {
+            "feature_blocks": ["fcs", "microbiome"],
+            "transform": "identity",
+            "role": "baseline",
+        },
+        "legacy_final_score_offset": {
+            "feature_blocks": ["legacy_final_score_offset"],
+            "transform": "identity",
+            "role": "baseline",
+        },
+        "locked_attribute_gmnps": {
+            "feature_blocks": ["locked_attribute_gmnps"],
+            "transform": "identity",
+            "role": "primary_model",
+        },
+        "random_microbiome": {
+            "feature_blocks": ["microbiome"],
+            "transform": "random_null",
+            "role": "null",
+        },
+        "shuffled_mapping": {
+            "feature_blocks": ["locked_attribute_gmnps"],
+            "transform": "development_derangement",
+            "role": "null",
+        },
+    }
+    payload = {
+        "schema_version": "person-meal-feature-contract-v1",
+        "construction_version": "testing-only-construction-v1",
+        "generated_stage": "pre-outcome_predictor_only",
+        "columns": columns,
+        "source_artifact_sha256": {source_id: sha256(source_id.encode()).hexdigest()},
+        "block_artifact_sha256": {
+            block: sha256(block.encode()).hexdigest() for block in blocks
+        },
+        "feature_blocks": {
+            block: {"artifact_id": block, "columns": names}
+            for block, names in blocks.items()
+        },
+        "allowed_overlaps": [],
+        "mapping_unit": {"column": "food_id", "role": "mapping_unit"},
+        "comparators": comparators,
+    }
+    return (
+        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
 
 
 def _predictor_record(
@@ -323,6 +421,8 @@ def _real_method_lock_fixture(tmp_path: Path, monkeypatch):
     schema.write_bytes(SCHEMA_PATH.read_bytes())
     config = lock_root / "person_meal_validation.yaml"
     config.write_bytes(CONFIG_PATH.read_bytes())
+    feature_contract = lock_root / "feature_contract.json"
+    feature_contract.write_bytes(_testing_only_feature_contract_bytes())
 
     implementation_hashes = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))[
         "properties"
@@ -339,6 +439,7 @@ def _real_method_lock_fixture(tmp_path: Path, monkeypatch):
     paths = MethodLockArtifactPaths(
         method_lock_schema=schema,
         person_meal_validation_config=config,
+        feature_contract=feature_contract,
         release_registry=release_registry,
         gate_implementation=GATE_PATH,
         development_beta=development,
@@ -534,6 +635,17 @@ def test_frozen_config_contains_source_independent_complete_outcome_contract():
     assert all(row["derivation"] for row in endpoints)
     assert payload["missingness"]["outcome_imputation"] == "forbidden"
     assert payload["split"]["development_scoring_overlap"] == "forbidden"
+    assert [mode["name"] for mode in payload["analysis_modes"]] == [
+        "subject_held_out",
+        "subject_plus_food_held_out",
+        "subject_plus_meal_held_out",
+        "cohort_held_out",
+    ]
+    assert payload["feature_contract"]["generated_stage"] == (
+        "pre-outcome_predictor_only"
+    )
+    assert payload["primary_tests"]["multiplicity_method"] == "holm"
+    assert len(payload["primary_tests"]["tests"]) == 2
 
 
 def test_frozen_config_missing_modified_or_wrong_hash_fails_closed(tmp_path):
@@ -611,6 +723,21 @@ def test_frozen_contract_rejects_key_primary_or_endpoint_semantic_tampering(
         grant = replace(grant, endpoint_contracts=tuple(endpoints))
     with pytest.raises((PredictorLoadError, OutcomeAccessBlocked), match="contract|endpoint|key"):
         loader_module._derive_outcome_table_contract(grant, config)
+
+
+def test_task3_entry_reuses_real_task2_validator_end_to_end(tmp_path, monkeypatch):
+    paths, manifest_path = _real_method_lock_fixture(tmp_path, monkeypatch)
+
+    verified = validate_benchmark_method_lock(
+        manifest_path=manifest_path,
+        method_lock_paths=paths,
+    )
+
+    assert verified.feature_contract.generated_stage == "pre-outcome_predictor_only"
+    assert verified.feature_contract.sha256 == _sha(paths.feature_contract)
+    assert verified.manifest["feature_contract_sha256"] == _sha(
+        paths.feature_contract
+    )
 
 
 def test_temporary_verified_controlled_grant_reaches_real_gate_and_reads_after_success(

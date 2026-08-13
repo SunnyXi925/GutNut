@@ -160,6 +160,80 @@ def _balanced_assignment(
     return assignment
 
 
+def _split_whole_cohorts(
+    frame: pd.DataFrame,
+    *,
+    n_folds: int,
+    seed: int,
+) -> tuple[GroupSplit, ...]:
+    """Hold out complete cohort components linked by family/twin relationships."""
+
+    if "cohort_id" not in frame.columns:
+        raise ValueError("split data missing secondary column cohort_id")
+    participant_components = _component_by_participant(frame)
+    participant_values = frame[_PARTICIPANT_COLUMN].map(
+        lambda value: _nonempty_string(value, _PARTICIPANT_COLUMN)
+    )
+    cohort_values = frame["cohort_id"].map(
+        lambda value: _nonempty_string(value, "cohort_id")
+    )
+    participant_cohorts = pd.DataFrame(
+        {"participant_id": participant_values, "cohort_id": cohort_values}
+    ).drop_duplicates()
+    inconsistent = participant_cohorts["participant_id"].duplicated(keep=False)
+    if inconsistent.any():
+        raise ValueError("participant has inconsistent cohort_id metadata")
+
+    cohorts = tuple(sorted(cohort_values.unique()))
+    cohort_union = _UnionFind(cohorts)
+    component_to_cohorts: dict[str, list[str]] = {}
+    for row in participant_cohorts.itertuples(index=False):
+        component_to_cohorts.setdefault(
+            participant_components[str(row.participant_id)], []
+        ).append(str(row.cohort_id))
+    for linked_cohorts in component_to_cohorts.values():
+        anchor = min(linked_cohorts)
+        for cohort_id in linked_cohorts:
+            cohort_union.union(anchor, cohort_id)
+    cohort_members: dict[str, list[str]] = {}
+    for cohort_id in cohorts:
+        cohort_members.setdefault(cohort_union.find(cohort_id), []).append(cohort_id)
+    cohort_component = {
+        cohort_id: min(members)
+        for members in cohort_members.values()
+        for cohort_id in members
+    }
+    row_components = cohort_values.map(cohort_component)
+    component_weights = row_components.value_counts().astype(int).to_dict()
+    component_folds = _balanced_assignment(
+        component_weights,
+        n_folds=n_folds,
+        seed=seed,
+    )
+    row_folds = row_components.map(component_folds).to_numpy(dtype=int)
+    global_positions = frame["__gmnps_global_position__"].to_numpy(dtype=int)
+    participant_component_values = participant_values.map(participant_components)
+    splits = []
+    for fold_id in range(n_folds):
+        test_mask = row_folds == fold_id
+        train_mask = ~test_mask
+        splits.append(
+            GroupSplit(
+                fold_id=fold_id,
+                train_positions=tuple(sorted(global_positions[train_mask].tolist())),
+                test_positions=tuple(sorted(global_positions[test_mask].tolist())),
+                dropped_positions=(),
+                held_out_group_ids=tuple(
+                    sorted(participant_component_values[test_mask].unique())
+                ),
+                held_out_secondary_ids=tuple(
+                    sorted(cohort_values[test_mask].unique())
+                ),
+            )
+        )
+    return tuple(splits)
+
+
 def _split_frame(
     frame: pd.DataFrame,
     *,
@@ -167,6 +241,8 @@ def _split_frame(
     seed: int,
     secondary_holdout: str | None,
 ) -> tuple[GroupSplit, ...]:
+    if secondary_holdout == "cohort_id":
+        return _split_whole_cohorts(frame, n_folds=n_folds, seed=seed)
     components = _component_by_participant(frame)
     participant_values = frame[_PARTICIPANT_COLUMN].map(
         lambda value: _nonempty_string(value, _PARTICIPANT_COLUMN)
