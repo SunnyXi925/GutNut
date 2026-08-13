@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from gmnps.scoring import attribute_calibration as calibration_module
 from gmnps.scoring.attribute_calibration import (
     ATTRIBUTE_POINT_FRACTION_MODES,
     BETA_NORMALIZATION_METHOD_VERSION,
@@ -55,7 +56,9 @@ def _raw_for_transformed_vitamin_c(state, values):
     for row, transformed_value in enumerate(values):
         raw.iloc[row, raw.columns.get_loc("Vitamin C (mg)")] = (
             state.medians["Vitamin C (mg)"]
-            + state.scales["Vitamin C (mg)"] * 2.0 * np.arctanh(transformed_value)
+            + state.scales["Vitamin C (mg)"]
+            * calibration_module.LOCKED_BETA_TEMPERATURE
+            * np.arctanh(transformed_value)
         )
     return raw
 
@@ -115,12 +118,28 @@ def test_fit_records_an_immutable_locked_development_state():
     assert state.fit_n == 3
     assert state.fit_id_sha256 == sha256(b"dev_1\ndev_2\ndev_3").hexdigest()
     assert state.method_version == BETA_NORMALIZATION_METHOD_VERSION
-    assert state.temperature == 2.0
+    assert state.temperature == calibration_module.LOCKED_BETA_TEMPERATURE
     assert len(state.state_fingerprint) == 64
     with pytest.raises(FrozenInstanceError):
         state.fit_n = 4
     with pytest.raises(TypeError):
         state.medians["nutrient_a"] = 0.0
+
+
+def test_beta_and_attribute_response_temperatures_are_distinct_runtime_constants():
+    assert calibration_module.LOCKED_BETA_TEMPERATURE == 2.0
+    assert hasattr(calibration_module, "LOCKED_ATTRIBUTE_RESPONSE_TEMPERATURE")
+    assert calibration_module.LOCKED_ATTRIBUTE_RESPONSE_TEMPERATURE == 2.0
+
+    validation_source = inspect.getsource(calibration_module.validate_calibration_result)
+    calibration_source = inspect.getsource(calibration_module.calibrate_attribute_points)
+    assert "np.tanh(response / LOCKED_ATTRIBUTE_RESPONSE_TEMPERATURE)" in validation_source
+    assert (
+        "np.tanh(numeric_response / LOCKED_ATTRIBUTE_RESPONSE_TEMPERATURE)"
+        in calibration_source
+    )
+    assert "np.tanh(response / 2.0)" not in validation_source
+    assert "np.tanh(numeric_response / 2.0)" not in calibration_source
 
 
 def test_fit_has_no_public_temperature_override():
@@ -208,7 +227,10 @@ def test_transform_uses_only_frozen_state_and_aligns_held_out_columns():
 
     transformed = transform_beta(state, held_out)
 
-    expected_b = np.tanh(((8.0 - state.medians["b"]) / state.scales["b"]) / 2.0)
+    expected_b = np.tanh(
+        ((8.0 - state.medians["b"]) / state.scales["b"])
+        / calibration_module.LOCKED_BETA_TEMPERATURE
+    )
     assert transformed.columns.tolist() == ["a", "b"]
     assert transformed.loc["held_out", "a"] == 0.0
     assert transformed.loc["held_out", "b"] == pytest.approx(expected_b)
@@ -353,7 +375,9 @@ def test_calibration_uses_only_named_attribute_range_fraction_modes(mode, fracti
     result = calibrate_attribute_points(baseline, responses, mode=mode)
 
     expected_lambda = fraction_cap * 10.0
-    expected_delta = expected_lambda * np.tanh(0.8 / 2.0)
+    expected_delta = expected_lambda * np.tanh(
+        0.8 / calibration_module.LOCKED_ATTRIBUTE_RESPONSE_TEMPERATURE
+    )
     assert ATTRIBUTE_POINT_FRACTION_MODES[mode] == fraction_cap
     assert result.deltas.loc[("person_0", "food_1"), "vitamin_c"] == pytest.approx(expected_delta)
     vitamin_c = result.diagnostics.xs("vitamin_c", level="attribute")
@@ -390,7 +414,9 @@ def test_positive_response_makes_a_harmful_attribute_less_negative():
     state = fit_beta_normalization(_development_beta())
     raw = pd.DataFrame(0.0, index=["person_1"], columns=state.nutrient_order)
     raw.loc["person_1", "Cholesterol (mg)"] = (
-        state.scales["Cholesterol (mg)"] * 2.0 * np.arctanh(0.8)
+        state.scales["Cholesterol (mg)"]
+        * calibration_module.LOCKED_BETA_TEMPERATURE
+        * np.arctanh(0.8)
     )
     exposures = _complete_exposures()
     exposures.loc["food_1", "Cholesterol (mg)"] = 75.0
@@ -523,7 +549,9 @@ def test_validate_rejects_synchronized_nonreviewed_target_forgery():
     pair = ("person_0", "food_1")
     key = (*pair, "zinc")
     response = 1.0
-    raw_delta = 2.0 * np.tanh(response / 2.0)
+    raw_delta = 2.0 * np.tanh(
+        response / calibration_module.LOCKED_ATTRIBUTE_RESPONSE_TEMPERATURE
+    )
     points.loc[pair, "zinc"] += raw_delta
     deltas.loc[pair, "zinc"] = raw_delta
     diagnostics.loc[key, "attribute_response"] = response

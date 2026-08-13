@@ -59,6 +59,9 @@ def _runtime_fixed_parameters():
         "beta_mad_normal_consistency": attribute_calibration._MAD_NORMAL_CONSISTENCY,
         "beta_iqr_normal_consistency": attribute_calibration._IQR_NORMAL_CONSISTENCY,
         "beta_temperature": attribute_calibration.LOCKED_BETA_TEMPERATURE,
+        "attribute_response_temperature": getattr(
+            attribute_calibration, "LOCKED_ATTRIBUTE_RESPONSE_TEMPERATURE", None
+        ),
         "attribute_point_mode": config["attribute_point_mode"],
         "attribute_point_fraction_cap": point_modes["primary"],
         "attribute_point_fraction_sensitivity": [point_modes["low"], point_modes["high"]],
@@ -257,11 +260,18 @@ def test_method_spec_covers_locked_science_and_migration_boundary():
         "FNDDS 2021-2023",
         "non-production",
         "fixed baseline attribute within a recomputed domain",
-        "Phase 2 Task 1",
+        "Phase 2 Task 2",
         "before any validation endpoint or label is read",
         "fail closed",
+        "LOCKED_BETA_TEMPERATURE",
+        "LOCKED_ATTRIBUTE_RESPONSE_TEMPERATURE",
+        "independent runtime constant",
     }
-    assert all(phrase.lower() in text.lower() for phrase in required_phrases)
+    normalized_text = " ".join(text.lower().split())
+    assert all(
+        " ".join(phrase.lower().split()) in normalized_text
+        for phrase in required_phrases
+    )
 
     for rule_name in FCS2_RULES:
         assert f"`{rule_name}`" in text or rule_name in MAPPING_PATH.read_text(encoding="utf-8")
@@ -297,18 +307,54 @@ def test_runtime_carbohydrate_proxy_is_single_mac_definition():
     assert carbohydrate[0].channel == "MAC"
 
 
-def test_phase_2_plan_requires_manifest_gate_before_label_inspection():
+def _phase_2_task(plan, number, next_number=None):
+    section = plan.split(f"### Task {number}:", 1)[1]
+    if next_number is not None:
+        section = section.split(f"### Task {next_number}:", 1)[0]
+    return section.lower()
+
+
+def test_phase_2_plan_has_an_acyclic_pre_label_method_lock_dag():
     plan = PHASE_2_PLAN_PATH.read_text(encoding="utf-8")
-    task_1 = plan.split("### Task 1:", 1)[1].split("### Task 2:", 1)[0].lower()
-    required = {
+    task_1 = _phase_2_task(plan, 1, 2)
+    task_2 = _phase_2_task(plan, 2, 3)
+    task_3 = _phase_2_task(plan, 3, 4)
+
+    task_1_contract = {
+        "provenance inventory",
+        "generator/validator contract",
+        "does not generate or require a run-level instance",
+    }
+    assert all(phrase in task_1 for phrase in task_1_contract)
+
+    stages = (
+        "stage 2a: predictor-only acquisition and reconstruction",
+        "stage 2b: freeze scoring inputs and analysis config",
+        "stage 2c: generate and validate the real method-lock instance",
+        "stage 2d: unlock outcome loader after gate success",
+    )
+    assert all(stage in task_2 for stage in stages)
+    assert [task_2.index(stage) for stage in stages] == sorted(
+        task_2.index(stage) for stage in stages
+    )
+
+    task_2_required = {
         "method_lock_manifest.json",
         "development_beta_sha256",
         "normalization_state_fingerprint",
         "scoring_beta_sha256",
-        "before any validation endpoint or label is read",
-        "recompute",
+        "held-out scoring beta",
+        "food bundle",
+        "person_meal_validation.yaml",
+        "must not read outcome or label tables",
+        "only after the gate succeeds",
         "fail closed",
-        "stop",
+        "synthetic and aggregate supplementary labels cannot bypass",
+        "record the direct-validation path as blocked",
+        "must not fabricate values",
     }
-    assert all(phrase.lower() in task_1 for phrase in required)
-    assert task_1.index("method_lock_manifest.json") < task_1.index("endpoint or label is read")
+    assert all(phrase in task_2 for phrase in task_2_required)
+    assert task_2.index("must not read outcome or label tables") < task_2.index(stages[2])
+    assert task_2.index("person_meal_validation.yaml") < task_2.index(stages[2])
+    assert "create: `code/src/configs/person_meal_validation.yaml`" not in task_3
+    assert "consume the frozen `person_meal_validation.yaml`" in task_3

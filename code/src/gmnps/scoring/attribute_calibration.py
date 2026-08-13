@@ -22,6 +22,7 @@ from gmnps.scoring.fcs2_attribute_rules import FCS2_RULES, NOT_CALCULATED, NotCa
 
 BETA_NORMALIZATION_METHOD_VERSION = "median_mad_iqr_sd_v1"
 LOCKED_BETA_TEMPERATURE = 2.0
+LOCKED_ATTRIBUTE_RESPONSE_TEMPERATURE = 2.0
 ATTRIBUTE_POINT_FRACTION_MODES: Mapping[str, float] = MappingProxyType(
     {"primary": 0.20, "low": 0.10, "high": 0.30}
 )
@@ -700,7 +701,9 @@ def validate_calibration_result(
             )
             if not lower <= baseline <= upper:
                 raise ValueError("calibration diagnostic baseline is outside published bounds")
-            expected_raw_delta = expected_lambda * float(np.tanh(response / 2.0))
+            expected_raw_delta = expected_lambda * float(
+                np.tanh(response / LOCKED_ATTRIBUTE_RESPONSE_TEMPERATURE)
+            )
             candidate = baseline + expected_raw_delta
             expected_point = min(max(candidate, lower), upper)
             expected_delta = expected_point - baseline
@@ -816,7 +819,9 @@ def calibrate_attribute_points(
                 response,
                 f"attribute_responses[{individual_id}, {food_id}, {attribute}]",
             )
-            raw_delta = lambda_points * float(np.tanh(numeric_response / 2.0))
+            raw_delta = lambda_points * float(
+                np.tanh(numeric_response / LOCKED_ATTRIBUTE_RESPONSE_TEMPERATURE)
+            )
             candidate = numeric_baseline + raw_delta
             calibrated = min(max(candidate, lower_bound), upper_bound)
             point_delta = calibrated - numeric_baseline

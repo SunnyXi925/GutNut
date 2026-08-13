@@ -23,7 +23,8 @@ analysis. The exact source values and all mapping registries are exported in
 | Primary method | `attribute_recomposition` | `legacy_final_score_offset` (restricted comparator) |
 | Mapping | `expert_reviewed_attribute_mapping_v1` | `fiber_all_ratio`, `fiber_all_absolute`, `potassium_all_ratio`, `potassium_all_absolute`, `carbohydrate_proxy` |
 | Beta normalization | `median_mad_iqr_sd_v1` | none |
-| Beta temperature | 2.0 | none |
+| Beta normalization temperature (`LOCKED_BETA_TEMPERATURE`) | 2.0 | none |
+| Attribute response temperature (`LOCKED_ATTRIBUTE_RESPONSE_TEMPERATURE`) | 2.0 | none |
 | Attribute point fraction | 0.20 (`primary`) | 0.10 (`low`), 0.30 (`high`) |
 | Final FCS2-relative cap | 12 points (`primary`) | 8 (`low`), 15 (`high`) |
 | Mask | `expert_revised_v4_dual_channel` | none in this method lock |
@@ -128,16 +129,18 @@ development cohort. For each nutrient, define the development median `m_n` and
 select the first positive scale in this order:
 
 ```text
+T_beta = LOCKED_BETA_TEMPERATURE = 2.0
 s_n = 1.4826 * median(|b_dn - m_n|)
       else (q75_n - q25_n) / 1.349
       else population standard deviation (ddof=0)
       else 1.0.
-z_in = tanh(((b_in - m_n) / s_n) / 2.0).
+z_in = tanh(((b_in - m_n) / s_n) / T_beta).
 ```
 
 The nutrient order, medians, scales, selected scale methods, fit count, fit-ID
-SHA-256, method version, and temperature are immutable normalization state. The
-fit-ID hash is SHA-256 of sorted development IDs joined by a newline.
+SHA-256, method version, and beta normalization temperature are immutable
+normalization state. The fit-ID hash is SHA-256 of sorted development IDs joined
+by a newline.
 
 For food `j`, reviewed mapping row `n -> a`, allocation `w_na`, and normalized
 per-100-kcal exposure `e_jna`, the uncapped attribute response is:
@@ -173,10 +176,16 @@ For attribute `a`, let `[l_a,h_a]` be its published point range and let
 `c=0.20` in the primary mode. The point movement and calibrated point are:
 
 ```text
+T_response = LOCKED_ATTRIBUTE_RESPONSE_TEMPERATURE = 2.0
 lambda_a = c * (h_a - l_a)
-raw_delta_ija = lambda_a * tanh(r_ija / 2.0)
+raw_delta_ija = lambda_a * tanh(r_ija / T_response)
 p_ija = clip(p_ja + raw_delta_ija, l_a, h_a).
 ```
+
+`T_response` controls only the bounded conversion from attribute response to
+native point movement. It is an independent runtime constant from `T_beta`,
+which controls only raw-beta normalization. Both are currently 2.0, but equality
+of their numeric values does not merge their scientific meaning or versioning.
 
 The low/high sensitivity values for `c` are 0.10 and 0.30. A canonical
 `NOT_CALCULATED` baseline remains `NOT_CALCULATED`. Attributes outside reviewed
@@ -301,7 +310,7 @@ Task 6. Run data hashes remain run-specific and are required by
 | --- | --- |
 | `code/src/gmnps/scoring/fcs2_attribute_rules.py` | `60dcc7deb872d404700303aa01deec0dea344d6069e0fed14ae2bc4ceb3bdae0` |
 | `code/src/gmnps/scoring/fcs2_attribute_mapping.py` | `efaff176113d6db1d0d746230f60b8d82e0dc10e4aac842c1403921976823b9d` |
-| `code/src/gmnps/scoring/attribute_calibration.py` | `daf129b39f900e7693da09d16ae422fb82e9e4d27b5d065059a5e20af00b27a1` |
+| `code/src/gmnps/scoring/attribute_calibration.py` | `d704ed033f648d7e110f540d13e22526b134b9b500ca77e61d523641abba26f9` |
 | `code/src/gmnps/scoring/attribute_recomposition.py` | `f0db2e8febdd48ef2421a1286f84b2758d87e6d75250dbd6383ef8e3701d6ea1` |
 | `code/src/gmnps/scoring/attribute_gmnps.py` | `b2bb1ca5663c2f737c58de3a7d85c4d37c2ae43c99f9b8f4dd5f8179690eddd5` |
 | `code/src/configs/attribute_gmnps.yaml` | `f450453811653e074ee4143cf6d9a21b9e68a5512924490fe9c64bc5f402e390` |
@@ -315,9 +324,13 @@ beta hash, fixed parameters, and the validation embargo flag.
 ## Phase 2 handoff gate
 
 Task 6 defines the contract but does not invent an instance without real run
-inputs. Phase 2 Task 1 must generate `method_lock_manifest.json` from the actual
-development beta, frozen normalization state, scoring beta, food bundle, and
-implementation bytes. Before any validation endpoint or label is read, its
-validator must recompute every applicable hash and fingerprint, validate the
-instance against `method_lock_manifest.schema.json`, and confirm the embargo.
-Any missing field or mismatch must fail closed and stop the validation run.
+inputs. Phase 2 Task 1 implements the provenance inventory and the manifest
+generator/validator contract; it does not require a real instance before scoring
+inputs exist. Phase 2 Task 2 first reconstructs predictor-only resources, then
+freezes held-out scoring beta, the food bundle, and endpoint/analysis config.
+It then generates and validates `method_lock_manifest.json` from those actual
+inputs and the frozen normalization state. Before any validation endpoint or
+label is read, the validator must recompute every applicable hash and
+fingerprint, validate the instance against
+`method_lock_manifest.schema.json`, and confirm the embargo. Any missing field
+or mismatch must fail closed and stop the validation run.
