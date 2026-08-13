@@ -1,0 +1,59 @@
+code/src/tests/test_evidence_gate.py
+  s_4d75bbbcc79dac::t_b5bf3bb35fafa6 603-613,742
+  s_4d75bbbcc79dac::t_8cecd0982989b3 741,743-746,748-751,753-778,1032-1044,1046-1069
+  s_4d75bbbcc79dac::t_e38c1ce0e798c8 614-627,670,747,752
+  s_4d75bbbcc79dac::t_cd21c014de9d5e 466,500-550
+  s_4d75bbbcc79dac::t_ca0115346511e0 156-157,672-680,682-683
+  s_4d75bbbcc79dac::t_e565dbb0a4406a 980-981,1023-1024
+  s_4d75bbbcc79dac::t_36517b01073354 309-318,337-372,381-383,385-388,390-392,394-396,402-411,455
+  s_4d75bbbcc79dac::t_5ccc44917220bb 1045
+  s_4d75bbbcc79dac::t_f61ae952b01a7d 671,737-740,1070-1071
+code/src/gmnps/validation/claim_policy.py
+  s_4d75bbbcc79dac::t_7e4db6c2977f30 31-45,48-49,51-61,104-106,115,327-331,347-356,359,361-364,379-381,383-392
+  s_4d75bbbcc79dac::t_5ccc44917220bb 64-65,382
+  s_4d75bbbcc79dac::t_f61ae952b01a7d 62-63
+results/phase2/evidence-gate/claim_policy.json
+  s_4d75bbbcc79dac::t_1426b48a4f03d2 5-6,16-19,22-36,39,41-45
+code/src/tests/test_attribute_synthetic_twin.py
+  s_4d75bbbcc79dac::t_d60fce5c094482 256
+  s_4d75bbbcc79dac::t_e38c1ce0e798c8 253
+  s_4d75bbbcc79dac::t_8cecd0982989b3 3,240-252,254-255,257-258
+.superpowers/sdd/phase2-task2-report.md
+  s_4d75bbbcc79dac::t_dd6ae0ceec25b9 1-325
+.superpowers/sdd/phase2-task5-report.md
+  s_4d75bbbcc79dac::t_dd6ae0ceec25b9 435-527
+docs/data/validation_evidence_matrix.md
+  s_4d75bbbcc79dac::t_dd6ae0ceec25b9 6-10,14-18,35-38,59-61,68-76
+code/src/gmnps/validation/evidence_gate.py
+  s_4d75bbbcc79dac::t_bc0ca913a7d958 470-629,633,669-670,677-683,720-766,769-774,797,806-807,814,818,823-824
+  s_4d75bbbcc79dac::t_c016c78bc547fa 265,940,1129-1138
+  s_4d75bbbcc79dac::t_89bbe35e5c18e8 461-469,671-676
+  s_4d75bbbcc79dac::t_535edf54cc657f 28-29,45-47
+  s_4d75bbbcc79dac::t_76d4efb7cea7c7 81-83,191,395-396,1151,1153-1162
+results/phase2/evidence-gate/current_gate_decision.json
+  s_4d75bbbcc79dac::t_1426b48a4f03d2 5-6,19,26-29,31,34
+code/src/gmnps/validation/attribute_synthetic_twin.py
+  s_4d75bbbcc79dac::t_ed3cda22ceded2 1115-1119,1130
+code/src/configs/claim_policy_registry.json
+  s_4d75bbbcc79dac::t_4985a59ab31f1b 6,8
+results/phase2/source-data/correctly_specified_synthetic_positive_control/synthetic_attribute_twin_manifest.json
+  s_4d75bbbcc79dac::t_93997748498e74 67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "6a20b89bc419bf5087a3182417b39ae98b55e7e2",
+  "prompts": {},
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 9,
+      "accepted_lines": 9
+    }
+  }
+}
