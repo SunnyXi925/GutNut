@@ -106,7 +106,7 @@ class MicrobiomeShuffleArtifactPaths:
     rerun_run_manifest: Path
     rerun_success_marker: Path
     rerun_input_manifest: Path
-    mapping: Path
+    mapping_sidecar: Path
     original_scoring_beta: Path
     rerun_scoring_beta: Path
     method_lock_manifest: Path
@@ -407,7 +407,7 @@ def _canonical_beta(raw: bytes, label: str) -> tuple[list[str], list[str], np.nd
 
 def _verify_deranged_beta(
     original_scores: pd.DataFrame,
-    mapping: pd.DataFrame,
+    sidecar: pd.DataFrame,
     original_beta_bytes: bytes,
     rerun_beta_bytes: bytes,
 ) -> None:
@@ -417,38 +417,24 @@ def _verify_deranged_beta(
     rerun_people, rerun_nutrients, rerun_values = _canonical_beta(
         rerun_beta_bytes, "rerun scoring beta"
     )
-    if original_people != rerun_people or nutrients != rerun_nutrients:
-        raise ValueError("rerun beta must preserve participant and nutrient order")
-    person_component = original_scores[["individual_id", "component_id"]].drop_duplicates()
-    if person_component["individual_id"].duplicated().any():
-        raise ValueError("person-to-component assignment must be invariant")
-    person_component["individual_id"] = person_component["individual_id"].astype(str)
-    person_component["component_id"] = person_component["component_id"].astype(str)
-    if set(original_people) != set(person_component["individual_id"]):
-        raise ValueError("scoring beta participants do not equal score-table people")
-    by_component = {
-        component: sorted(group["individual_id"].tolist())
-        for component, group in person_component.groupby("component_id")
-    }
+    if nutrients != rerun_nutrients:
+        raise ValueError("rerun beta must preserve nutrient order")
+    score_people = set(original_scores["individual_id"].astype(str))
+    normalized, _ = _validate_person_mapping_sidecar(sidecar, score_people)
+    if set(original_people) != score_people or set(rerun_people) != score_people:
+        raise ValueError(
+            "target/source individual sets must exactly equal score-table and beta person IDs"
+        )
     original_index = {person: index for index, person in enumerate(original_people)}
     rerun_index = {person: index for index, person in enumerate(rerun_people)}
-    map_dict = dict(
-        zip(
-            mapping["independent_unit_id"].astype(str),
-            mapping["shuffled_profile_unit_id"].astype(str),
-        )
-    )
-    for target_component, source_component in map_dict.items():
-        target_people = by_component[target_component]
-        source_people = by_component[source_component]
-        if len(target_people) != len(source_people):
-            raise ValueError("deranged components must have equal person counts")
-        for target_person, source_person in zip(target_people, source_people):
-            if not np.array_equal(
-                rerun_values[rerun_index[target_person]],
-                original_values[original_index[source_person]],
-            ):
-                raise ValueError("rerun beta is not the declared profile derangement")
+    for row in normalized.itertuples(index=False):
+        if not np.array_equal(
+            rerun_values[rerun_index[row.target_individual_id]],
+            original_values[original_index[row.source_individual_id]],
+        ):
+            raise ValueError(
+                "rerun beta target individual is not exactly the declared source individual"
+            )
 
 
 def _require_columns(frame: pd.DataFrame, required: set[str], label: str) -> None:
@@ -463,6 +449,81 @@ def _reject_outcomes(frame: pd.DataFrame) -> None:
     leaked = sorted({str(column).strip().lower() for column in frame.columns} & _OUTCOME_COLUMNS)
     if leaked:
         raise ValueError(f"supporting input contains outcome/label leakage: {leaked}")
+
+
+_PERSON_MAPPING_SIDECAR_COLUMNS = (
+    "target_individual_id",
+    "source_individual_id",
+    "target_component_id",
+    "source_component_id",
+)
+
+
+def _validate_person_mapping_sidecar(
+    sidecar: pd.DataFrame,
+    score_people: set[str],
+) -> tuple[pd.DataFrame, dict[str, str]]:
+    _require_columns(sidecar, set(_PERSON_MAPPING_SIDECAR_COLUMNS), "mapping sidecar")
+    _reject_outcomes(sidecar)
+    if set(sidecar.columns) != set(_PERSON_MAPPING_SIDECAR_COLUMNS):
+        raise ValueError(
+            "mapping sidecar must contain exactly target/source individual/component columns"
+        )
+    work = sidecar.loc[:, _PERSON_MAPPING_SIDECAR_COLUMNS].copy()
+    for column in _PERSON_MAPPING_SIDECAR_COLUMNS:
+        if work[column].isna().any() or work[column].astype(str).str.strip().eq("").any():
+            raise ValueError(f"mapping sidecar {column} must be nonempty")
+        work[column] = work[column].astype(str).str.strip()
+    target_people = set(work["target_individual_id"])
+    source_people = set(work["source_individual_id"])
+    if target_people != score_people or source_people != score_people:
+        raise ValueError(
+            "target/source individual sets must exactly equal scorer table/beta person IDs"
+        )
+    if (
+        work["target_individual_id"].duplicated().any()
+        or work["source_individual_id"].duplicated().any()
+        or target_people != source_people
+    ):
+        raise ValueError("mapping sidecar target-to-source people must be bijective")
+    if work["target_individual_id"].eq(work["source_individual_id"]).any():
+        raise ValueError("mapping sidecar must be a person-level derangement")
+
+    membership = dict(
+        zip(work["target_individual_id"], work["target_component_id"])
+    )
+    expected_source_components = work["source_individual_id"].map(membership)
+    if not expected_source_components.eq(work["source_component_id"]).all():
+        raise ValueError(
+            "source_component_id must equal invariant component membership of source individual"
+        )
+    component_pairs = work[
+        ["target_component_id", "source_component_id"]
+    ].drop_duplicates()
+    if (
+        component_pairs["target_component_id"].duplicated().any()
+        or component_pairs["source_component_id"].duplicated().any()
+        or set(component_pairs["target_component_id"])
+        != set(component_pairs["source_component_id"])
+    ):
+        raise ValueError("mapping sidecar component mapping must be bijective")
+    if component_pairs["target_component_id"].eq(
+        component_pairs["source_component_id"]
+    ).any():
+        raise ValueError("mapping sidecar must be a component-level derangement")
+    component_map = dict(
+        zip(
+            component_pairs["target_component_id"],
+            component_pairs["source_component_id"],
+        )
+    )
+    component_sizes = work.groupby("target_component_id")[
+        "target_individual_id"
+    ].size()
+    for target_component, source_component in component_map.items():
+        if int(component_sizes[target_component]) != int(component_sizes[source_component]):
+            raise ValueError("deranged components must have compatible person counts")
+    return work, component_map
 
 
 def _person_invariant(frame: pd.DataFrame, column: str) -> None:
@@ -808,7 +869,7 @@ def disease_cohort_consistency_from_paths(
 def evaluate_microbiome_shuffle_rerun(
     original_scores: pd.DataFrame,
     rerun_scores: pd.DataFrame,
-    mapping: pd.DataFrame,
+    mapping_sidecar: pd.DataFrame,
     provenance_manifest: Mapping[str, object],
     *,
     allow_test_data: bool = False,
@@ -821,7 +882,7 @@ def evaluate_microbiome_shuffle_rerun(
     for field, observed in {
         "original_table_sha256": canonical_frame_sha256(original_scores),
         "rerun_table_sha256": canonical_frame_sha256(rerun_scores),
-        "mapping_sha256": canonical_frame_sha256(mapping),
+        "mapping_sidecar_sha256": canonical_frame_sha256(mapping_sidecar),
     }.items():
         if provenance_manifest.get(field) != observed:
             raise ValueError(f"{field} does not bind the supplied toy rerun")
@@ -832,92 +893,83 @@ def evaluate_microbiome_shuffle_rerun(
     ):
         _sha(provenance_manifest.get(field), field)
     return _evaluate_microbiome_shuffle_frames(
-        original_scores, rerun_scores, mapping, production=False
+        original_scores, rerun_scores, mapping_sidecar, production=False
     )
 
 
 def _evaluate_microbiome_shuffle_frames(
     original_scores: pd.DataFrame,
     rerun_scores: pd.DataFrame,
-    mapping: pd.DataFrame,
+    mapping_sidecar: pd.DataFrame,
     *,
     production: bool,
 ) -> dict[str, object]:
-    _require_columns(
-        mapping,
-        {"independent_unit_id", "shuffled_profile_unit_id"},
-        "shuffle mapping",
-    )
-    mapping = mapping.copy()
-    for column in ("independent_unit_id", "shuffled_profile_unit_id"):
-        if mapping[column].isna().any() or mapping[column].astype(str).str.strip().eq("").any():
-            raise ValueError(f"shuffle mapping {column} must be nonempty")
-        mapping[column] = mapping[column].astype(str).str.strip()
     for frame, label in ((original_scores, "original"), (rerun_scores, "rerun")):
+        _reject_outcomes(frame)
         _require_columns(
             frame,
-            {"individual_id", "component_id", "food_id", "GMNPS_delta"},
-            f"{label} score table",
-        )
-    score_units = set(original_scores["component_id"].astype(str))
-    if (
-        set(rerun_scores["component_id"].astype(str)) != score_units
-        or set(mapping["independent_unit_id"]) != score_units
-        or set(mapping["shuffled_profile_unit_id"]) != score_units
-    ):
-        raise ValueError(
-            "derangement mapping units must be exactly equal score-table independent units"
-        )
-    if (
-        mapping["independent_unit_id"].duplicated().any()
-        or mapping["shuffled_profile_unit_id"].duplicated().any()
-        or set(mapping["independent_unit_id"]) != set(mapping["shuffled_profile_unit_id"])
-    ):
-        raise ValueError("microbiome shuffle mapping must be bijective")
-    if mapping["independent_unit_id"].eq(mapping["shuffled_profile_unit_id"]).any():
-        raise ValueError("microbiome shuffle mapping must be a derangement")
-    for frame, label in ((original_scores, "original"), (rerun_scores, "rerun")):
-        _require_columns(
-            frame,
-            {"individual_id", "component_id", "food_id", "GMNPS_delta"},
+            {"individual_id", "food_id", "FCS2", "GMNPS_score", "GMNPS_delta"},
             f"{label} score table",
         )
         if frame.duplicated(["individual_id", "food_id"]).any():
             raise ValueError(f"{label} score table contains duplicate person-food rows")
-        for column in ("individual_id", "component_id", "food_id"):
+        for column in ("individual_id", "food_id"):
             if frame[column].isna().any() or frame[column].astype(str).str.strip().eq("").any():
                 raise ValueError(f"{label} score table {column} must be nonempty")
-        invariant = frame.groupby("individual_id")["component_id"].nunique(dropna=False)
-        if (invariant != 1).any():
-            raise ValueError("person-to-component assignment must be invariant")
-    if "profile_source_unit_id" not in rerun_scores:
-        raise ValueError("rerun scores must record profile_source_unit_id")
-    keys = ["individual_id", "component_id", "food_id"]
+        numeric = frame[["FCS2", "GMNPS_score", "GMNPS_delta"]].apply(
+            pd.to_numeric, errors="coerce"
+        )
+        if not np.isfinite(numeric.to_numpy(float)).all():
+            raise ValueError(f"{label} score table values must be finite")
+        if not np.allclose(
+            numeric["GMNPS_delta"],
+            numeric["GMNPS_score"] - numeric["FCS2"],
+            rtol=0.0,
+            atol=1e-9,
+        ):
+            raise ValueError(
+                f"{label} GMNPS_delta must equal GMNPS_score - FCS2"
+            )
+        if "method_role" in frame and not frame["method_role"].eq("primary").all():
+            raise ValueError(f"{label} score table method_role must be primary")
+    original_people = set(original_scores["individual_id"].astype(str))
+    rerun_people = set(rerun_scores["individual_id"].astype(str))
+    if original_people != rerun_people:
+        raise ValueError("original and rerun score tables must contain the same people")
+    sidecar, component_map = _validate_person_mapping_sidecar(
+        mapping_sidecar, original_people
+    )
+    keys = ["individual_id", "food_id"]
     if original_scores[keys].sort_values(keys).reset_index(drop=True).equals(
         rerun_scores[keys].sort_values(keys).reset_index(drop=True)
     ) is False:
         raise ValueError("original and rerun score tables must share the same panel")
-    map_dict = dict(
-        zip(mapping["independent_unit_id"], mapping["shuffled_profile_unit_id"])
-    )
-    expected_source = rerun_scores["component_id"].astype(str).map(map_dict)
-    if expected_source.isna().any() or not expected_source.eq(
-        rerun_scores["profile_source_unit_id"].astype(str)
-    ).all():
-        raise ValueError("rerun profile_source_unit_id does not match the shuffle mapping")
-    left = original_scores.sort_values(keys)["GMNPS_delta"].to_numpy(float)
-    right = rerun_scores.sort_values(keys)["GMNPS_delta"].to_numpy(float)
-    if not np.isfinite(left).all() or not np.isfinite(right).all():
-        raise ValueError("original and rerun GMNPS values must be finite")
+    original_ordered = original_scores.sort_values(keys).reset_index(drop=True)
+    rerun_ordered = rerun_scores.sort_values(keys).reset_index(drop=True)
+    if not np.array_equal(
+        original_ordered["FCS2"].to_numpy(float),
+        rerun_ordered["FCS2"].to_numpy(float),
+    ):
+        raise ValueError("original and rerun score tables must share identical FCS2")
+    panel = tuple(sorted(original_scores["food_id"].astype(str).unique()))
+    panels = original_scores.assign(
+        individual_id=original_scores["individual_id"].astype(str),
+        food_id=original_scores["food_id"].astype(str),
+    ).groupby("individual_id")["food_id"].apply(lambda values: tuple(sorted(values)))
+    if not panels.map(lambda values: values == panel).all():
+        raise ValueError("score-table people must share an identical complete food panel")
+    left = original_ordered["GMNPS_delta"].to_numpy(float)
+    right = rerun_ordered["GMNPS_delta"].to_numpy(float)
     return {
         "analysis_status": "verified" if production else "contract_verified_test_only",
         "mapping_status": "bijective_derangement",
-        "n_independent_units": int(mapping["independent_unit_id"].nunique()),
+        "n_independent_units": len(component_map),
+        "n_individuals": int(sidecar["target_individual_id"].nunique()),
         "n_foods": int(original_scores["food_id"].nunique()),
         "mean_absolute_score_change": float(np.mean(np.abs(right - left))),
         "original_table_sha256": canonical_frame_sha256(original_scores),
         "rerun_table_sha256": canonical_frame_sha256(rerun_scores),
-        "mapping_sha256": canonical_frame_sha256(mapping),
+        "mapping_sidecar_sha256": canonical_frame_sha256(mapping_sidecar),
         "evidence_role": BIOLOGICAL_CONSISTENCY,
         "analysis_boundary": "profile_derangement_locked_rescoring_control_only",
     }
@@ -961,14 +1013,16 @@ def toy_profile_attribute_rescore(
     else:
         _require_columns(
             mapping,
-            {"independent_unit_id", "shuffled_profile_unit_id"},
-            "toy shuffle mapping",
+            set(_PERSON_MAPPING_SIDECAR_COLUMNS),
+            "toy mapping sidecar",
         )
-        target = mapping["independent_unit_id"].astype(str)
-        source = mapping["shuffled_profile_unit_id"].astype(str)
-        if target.duplicated().any() or source.duplicated().any() or set(target) != set(units) or set(source) != set(units):
-            raise ValueError("toy shuffle mapping must be a complete bijection")
-        source_by_target = dict(zip(target, source))
+        normalized, _ = _validate_person_mapping_sidecar(mapping, set(units))
+        source_by_target = dict(
+            zip(
+                normalized["target_individual_id"],
+                normalized["source_individual_id"],
+            )
+        )
     profile = profile.set_index(profile["independent_unit_id"].astype(str))
     rows: list[dict[str, object]] = []
     for target in units:
@@ -983,12 +1037,10 @@ def toy_profile_attribute_rescore(
             rows.append(
                 {
                     "individual_id": target,
-                    "component_id": target,
                     "food_id": str(food_row.food_id),
                     "FCS2": float(food_row.FCS2),
                     "GMNPS_delta": score - float(food_row.FCS2),
                     "GMNPS_score": score,
-                    "profile_source_unit_id": source,
                 }
             )
     return pd.DataFrame(rows)
@@ -1009,7 +1061,9 @@ def evaluate_microbiome_shuffle_rerun_from_paths(
     raw = {
         "original_table": _immutable_read(paths.original_score_table, "original score table"),
         "rerun_table": _immutable_read(paths.rerun_score_table, "rerun score table"),
-        "mapping": _immutable_read(paths.mapping, "shuffle mapping"),
+        "mapping_sidecar": _immutable_read(
+            paths.mapping_sidecar, "person/component mapping sidecar"
+        ),
         "original_run_manifest": _immutable_read(paths.original_run_manifest, "original run manifest"),
         "rerun_run_manifest": _immutable_read(paths.rerun_run_manifest, "rerun run manifest"),
         "original_input_manifest": _immutable_read(paths.original_input_manifest, "original input manifest"),
@@ -1024,9 +1078,9 @@ def evaluate_microbiome_shuffle_rerun_from_paths(
         raise ValueError("rerun score table changed after supporting-source verification")
     try:
         original = pd.read_csv(BytesIO(raw["original_table"]))
-        mapping = pd.read_csv(BytesIO(raw["mapping"]))
+        mapping_sidecar = pd.read_csv(BytesIO(raw["mapping_sidecar"]))
     except Exception as error:
-        raise ValueError("shuffle run score table or mapping is unreadable") from error
+        raise ValueError("shuffle run score table or mapping sidecar is unreadable") from error
 
     original_phase1 = verify_phase1_run_artifacts(
         paths.original_score_table,
@@ -1102,8 +1156,19 @@ def evaluate_microbiome_shuffle_rerun_from_paths(
     for name in original_files:
         if name != "score_beta" and _manifest_file_digest(original_input, name) != _manifest_file_digest(rerun_input, name):
             raise ValueError("original and rerun must use identical production food/method artifacts")
-    original_nonfiles = {key: value for key, value in original_input.items() if key != "files"}
-    rerun_nonfiles = {key: value for key, value in rerun_input.items() if key != "files"}
+    sidecar_hash = sha256(raw["mapping_sidecar"]).hexdigest()
+    if "microbiome_shuffle_sidecar_sha256" in original_input:
+        raise ValueError("original input manifest must not declare a shuffle sidecar")
+    if rerun_input.get("microbiome_shuffle_sidecar_sha256") != sidecar_hash:
+        raise ValueError("rerun input manifest does not bind the mapping sidecar")
+    original_nonfiles = {
+        key: value for key, value in original_input.items() if key != "files"
+    }
+    rerun_nonfiles = {
+        key: value
+        for key, value in rerun_input.items()
+        if key not in {"files", "microbiome_shuffle_sidecar_sha256"}
+    }
     if original_nonfiles != rerun_nonfiles:
         raise ValueError("original and rerun input method contracts differ")
     if _manifest_file_digest(original_input, "score_beta") != sha256(raw["original_scoring_beta"]).hexdigest():
@@ -1114,7 +1179,7 @@ def evaluate_microbiome_shuffle_rerun_from_paths(
     observed = {
         "original_table_sha256": sha256(raw["original_table"]).hexdigest(),
         "rerun_table_sha256": sha256(raw["rerun_table"]).hexdigest(),
-        "mapping_sha256": sha256(raw["mapping"]).hexdigest(),
+        "mapping_sidecar_sha256": sidecar_hash,
         "original_scoring_manifest_sha256": sha256(raw["original_run_manifest"]).hexdigest(),
         "rerun_scoring_manifest_sha256": sha256(raw["rerun_run_manifest"]).hexdigest(),
         "locked_scoring_contract_sha256": _canonical_mapping_sha256(_scoring_contract(original_run)),
@@ -1136,9 +1201,14 @@ def evaluate_microbiome_shuffle_rerun_from_paths(
             raise ValueError(f"trusted supporting registry {field} does not match live artifacts")
     # Analysis starts only after every live byte has matched provenance and the
     # repository-trusted registry entry.
-    result = _evaluate_microbiome_shuffle_frames(original, rerun, mapping, production=True)
+    result = _evaluate_microbiome_shuffle_frames(
+        original, rerun, mapping_sidecar, production=True
+    )
     _verify_deranged_beta(
-        original, mapping, raw["original_scoring_beta"], raw["rerun_scoring_beta"]
+        original,
+        mapping_sidecar,
+        raw["original_scoring_beta"],
+        raw["rerun_scoring_beta"],
     )
     result["verified_input_hashes"] = {**source_hashes, **observed}
     return result
