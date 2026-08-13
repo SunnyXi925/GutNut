@@ -1,0 +1,32 @@
+code/src/gmnps/data_sources/predict_zoe_loader.py
+  s_4d75bbbcc79dac::t_78388684b61e2c 16,19,156-163,239-242,245-252,254,260-267,269-294,296-297,299-300,302-304,306,308-309,311-316,318-376,379,381-383,385,419,423-424,427-429,432-440,450-451,463-464,466,468,470
+docs/data/predict_zoe_reconstruction_log.md
+  s_4d75bbbcc79dac::t_cf7816fe413852 18-27
+code/src/tests/test_predict_zoe_loader.py
+  s_4d75bbbcc79dac::t_947e639c94ca7e 146-157,442-490
+  s_4d75bbbcc79dac::t_7a6b9fc7156b1d 63-83,95-99,101,103,116-143
+  s_4d75bbbcc79dac::t_3cf8c95f443291 144-145,491-492
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "70d33ee5d17578b6b16ef63369373142e2382aef",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  },
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 4,
+      "accepted_lines": 4
+    }
+  }
+}
