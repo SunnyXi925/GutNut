@@ -1,4 +1,5 @@
 import hashlib
+import inspect
 import json
 import subprocess
 import sys
@@ -9,12 +10,17 @@ import pandas as pd
 import pytest
 
 from gmnps.validation.attribute_population_safety import (
+    PopulationArtifactPaths,
     PopulationSafetyConfig,
     audit_population_safety,
+    audit_population_safety_from_artifacts,
     task4_binding_hashes,
     validate_population_provenance,
     verify_phase1_run_artifacts,
 )
+from gmnps.validation import attribute_population_safety as population_module
+from test_method_lock_gate import _fixture as method_lock_fixture
+from test_method_lock_gate import _generate as generate_method_lock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -112,6 +118,9 @@ def test_complete_panel_group_subgroup_transition_and_hand_calculated_counts():
         "max_effective_units_per_food": 4,
     }
     assert audit.global_summary["n_foods"] == 6
+    assert audit.global_summary["spearman_fcs2_vs_population_gmnps"] == pytest.approx(
+        33.0 / 35.0
+    )
     assert audit.transition_matrix["n_individual_foods"].sum() == 24
     assert audit.global_summary["implausible_reversal_count"] == 2
     assert set(audit.reversal_audit["food_id"]) == {"leaf", "soda"}
@@ -121,6 +130,23 @@ def test_complete_panel_group_subgroup_transition_and_hand_calculated_counts():
     assert len(subgroup) == 6
     assert subgroup["n_effective_units_per_food_min"].eq(4).all()
     assert audit.group_convergence["n_effective_units_per_food_min"].eq(4).all()
+    vegetables = audit.group_convergence.set_index("food_group").loc["Vegetables"]
+    assert vegetables["fcs2_median"] == 82.5
+    assert vegetables["gmnps_population_median"] == 74.0
+    assert vegetables["median_shift"] == -8.5
+    assert vegetables["mean_absolute_food_shift"] == 9.25
+    assert vegetables["distribution_l1_quantile_distance"] == 8.5
+    leafy = audit.subgroup_convergence.set_index("food_subgroup").loc["Leafy"]
+    assert leafy["median_shift"] == -17.75
+    assert leafy["distribution_l1_quantile_distance"] == 17.75
+    transition = audit.transition_matrix.set_index(
+        ["fcs2_category", "gmnps_category"]
+    )
+    assert transition.loc[("encourage", "minimize"), "origin_fraction"] == pytest.approx(
+        1 / 12
+    )
+    assert transition.loc[("minimize", "encourage"), "origin_fraction"] == 0.25
+    assert audit.bootstrap_summary.iloc[0]["estimate"] == pytest.approx(33.0 / 35.0)
 
 
 @pytest.mark.parametrize("mutation", ["missing_row", "duplicate", "nan", "bad_delta"])
@@ -139,6 +165,13 @@ def test_population_panel_and_values_fail_closed(mutation):
         frame.loc[0, "GMNPS_delta"] += 1
         message = "GMNPS_delta must equal"
     with pytest.raises(ValueError, match=message):
+        _audit(frame)
+
+
+def test_population_rejects_blank_independent_component_id():
+    frame = _scores()
+    frame.loc[frame["individual_id"].eq("p1"), "component_id"] = "  "
+    with pytest.raises(ValueError, match="component_id must be nonempty"):
         _audit(frame)
 
 
@@ -218,8 +251,169 @@ def test_production_requires_explicit_false_and_live_verification_token():
         validate_population_provenance(manifest)
 
     manifest = _manifest(production=True)
-    with pytest.raises(ValueError, match="live Phase 1 artifact verification"):
+    with pytest.raises(ValueError, match="testing/in-memory-only"):
         audit_population_safety(pd.DataFrame(), manifest)
+    assert "verified_artifacts" not in inspect.signature(audit_population_safety).parameters
+    assert not hasattr(population_module, "VerifiedPopulationArtifacts")
+
+
+def _write_json(path: Path, payload: object) -> None:
+    path.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _coherent_population_chain(tmp_path, monkeypatch):
+    lock_paths, _ = method_lock_fixture(
+        tmp_path / "lock", monkeypatch=monkeypatch
+    )
+    method_manifest = generate_method_lock(lock_paths)
+    method_manifest_path = tmp_path / "method_lock_manifest.json"
+    _write_json(method_manifest_path, method_manifest)
+    locator = tmp_path / "method_lock_locator.json"
+    _write_json(
+        locator,
+        {field: str(getattr(lock_paths, field)) for field in lock_paths.__dataclass_fields__},
+    )
+
+    people = ["held-out-1", "held-out-2"]
+    foods = [f"food-{index:05d}" for index in range(9234)]
+    phase1_rows = []
+    subgroup_rows = []
+    for index, food in enumerate(foods):
+        group = "A" if index % 2 == 0 else "B"
+        subgroup = f"{group}-sub"
+        fcs2 = float(index % 99 + 1)
+        subgroup_rows.append(
+            {"food_id": food, "food_group": group, "food_subgroup": subgroup}
+        )
+        for person_index, person in enumerate(people):
+            score = min(100.0, fcs2 + person_index)
+            phase1_rows.append(
+                {
+                    "individual_id": person,
+                    "component_id": person,
+                    "food_id": food,
+                    "food_group": group,
+                    "FCS2": fcs2,
+                    "GMNPS_delta": score - fcs2,
+                    "GMNPS_score": score,
+                    "method_role": "primary",
+                }
+            )
+    phase1 = pd.DataFrame(phase1_rows)
+    subgroup = pd.DataFrame(subgroup_rows)
+    enriched = phase1.merge(subgroup, on=["food_id", "food_group"], validate="many_to_one")
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    phase1_path = run_dir / "individual_food.csv"
+    phase1.to_csv(phase1_path, index=False)
+    upstream = lock_paths.input_manifest
+    upstream_hash = hashlib.sha256(upstream.read_bytes()).hexdigest()
+    run_manifest = run_dir / "run_manifest.json"
+    _write_json(
+        run_manifest,
+        {
+            "method": "attribute_recomposition",
+            "method_role": "primary",
+            "score_centering": "none",
+            "production_label": "production",
+            "development_smoke_test": False,
+            "input_manifest_sha256": upstream_hash,
+            "source_hashes": {"input_manifest": upstream_hash},
+        },
+    )
+    success = run_dir / "_SUCCESS.json"
+    _write_json(
+        success,
+        {
+            "status": "complete",
+            "files": {
+                "individual_food.csv": hashlib.sha256(phase1_path.read_bytes()).hexdigest(),
+                "run_manifest.json": hashlib.sha256(run_manifest.read_bytes()).hexdigest(),
+            },
+        },
+    )
+    subgroup_path = tmp_path / "subgroup.csv"
+    subgroup.to_csv(subgroup_path, index=False)
+    task4_table = tmp_path / "task4.csv"
+    enriched.to_csv(task4_table, index=False)
+    provenance = _manifest(production=True)
+    provenance_path = tmp_path / "task4_provenance.json"
+    _write_json(provenance_path, provenance)
+    config = _config(
+        bootstrap_replicates=5,
+        minimum_valid_replicates=1,
+        minimum_clusters=2,
+    )
+    phase1_hashes = verify_phase1_run_artifacts(
+        phase1_path, run_manifest, success, upstream
+    )
+    registry_entry = {
+        "bundle_id": provenance["bundle_id"],
+        **task4_binding_hashes(config),
+        **phase1_hashes,
+        "task4_input_table_sha256": hashlib.sha256(task4_table.read_bytes()).hexdigest(),
+        "task4_provenance_sha256": hashlib.sha256(provenance_path.read_bytes()).hexdigest(),
+        "method_lock_manifest_sha256": hashlib.sha256(method_manifest_path.read_bytes()).hexdigest(),
+        "phase1_release_registry_sha256": hashlib.sha256(lock_paths.release_registry.read_bytes()).hexdigest(),
+        "method_lock_artifact_locator_sha256": hashlib.sha256(locator.read_bytes()).hexdigest(),
+        "scoring_beta_file_sha256": hashlib.sha256(lock_paths.scoring_beta.read_bytes()).hexdigest(),
+        "scoring_implementation_sha256": hashlib.sha256(
+            (ROOT / "src/scripts/run_attribute_gmnps.py").read_bytes()
+        ).hexdigest(),
+        "subgroup_enrichment_sha256": hashlib.sha256(subgroup_path.read_bytes()).hexdigest(),
+    }
+    registry = tmp_path / "task4_registry.json"
+    _write_json(
+        registry,
+        {
+            "schema_version": "gmnps-attribute-validation-trust-v1",
+            "population_bundles": [registry_entry],
+        },
+    )
+    monkeypatch.setattr(population_module, "_TRUSTED_TASK4_REGISTRY_PATH", registry)
+    paths = PopulationArtifactPaths(
+        task4_input_table=task4_table,
+        task4_provenance=provenance_path,
+        phase1_individual_food=phase1_path,
+        phase1_run_manifest=run_manifest,
+        phase1_success_marker=success,
+        upstream_input_manifest=upstream,
+        method_lock_manifest=method_manifest_path,
+        method_lock_artifact_locator=locator,
+        subgroup_enrichment=subgroup_path,
+        method_lock_artifacts=lock_paths,
+    )
+    return paths, config, registry
+
+
+def test_production_path_api_executes_one_coherent_live_chain(tmp_path, monkeypatch):
+    paths, config, _ = _coherent_population_chain(tmp_path, monkeypatch)
+    audit = audit_population_safety_from_artifacts(paths, config=config)
+    assert audit.panel_audit["n_foods"] == 9234
+    assert audit.panel_audit["n_individuals"] == 2
+    assert audit.verified_input_hashes["task4_input_table_sha256"] == hashlib.sha256(
+        paths.task4_input_table.read_bytes()
+    ).hexdigest()
+
+
+def test_production_live_chain_rejects_registry_tamper_and_different_frame(
+    tmp_path, monkeypatch
+):
+    paths, config, registry = _coherent_population_chain(tmp_path, monkeypatch)
+    payload = json.loads(registry.read_text())
+    payload["population_bundles"][0]["task4_input_table_sha256"] = "0" * 64
+    _write_json(registry, payload)
+    with pytest.raises(ValueError, match="task4_input_table_sha256"):
+        audit_population_safety_from_artifacts(paths, config=config)
+
+    paths, config, _ = _coherent_population_chain(
+        tmp_path / "different", monkeypatch
+    )
+    table = pd.read_csv(paths.task4_input_table)
+    table.loc[0, "GMNPS_score"] += 1
+    table.to_csv(paths.task4_input_table, index=False)
+    with pytest.raises(ValueError, match="task4_input_table_sha256"):
+        audit_population_safety_from_artifacts(paths, config=config)
 
 
 def _write_phase1_binding(tmp_path: Path):

@@ -24,8 +24,8 @@ from gmnps.validation.attribute_population_safety import (  # noqa: E402
     PopulationSafetyAudit,
     PopulationSafetyConfig,
     audit_population_safety,
+    audit_population_safety_from_artifacts,
     load_method_lock_artifact_locator,
-    load_verified_population_input,
     validate_population_provenance,
 )
 
@@ -130,10 +130,9 @@ def run(args: argparse.Namespace) -> PopulationSafetyAudit:
         minimum_clusters=args.minimum_clusters,
     )
     if manifest.get("production_label") == "production":
-        verified = load_verified_population_input(_production_paths(args), config)
-        frame = verified.frame
-        manifest = dict(verified.provenance)
-        token = verified.verification
+        audit = audit_population_safety_from_artifacts(
+            _production_paths(args), config=config
+        )
     else:
         validate_population_provenance(manifest, allow_test_data=args.allow_test_inputs)
         if not args.allow_test_inputs:
@@ -142,14 +141,12 @@ def run(args: argparse.Namespace) -> PopulationSafetyAudit:
             frame = pd.read_csv(BytesIO(args.individual_food.read_bytes()))
         except Exception as error:
             raise ValueError("individual-food table is unreadable") from error
-        token = None
-    audit = audit_population_safety(
-        frame,
-        manifest,
-        config=config,
-        allow_test_data=args.allow_test_inputs,
-        verified_artifacts=token,
-    )
+        audit = audit_population_safety(
+            frame,
+            manifest,
+            config=config,
+            allow_test_data=args.allow_test_inputs,
+        )
     if not args.write_source_data:
         print(
             json.dumps(

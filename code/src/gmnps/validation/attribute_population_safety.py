@@ -53,7 +53,6 @@ _POPULATION_IMPLEMENTATION = Path(__file__).resolve()
 _BIOLOGICAL_IMPLEMENTATION = Path(__file__).with_name("biological_consistency.py")
 _RUNNER_IMPLEMENTATION = _ROOT / "code/src/scripts/run_attribute_validation.py"
 _SCORING_IMPLEMENTATION = _ROOT / "code/src/scripts/run_attribute_gmnps.py"
-_VERIFICATION_TOKEN = object()
 
 
 @dataclass(frozen=True)
@@ -105,15 +104,6 @@ class PopulationSafetyConfig:
 
 
 @dataclass(frozen=True)
-class VerifiedPopulationArtifacts:
-    """Unforgeable-in-process result of live immutable artifact verification."""
-
-    bundle_id: str
-    hashes: Mapping[str, str]
-    _token: object
-
-
-@dataclass(frozen=True)
 class PopulationArtifactPaths:
     """Every live Phase 1 and Task 4 artifact required for production."""
 
@@ -136,13 +126,6 @@ class PopulationArtifactPaths:
                     raise TypeError("method_lock_artifacts must be MethodLockArtifactPaths")
             else:
                 object.__setattr__(self, item.name, Path(value))
-
-
-@dataclass(frozen=True)
-class VerifiedPopulationInput:
-    frame: pd.DataFrame
-    provenance: Mapping[str, object]
-    verification: VerifiedPopulationArtifacts
 
 
 @dataclass(frozen=True)
@@ -273,16 +256,12 @@ def validate_population_provenance(
     manifest: Mapping[str, object],
     *,
     allow_test_data: bool = False,
-    verified_artifacts: VerifiedPopulationArtifacts | None = None,
 ) -> None:
     production = _validate_base_population_provenance(manifest)
     if production:
-        if (
-            not isinstance(verified_artifacts, VerifiedPopulationArtifacts)
-            or verified_artifacts._token is not _VERIFICATION_TOKEN
-            or verified_artifacts.bundle_id != manifest.get("bundle_id")
-        ):
-            raise ValueError("production requires live Phase 1 artifact verification")
+        raise ValueError(
+            "DataFrame API is testing/in-memory-only; production requires artifact paths"
+        )
     elif not allow_test_data:
         raise ValueError("testing/synthetic provenance is rejected by default")
 
@@ -400,9 +379,9 @@ def _verify_enrichment(
     return task4
 
 
-def load_verified_population_input(
+def _load_population_artifacts(
     paths: PopulationArtifactPaths, config: PopulationSafetyConfig
-) -> VerifiedPopulationInput:
+) -> tuple[pd.DataFrame, dict[str, object], dict[str, str]]:
     """Verify the complete live artifact chain and return the same read bytes."""
 
     provenance_bytes = _immutable_read(paths.task4_provenance, "Task 4 provenance")
@@ -491,13 +470,14 @@ def load_verified_population_input(
         if entry.get(field) != live_hashes[field]:
             raise ValueError(f"trusted Task 4 registry {field} mismatch")
     frame = _verify_enrichment(task4_bytes, phase1_bytes, subgroup_bytes)
-    verification = VerifiedPopulationArtifacts(
-        bundle_id=str(provenance["bundle_id"]),
-        hashes=live_hashes,
-        _token=_VERIFICATION_TOKEN,
-    )
-    validate_population_provenance(provenance, verified_artifacts=verification)
-    return VerifiedPopulationInput(frame, provenance, verification)
+    scoring_payload = _json_object(scoring_beta_bytes, "scoring beta")
+    scoring_ids = scoring_payload.get("participant_ids")
+    if (
+        not isinstance(scoring_ids, list)
+        or set(map(str, scoring_ids)) != set(frame["individual_id"].astype(str))
+    ):
+        raise ValueError("scoring beta participant IDs do not match Task 4 people")
+    return frame, provenance, live_hashes
 
 
 def _invariant(frame: pd.DataFrame, unit: str, column: str) -> None:
@@ -562,7 +542,10 @@ def _validate_frame(
     if cluster_column != "individual_id":
         if cluster_column not in working.columns:
             raise ValueError(f"declared independent unit {cluster_column} is missing")
-        if working[cluster_column].isna().any():
+        if (
+            working[cluster_column].isna().any()
+            or working[cluster_column].astype(str).str.strip().eq("").any()
+        ):
             raise ValueError(f"{cluster_column} must be nonempty")
         working[cluster_column] = working[cluster_column].astype(str).str.strip()
         _invariant(working, "individual_id", cluster_column)
@@ -789,20 +772,13 @@ def _bootstrap(
     )
 
 
-def audit_population_safety(
+def _audit_population_frame(
     individual_food: pd.DataFrame,
     provenance_manifest: Mapping[str, object],
     *,
-    config: PopulationSafetyConfig | None = None,
-    allow_test_data: bool = False,
-    verified_artifacts: VerifiedPopulationArtifacts | None = None,
+    config: PopulationSafetyConfig,
+    verified_input_hashes: Mapping[str, str] | None,
 ) -> PopulationSafetyAudit:
-    resolved = config or PopulationSafetyConfig()
-    validate_population_provenance(
-        provenance_manifest,
-        allow_test_data=allow_test_data,
-        verified_artifacts=verified_artifacts,
-    )
     frame, cluster_column, panel_audit = _validate_frame(
         individual_food, provenance_manifest
     )
@@ -832,10 +808,45 @@ def audit_population_safety(
         between_group_discrimination=_discrimination(food),
         transition_matrix=transition,
         reversal_audit=reversal,
-        bootstrap_summary=_bootstrap(frame, cluster_column, resolved),
-        verified_input_hashes=(
-            dict(verified_artifacts.hashes) if verified_artifacts is not None else None
-        ),
+        bootstrap_summary=_bootstrap(frame, cluster_column, config),
+        verified_input_hashes=(dict(verified_input_hashes) if verified_input_hashes else None),
+    )
+
+
+def audit_population_safety(
+    individual_food: pd.DataFrame,
+    provenance_manifest: Mapping[str, object],
+    *,
+    config: PopulationSafetyConfig | None = None,
+    allow_test_data: bool = False,
+) -> PopulationSafetyAudit:
+    """Testing/in-memory-only population audit; production is path-only."""
+
+    validate_population_provenance(
+        provenance_manifest, allow_test_data=allow_test_data
+    )
+    return _audit_population_frame(
+        individual_food,
+        provenance_manifest,
+        config=config or PopulationSafetyConfig(),
+        verified_input_hashes=None,
+    )
+
+
+def audit_population_safety_from_artifacts(
+    paths: PopulationArtifactPaths,
+    *,
+    config: PopulationSafetyConfig | None = None,
+) -> PopulationSafetyAudit:
+    """Verify production paths and analyze the exact verified bytes in one call."""
+
+    resolved = config or PopulationSafetyConfig()
+    frame, provenance, hashes = _load_population_artifacts(paths, resolved)
+    return _audit_population_frame(
+        frame,
+        provenance,
+        config=resolved,
+        verified_input_hashes=hashes,
     )
 
 
@@ -844,10 +855,8 @@ __all__ = [
     "PopulationArtifactPaths",
     "PopulationSafetyAudit",
     "PopulationSafetyConfig",
-    "VerifiedPopulationArtifacts",
-    "VerifiedPopulationInput",
     "audit_population_safety",
-    "load_verified_population_input",
+    "audit_population_safety_from_artifacts",
     "load_method_lock_artifact_locator",
     "task4_binding_hashes",
     "validate_population_provenance",

@@ -1,8 +1,9 @@
 """Supporting biological and adjudicated-path consistency analyses."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from hashlib import sha256
+from io import BytesIO
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,15 @@ from typing import Mapping
 
 import numpy as np
 import pandas as pd
+
+from gmnps.validation.attribute_population_safety import (
+    load_method_lock_artifact_locator,
+    verify_phase1_run_artifacts,
+)
+from gmnps.validation.method_lock_gate import (
+    MethodLockArtifactPaths,
+    validate_method_lock_manifest,
+)
 
 
 SUPPORTING_SCHEMA_VERSION = "gmnps-supporting-evidence-v2"
@@ -42,7 +52,7 @@ _ROOT = Path(__file__).resolve().parents[4]
 _TRUSTED_SUPPORTING_REGISTRY_PATH = (
     _ROOT / "code/src/configs/supporting_evidence_trust_registry.json"
 )
-_VERIFICATION_TOKEN = object()
+_SCORING_IMPLEMENTATION = _ROOT / "code/src/scripts/run_attribute_gmnps.py"
 
 
 @dataclass(frozen=True)
@@ -84,28 +94,33 @@ class BiologicalConsistencyConfig:
 
 
 @dataclass(frozen=True)
-class VerifiedSupportingEvidence:
-    source_kind: str
-    source_id: str
-    accession: str
-    table_sha256: str
-    provenance_sha256: str
-    registry_sha256: str
-    _token: object
+class MicrobiomeShuffleArtifactPaths:
+    """Paths needed to verify two complete Phase 1 scoring runs."""
 
+    provenance: Path
+    original_score_table: Path
+    original_run_manifest: Path
+    original_success_marker: Path
+    original_input_manifest: Path
+    rerun_score_table: Path
+    rerun_run_manifest: Path
+    rerun_success_marker: Path
+    rerun_input_manifest: Path
+    mapping: Path
+    original_scoring_beta: Path
+    rerun_scoring_beta: Path
+    method_lock_manifest: Path
+    method_lock_artifact_locator: Path
+    method_lock_artifacts: MethodLockArtifactPaths
 
-@dataclass(frozen=True)
-class VerifiedMicrobiomeShuffleRerun:
-    """Live binding of profiles, derangement, scoring manifests, and rerun."""
-
-    source: VerifiedSupportingEvidence
-    original_table_sha256: str
-    rerun_table_sha256: str
-    mapping_sha256: str
-    original_scoring_manifest_sha256: str
-    rerun_scoring_manifest_sha256: str
-    locked_scoring_contract_sha256: str
-    _token: object
+    def __post_init__(self) -> None:
+        for item in fields(self):
+            value = getattr(self, item.name)
+            if item.name == "method_lock_artifacts":
+                if not isinstance(value, MethodLockArtifactPaths):
+                    raise TypeError("method_lock_artifacts must be MethodLockArtifactPaths")
+            else:
+                object.__setattr__(self, item.name, Path(value))
 
 
 @dataclass(frozen=True)
@@ -115,6 +130,7 @@ class DiseaseConsistencyResult:
     inference: pd.DataFrame
     label_permutation: pd.DataFrame
     microbiome_shuffle: pd.DataFrame
+    verified_input_hashes: Mapping[str, str] | None = None
 
 
 def canonical_frame_sha256(frame: pd.DataFrame) -> str:
@@ -214,19 +230,12 @@ def validate_evidence_provenance(
     manifest: Mapping[str, object],
     *,
     allow_test_data: bool = False,
-    verified_source: VerifiedSupportingEvidence | None = None,
 ) -> None:
     production = _base_evidence_provenance(manifest)
     if production:
-        if (
-            not isinstance(verified_source, VerifiedSupportingEvidence)
-            or verified_source._token is not _VERIFICATION_TOKEN
-            or verified_source.source_kind != manifest.get("source_kind")
-            or verified_source.source_id != manifest.get("source_id")
-            or verified_source.accession != manifest.get("accession")
-            or verified_source.table_sha256 != manifest.get("table_sha256")
-        ):
-            raise ValueError("production requires repository-trusted source verification")
+        raise ValueError(
+            "DataFrame API is testing/in-memory-only; production requires artifact paths"
+        )
     elif not allow_test_data:
         raise ValueError("testing/synthetic supporting evidence is rejected by default")
 
@@ -258,16 +267,29 @@ def _immutable_read(path: Path, label: str) -> bytes:
             os.close(descriptor)
 
 
-def verify_supporting_evidence_file(
-    table_path: Path, manifest: Mapping[str, object]
-) -> VerifiedSupportingEvidence:
-    """Resolve a source only through the repository-installed digest registry."""
+def _load_verified_supporting_evidence(
+    table_path: Path,
+    provenance_path: Path,
+    expected_source_kind: str | None = None,
+) -> tuple[pd.DataFrame, dict[str, object], dict[str, str], dict[str, object]]:
+    """Read, registry-check, and parse the exact production bytes once."""
 
+    table_path = Path(table_path)
+    provenance_path = Path(provenance_path)
+    table_bytes = _immutable_read(table_path, "supporting evidence table")
+    provenance_bytes = _immutable_read(provenance_path, "supporting evidence provenance")
+    try:
+        manifest = json.loads(provenance_bytes)
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError("supporting evidence provenance is invalid") from error
+    if not isinstance(manifest, dict):
+        raise ValueError("supporting evidence provenance must be a JSON object")
     if not _base_evidence_provenance(manifest):
         raise ValueError("live source verification is only for production evidence")
-    table_bytes = _immutable_read(Path(table_path), "supporting evidence table")
-    observed = sha256(table_bytes).hexdigest()
-    if observed != manifest.get("table_sha256"):
+    if expected_source_kind is not None and manifest.get("source_kind") != expected_source_kind:
+        raise ValueError(f"production analysis requires {expected_source_kind} provenance")
+    table_hash = sha256(table_bytes).hexdigest()
+    if table_hash != manifest.get("table_sha256"):
         raise ValueError("supporting evidence table content hash mismatch")
     provenance_hash = _canonical_mapping_sha256(manifest)
     try:
@@ -295,20 +317,36 @@ def verify_supporting_evidence_file(
         and entry.get("source_kind") == manifest.get("source_kind")
         and entry.get("source_id") == manifest.get("source_id")
         and entry.get("accession") == manifest.get("accession")
-        and entry.get("table_sha256") == observed
+        and entry.get("table_sha256") == table_hash
         and entry.get("provenance_sha256") == provenance_hash
     ]
     if len(matches) != 1:
         raise ValueError("supporting source has no unique repository-trusted digest entry")
-    return VerifiedSupportingEvidence(
-        source_kind=str(manifest["source_kind"]),
-        source_id=str(manifest["source_id"]),
-        accession=str(manifest["accession"]),
-        table_sha256=observed,
-        provenance_sha256=provenance_hash,
-        registry_sha256=sha256(registry_bytes).hexdigest(),
-        _token=_VERIFICATION_TOKEN,
-    )
+    # Detect a path swap or edit between trust resolution and analysis.
+    if _immutable_read(table_path, "supporting evidence table") != table_bytes:
+        raise ValueError("supporting evidence table changed during verification")
+    if _immutable_read(provenance_path, "supporting evidence provenance") != provenance_bytes:
+        raise ValueError("supporting evidence provenance changed during verification")
+    try:
+        frame = pd.read_csv(BytesIO(table_bytes))
+    except Exception as error:
+        raise ValueError("supporting evidence table is not readable CSV") from error
+    hashes = {
+        "table_sha256": table_hash,
+        "provenance_file_sha256": sha256(provenance_bytes).hexdigest(),
+        "provenance_sha256": provenance_hash,
+        "trusted_registry_sha256": sha256(registry_bytes).hexdigest(),
+    }
+    return frame, manifest, hashes, dict(matches[0])
+
+
+def verify_supporting_evidence_file(
+    table_path: Path, provenance_path: Path
+) -> dict[str, str]:
+    """Path-only live verification; the result is descriptive, not authority."""
+
+    _, _, hashes, _ = _load_verified_supporting_evidence(table_path, provenance_path)
+    return hashes
 
 
 def _scoring_contract(manifest: Mapping[str, object]) -> dict[str, object]:
@@ -321,7 +359,6 @@ def _scoring_contract(manifest: Mapping[str, object]) -> dict[str, object]:
         "beta_centering",
         "bundle_fingerprint",
         "model_fingerprint",
-        "source_hashes",
     )
     missing = [field for field in fields if field not in manifest]
     if missing:
@@ -329,67 +366,89 @@ def _scoring_contract(manifest: Mapping[str, object]) -> dict[str, object]:
     return {field: manifest[field] for field in fields}
 
 
-def verify_microbiome_shuffle_rerun_files(
-    original_table_path: Path,
-    rerun_table_path: Path,
-    mapping_path: Path,
-    original_scoring_manifest_path: Path,
-    rerun_scoring_manifest_path: Path,
-    provenance_manifest: Mapping[str, object],
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, VerifiedMicrobiomeShuffleRerun]:
-    """Verify a production derangement and both locked scoring-run manifests."""
-
-    source = verify_supporting_evidence_file(rerun_table_path, provenance_manifest)
-    if provenance_manifest.get("source_kind") != "microbiome_shuffle_rerun":
-        raise ValueError("rerun verifier requires microbiome_shuffle_rerun provenance")
-    blobs = {
-        "original": _immutable_read(Path(original_table_path), "original score table"),
-        "rerun": _immutable_read(Path(rerun_table_path), "rerun score table"),
-        "mapping": _immutable_read(Path(mapping_path), "shuffle mapping"),
-        "original_manifest": _immutable_read(
-            Path(original_scoring_manifest_path), "original scoring manifest"
-        ),
-        "rerun_manifest": _immutable_read(
-            Path(rerun_scoring_manifest_path), "rerun scoring manifest"
-        ),
-    }
-    from io import BytesIO
-
+def _json_bytes_object(raw: bytes, label: str) -> dict[str, object]:
     try:
-        original = pd.read_csv(BytesIO(blobs["original"]))
-        rerun = pd.read_csv(BytesIO(blobs["rerun"]))
-        mapping = pd.read_csv(BytesIO(blobs["mapping"]))
-        original_manifest = json.loads(blobs["original_manifest"])
-        rerun_manifest = json.loads(blobs["rerun_manifest"])
-    except (UnicodeError, json.JSONDecodeError, pd.errors.ParserError) as error:
-        raise ValueError("shuffle rerun artifacts are unreadable") from error
-    if not isinstance(original_manifest, dict) or not isinstance(rerun_manifest, dict):
-        raise ValueError("scoring manifests must be JSON objects")
-    original_contract = _scoring_contract(original_manifest)
-    rerun_contract = _scoring_contract(rerun_manifest)
-    if original_contract != rerun_contract:
-        raise ValueError("original and rerun do not share the locked scoring contract")
-    observed = {
-        "original_table_sha256": canonical_frame_sha256(original),
-        "rerun_table_sha256": canonical_frame_sha256(rerun),
-        "mapping_sha256": canonical_frame_sha256(mapping),
-        "original_scoring_manifest_sha256": sha256(
-            blobs["original_manifest"]
-        ).hexdigest(),
-        "rerun_scoring_manifest_sha256": sha256(blobs["rerun_manifest"]).hexdigest(),
-        "locked_scoring_contract_sha256": _canonical_mapping_sha256(
-            original_contract
-        ),
-    }
-    for field, value in observed.items():
-        if provenance_manifest.get(field) != value:
-            raise ValueError(f"{field} does not match the live shuffle artifact")
-    verification = VerifiedMicrobiomeShuffleRerun(
-        source=source,
-        **observed,
-        _token=_VERIFICATION_TOKEN,
+        value = json.loads(raw)
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"{label} is invalid JSON") from error
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} must be a JSON object")
+    return value
+
+
+def _manifest_file_digest(manifest: Mapping[str, object], name: str) -> str:
+    files = manifest.get("files")
+    if not isinstance(files, dict) or name not in files:
+        raise ValueError(f"input manifest lacks files.{name}")
+    entry = files[name]
+    digest = entry if isinstance(entry, str) else entry.get("sha256") if isinstance(entry, dict) else None
+    return _sha(digest, f"input manifest files.{name}")
+
+
+def _canonical_beta(raw: bytes, label: str) -> tuple[list[str], list[str], np.ndarray]:
+    payload = _json_bytes_object(raw, label)
+    if payload.get("schema_version") != "gmnps-canonical-beta-v1":
+        raise ValueError(f"{label} schema_version is invalid")
+    people = payload.get("participant_ids")
+    nutrients = payload.get("nutrient_order")
+    values = payload.get("values")
+    if not isinstance(people, list) or not people or len(set(map(str, people))) != len(people):
+        raise ValueError(f"{label} participant_ids must be unique and nonempty")
+    if not isinstance(nutrients, list) or not nutrients or len(set(map(str, nutrients))) != len(nutrients):
+        raise ValueError(f"{label} nutrient_order must be unique and nonempty")
+    try:
+        matrix = np.asarray(values, dtype=float)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"{label} values are invalid") from error
+    if matrix.shape != (len(people), len(nutrients)) or not np.isfinite(matrix).all():
+        raise ValueError(f"{label} values must be a finite participant-by-nutrient matrix")
+    return [str(value) for value in people], [str(value) for value in nutrients], matrix
+
+
+def _verify_deranged_beta(
+    original_scores: pd.DataFrame,
+    mapping: pd.DataFrame,
+    original_beta_bytes: bytes,
+    rerun_beta_bytes: bytes,
+) -> None:
+    original_people, nutrients, original_values = _canonical_beta(
+        original_beta_bytes, "original scoring beta"
     )
-    return original, rerun, mapping, verification
+    rerun_people, rerun_nutrients, rerun_values = _canonical_beta(
+        rerun_beta_bytes, "rerun scoring beta"
+    )
+    if original_people != rerun_people or nutrients != rerun_nutrients:
+        raise ValueError("rerun beta must preserve participant and nutrient order")
+    person_component = original_scores[["individual_id", "component_id"]].drop_duplicates()
+    if person_component["individual_id"].duplicated().any():
+        raise ValueError("person-to-component assignment must be invariant")
+    person_component["individual_id"] = person_component["individual_id"].astype(str)
+    person_component["component_id"] = person_component["component_id"].astype(str)
+    if set(original_people) != set(person_component["individual_id"]):
+        raise ValueError("scoring beta participants do not equal score-table people")
+    by_component = {
+        component: sorted(group["individual_id"].tolist())
+        for component, group in person_component.groupby("component_id")
+    }
+    original_index = {person: index for index, person in enumerate(original_people)}
+    rerun_index = {person: index for index, person in enumerate(rerun_people)}
+    map_dict = dict(
+        zip(
+            mapping["independent_unit_id"].astype(str),
+            mapping["shuffled_profile_unit_id"].astype(str),
+        )
+    )
+    for target_component, source_component in map_dict.items():
+        target_people = by_component[target_component]
+        source_people = by_component[source_component]
+        if len(target_people) != len(source_people):
+            raise ValueError("deranged components must have equal person counts")
+        for target_person, source_person in zip(target_people, source_people):
+            if not np.array_equal(
+                rerun_values[rerun_index[target_person]],
+                original_values[original_index[source_person]],
+            ):
+                raise ValueError("rerun beta is not the declared profile derangement")
 
 
 def _require_columns(frame: pd.DataFrame, required: set[str], label: str) -> None:
@@ -452,6 +511,25 @@ def _prepare_gmrepo(frame: pd.DataFrame, value_column: str):
     if np.isinf(work[value_column]).any():
         raise ValueError(f"{value_column} cannot contain infinite values")
 
+    # Freeze the independent-unit complete-case set before estimating any
+    # cohort-by-food location or scale. A component is excluded if any person
+    # assigned to it has any non-finite panel value.
+    person_complete = work.groupby("individual_id")[value_column].apply(
+        lambda values: bool(values.notna().all())
+    )
+    work["person_complete"] = work["individual_id"].map(person_complete)
+    unit_complete = work.groupby(cluster)["person_complete"].all()
+    all_unit_metadata = work.groupby(cluster, sort=True).agg(
+        cohort_id=("cohort_id", "first"),
+        disease_label=("disease_label", "first"),
+        n_individuals=("individual_id", "nunique"),
+        n_rows=("food_id", "size"),
+    ).reset_index().rename(columns={cluster: "cluster_id"})
+    all_unit_metadata["complete_case"] = all_unit_metadata["cluster_id"].map(
+        unit_complete
+    )
+    analysis_work = work[work[cluster].map(unit_complete)].copy()
+
     def standardize(values: pd.Series) -> pd.Series:
         finite = values.dropna()
         result = pd.Series(np.nan, index=values.index, dtype=float)
@@ -461,10 +539,10 @@ def _prepare_gmrepo(frame: pd.DataFrame, value_column: str):
         result.loc[finite.index] = 0.0 if np.isclose(scale, 0) else (finite - finite.mean()) / scale
         return result
 
-    work["food_standardized_value"] = work.groupby(
+    analysis_work["food_standardized_value"] = analysis_work.groupby(
         ["cohort_id", "food_id"], group_keys=False
     )[value_column].apply(standardize)
-    person = work.groupby("individual_id", sort=True).agg(
+    person = analysis_work.groupby("individual_id", sort=True).agg(
         cohort_id=("cohort_id", "first"),
         disease_label=("disease_label", "first"),
         label_source=("label_source", "first"),
@@ -474,7 +552,8 @@ def _prepare_gmrepo(frame: pd.DataFrame, value_column: str):
         value=("food_standardized_value", "mean"),
         n_rows=("food_id", "size"),
     ).reset_index()
-    person.loc[person["n_valid_foods"] != len(panel), "value"] = np.nan
+    if not person.empty and not person["n_valid_foods"].eq(len(panel)).all():
+        raise AssertionError("complete-case filtering failed to preserve a finite panel")
     cluster_meta = person.groupby("cluster_id").agg(
         n_cohorts=("cohort_id", "nunique"), n_labels=("disease_label", "nunique")
     )
@@ -487,7 +566,7 @@ def _prepare_gmrepo(frame: pd.DataFrame, value_column: str):
         n_individuals=("individual_id", "nunique"),
         n_rows=("n_rows", "sum"),
     ).reset_index()
-    return work, person, units, cluster, panel
+    return analysis_work, person, units, all_unit_metadata, cluster, panel
 
 
 def _difference(units: pd.DataFrame, disease: str, reference: str) -> float:
@@ -534,6 +613,7 @@ def _label_permutation(units, disease, reference, cohort, config):
         "null_ci_upper": float(upper),
         "shuffle_replicates_requested": config.shuffle_replicates,
         "shuffle_replicates_valid": len(values),
+        "n_analysis_units": int(len(units)),
         "seed": _stable_seed(config.seed, cohort, disease, "label"),
         "evidence_role": BIOLOGICAL_CONSISTENCY,
     }
@@ -546,28 +626,48 @@ def disease_cohort_consistency(
     config: BiologicalConsistencyConfig | None = None,
     value_column: str = "GMNPS_delta",
     allow_test_data: bool = False,
-    verified_source: VerifiedSupportingEvidence | None = None,
 ) -> DiseaseConsistencyResult:
-    validate_evidence_provenance(
+    """Testing/in-memory-only GMrepo analysis."""
+
+    validate_evidence_provenance(provenance_manifest, allow_test_data=allow_test_data)
+    return _disease_cohort_consistency_frame(
+        individual_food,
         provenance_manifest,
-        allow_test_data=allow_test_data,
-        verified_source=verified_source,
+        config=config,
+        value_column=value_column,
+        verified_input_hashes=None,
     )
+
+
+def _disease_cohort_consistency_frame(
+    individual_food: pd.DataFrame,
+    provenance_manifest: Mapping[str, object],
+    *,
+    config: BiologicalConsistencyConfig | None,
+    value_column: str,
+    verified_input_hashes: Mapping[str, str] | None,
+) -> DiseaseConsistencyResult:
     if provenance_manifest.get("source_kind") != "gmrepo_disease_labels":
         raise ValueError("disease analysis requires GMrepo provenance")
-    work, person, units, cluster, panel = _prepare_gmrepo(individual_food, value_column)
+    work, person, units, all_units, cluster, panel = _prepare_gmrepo(
+        individual_food, value_column
+    )
     reference = _nonempty(provenance_manifest, "reference_label")
     resolved = config or BiologicalConsistencyConfig()
     estimates = []
     inference = []
     permutations = []
-    for cohort, cohort_people in person.groupby("cohort_id", sort=True):
-        labels = sorted(set(cohort_people["disease_label"]) - {reference})
+    for cohort, cohort_all_units in all_units.groupby("cohort_id", sort=True):
+        labels = sorted(set(cohort_all_units["disease_label"]) - {reference})
         for disease in labels:
+            cohort_people = person[person["cohort_id"].eq(cohort)]
             selected_people = cohort_people[cohort_people["disease_label"].isin([reference, disease])]
             selected_units = units[
                 units["cohort_id"].eq(cohort)
                 & units["disease_label"].isin([reference, disease])
+            ]
+            selected_all_units = cohort_all_units[
+                cohort_all_units["disease_label"].isin([reference, disease])
             ]
             n_reference = int(
                 selected_units.loc[
@@ -594,6 +694,8 @@ def disease_cohort_consistency(
                 "n_reference_units": n_reference,
                 "n_disease_units": n_disease,
                 "n_independent_units": n_reference + n_disease,
+                "n_analysis_units": n_reference + n_disease,
+                "n_excluded_units": int((~selected_all_units["complete_case"]).sum()),
                 "n_individuals": int(selected_people["individual_id"].nunique()),
                 "n_rows": int(len(original)),
                 "n_foods": len(panel),
@@ -631,6 +733,7 @@ def disease_cohort_consistency(
                         "null_ci_upper": np.nan,
                         "shuffle_replicates_requested": resolved.shuffle_replicates,
                         "shuffle_replicates_valid": 0,
+                        "n_analysis_units": n_reference + n_disease,
                         "seed": _stable_seed(resolved.seed, cohort, disease, "label"),
                         "evidence_role": BIOLOGICAL_CONSISTENCY,
                     }
@@ -664,7 +767,7 @@ def disease_cohort_consistency(
     microbiome = pd.DataFrame(
         [{
             "analysis_status": "not_estimable",
-            "reason": "verified_rerun_not_provided",
+            "reason": "production_rerun_artifact_paths_not_provided",
             "control": "microbiome_profile_derangement_rerun",
             "evidence_role": BIOLOGICAL_CONSISTENCY,
         }]
@@ -675,6 +778,30 @@ def disease_cohort_consistency(
         inference=pd.DataFrame(inference),
         label_permutation=pd.DataFrame(permutations),
         microbiome_shuffle=microbiome,
+        verified_input_hashes=(
+            dict(verified_input_hashes) if verified_input_hashes is not None else None
+        ),
+    )
+
+
+def disease_cohort_consistency_from_paths(
+    table_path: Path,
+    provenance_path: Path,
+    *,
+    config: BiologicalConsistencyConfig | None = None,
+    value_column: str = "GMNPS_delta",
+) -> DiseaseConsistencyResult:
+    """Verify a trusted GMrepo table and analyze those exact bytes."""
+
+    frame, manifest, hashes, _ = _load_verified_supporting_evidence(
+        table_path, provenance_path, "gmrepo_disease_labels"
+    )
+    return _disease_cohort_consistency_frame(
+        frame,
+        manifest,
+        config=config,
+        value_column=value_column,
+        verified_input_hashes=hashes,
     )
 
 
@@ -685,32 +812,62 @@ def evaluate_microbiome_shuffle_rerun(
     provenance_manifest: Mapping[str, object],
     *,
     allow_test_data: bool = False,
-    verified_rerun: VerifiedMicrobiomeShuffleRerun | None = None,
 ) -> dict[str, object]:
-    """Validate a profile derangement followed by a locked full GMNPS rerun."""
+    """Testing/in-memory-only evaluator for a deterministic toy rerun."""
 
-    production = _base_evidence_provenance(provenance_manifest)
-    if production and (
-        not isinstance(verified_rerun, VerifiedMicrobiomeShuffleRerun)
-        or verified_rerun._token is not _VERIFICATION_TOKEN
-    ):
-        return {
-            "analysis_status": "not_estimable",
-            "reason": "repository_trusted_shuffle_rerun_unavailable",
-            "evidence_role": BIOLOGICAL_CONSISTENCY,
-        }
-    validate_evidence_provenance(
-        provenance_manifest,
-        allow_test_data=allow_test_data,
-        verified_source=(verified_rerun.source if verified_rerun else None),
-    )
+    validate_evidence_provenance(provenance_manifest, allow_test_data=allow_test_data)
     if provenance_manifest.get("source_kind") != "microbiome_shuffle_rerun":
         raise ValueError("shuffle evaluator requires microbiome_shuffle_rerun provenance")
+    for field, observed in {
+        "original_table_sha256": canonical_frame_sha256(original_scores),
+        "rerun_table_sha256": canonical_frame_sha256(rerun_scores),
+        "mapping_sha256": canonical_frame_sha256(mapping),
+    }.items():
+        if provenance_manifest.get(field) != observed:
+            raise ValueError(f"{field} does not bind the supplied toy rerun")
+    for field in (
+        "original_scoring_manifest_sha256",
+        "rerun_scoring_manifest_sha256",
+        "locked_scoring_contract_sha256",
+    ):
+        _sha(provenance_manifest.get(field), field)
+    return _evaluate_microbiome_shuffle_frames(
+        original_scores, rerun_scores, mapping, production=False
+    )
+
+
+def _evaluate_microbiome_shuffle_frames(
+    original_scores: pd.DataFrame,
+    rerun_scores: pd.DataFrame,
+    mapping: pd.DataFrame,
+    *,
+    production: bool,
+) -> dict[str, object]:
     _require_columns(
         mapping,
         {"independent_unit_id", "shuffled_profile_unit_id"},
         "shuffle mapping",
     )
+    mapping = mapping.copy()
+    for column in ("independent_unit_id", "shuffled_profile_unit_id"):
+        if mapping[column].isna().any() or mapping[column].astype(str).str.strip().eq("").any():
+            raise ValueError(f"shuffle mapping {column} must be nonempty")
+        mapping[column] = mapping[column].astype(str).str.strip()
+    for frame, label in ((original_scores, "original"), (rerun_scores, "rerun")):
+        _require_columns(
+            frame,
+            {"individual_id", "component_id", "food_id", "GMNPS_delta"},
+            f"{label} score table",
+        )
+    score_units = set(original_scores["component_id"].astype(str))
+    if (
+        set(rerun_scores["component_id"].astype(str)) != score_units
+        or set(mapping["independent_unit_id"]) != score_units
+        or set(mapping["shuffled_profile_unit_id"]) != score_units
+    ):
+        raise ValueError(
+            "derangement mapping units must be exactly equal score-table independent units"
+        )
     if (
         mapping["independent_unit_id"].duplicated().any()
         or mapping["shuffled_profile_unit_id"].duplicated().any()
@@ -727,6 +884,12 @@ def evaluate_microbiome_shuffle_rerun(
         )
         if frame.duplicated(["individual_id", "food_id"]).any():
             raise ValueError(f"{label} score table contains duplicate person-food rows")
+        for column in ("individual_id", "component_id", "food_id"):
+            if frame[column].isna().any() or frame[column].astype(str).str.strip().eq("").any():
+                raise ValueError(f"{label} score table {column} must be nonempty")
+        invariant = frame.groupby("individual_id")["component_id"].nunique(dropna=False)
+        if (invariant != 1).any():
+            raise ValueError("person-to-component assignment must be invariant")
     if "profile_source_unit_id" not in rerun_scores:
         raise ValueError("rerun scores must record profile_source_unit_id")
     keys = ["individual_id", "component_id", "food_id"]
@@ -737,29 +900,11 @@ def evaluate_microbiome_shuffle_rerun(
     map_dict = dict(
         zip(mapping["independent_unit_id"], mapping["shuffled_profile_unit_id"])
     )
-    expected_source = rerun_scores["component_id"].map(map_dict)
+    expected_source = rerun_scores["component_id"].astype(str).map(map_dict)
     if expected_source.isna().any() or not expected_source.eq(
-        rerun_scores["profile_source_unit_id"]
+        rerun_scores["profile_source_unit_id"].astype(str)
     ).all():
         raise ValueError("rerun profile_source_unit_id does not match the shuffle mapping")
-    hash_fields = {
-        "original_table_sha256": canonical_frame_sha256(original_scores),
-        "rerun_table_sha256": canonical_frame_sha256(rerun_scores),
-        "mapping_sha256": canonical_frame_sha256(mapping),
-    }
-    for field, observed in hash_fields.items():
-        if provenance_manifest.get(field) != observed:
-            raise ValueError(f"{field} does not bind the supplied rerun contract")
-        if production and getattr(verified_rerun, field) != observed:
-            raise ValueError(f"verified production {field} does not match supplied data")
-    for field in (
-        "original_scoring_manifest_sha256",
-        "rerun_scoring_manifest_sha256",
-        "locked_scoring_contract_sha256",
-    ):
-        _sha(provenance_manifest.get(field), field)
-        if production and getattr(verified_rerun, field) != provenance_manifest.get(field):
-            raise ValueError(f"verified production {field} does not match provenance")
     left = original_scores.sort_values(keys)["GMNPS_delta"].to_numpy(float)
     right = rerun_scores.sort_values(keys)["GMNPS_delta"].to_numpy(float)
     if not np.isfinite(left).all() or not np.isfinite(right).all():
@@ -770,12 +915,233 @@ def evaluate_microbiome_shuffle_rerun(
         "n_independent_units": int(mapping["independent_unit_id"].nunique()),
         "n_foods": int(original_scores["food_id"].nunique()),
         "mean_absolute_score_change": float(np.mean(np.abs(right - left))),
-        "original_table_sha256": hash_fields["original_table_sha256"],
-        "rerun_table_sha256": hash_fields["rerun_table_sha256"],
-        "mapping_sha256": hash_fields["mapping_sha256"],
+        "original_table_sha256": canonical_frame_sha256(original_scores),
+        "rerun_table_sha256": canonical_frame_sha256(rerun_scores),
+        "mapping_sha256": canonical_frame_sha256(mapping),
         "evidence_role": BIOLOGICAL_CONSISTENCY,
         "analysis_boundary": "profile_derangement_locked_rescoring_control_only",
     }
+
+
+def toy_profile_attribute_rescore(
+    profiles: pd.DataFrame,
+    foods: pd.DataFrame,
+    *,
+    mapping: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Deterministic test-only profile→beta→attribute rescoring fixture."""
+
+    _require_columns(
+        profiles,
+        {"independent_unit_id", "mac_profile", "lipid_profile"},
+        "toy profiles",
+    )
+    _require_columns(
+        foods,
+        {"food_id", "FCS2", "mac_attribute", "lipid_attribute"},
+        "toy foods",
+    )
+    if profiles["independent_unit_id"].duplicated().any():
+        raise ValueError("toy profiles must have unique independent_unit_id")
+    if foods["food_id"].duplicated().any():
+        raise ValueError("toy foods must have unique food_id")
+    profile = profiles.copy()
+    food = foods.copy()
+    for column in ("mac_profile", "lipid_profile"):
+        profile[column] = pd.to_numeric(profile[column], errors="coerce")
+    for column in ("FCS2", "mac_attribute", "lipid_attribute"):
+        food[column] = pd.to_numeric(food[column], errors="coerce")
+    if not np.isfinite(profile[["mac_profile", "lipid_profile"]]).all().all():
+        raise ValueError("toy profile values must be finite")
+    if not np.isfinite(food[["FCS2", "mac_attribute", "lipid_attribute"]]).all().all():
+        raise ValueError("toy food values must be finite")
+    units = profile["independent_unit_id"].astype(str).tolist()
+    if mapping is None:
+        source_by_target = dict(zip(units, units))
+    else:
+        _require_columns(
+            mapping,
+            {"independent_unit_id", "shuffled_profile_unit_id"},
+            "toy shuffle mapping",
+        )
+        target = mapping["independent_unit_id"].astype(str)
+        source = mapping["shuffled_profile_unit_id"].astype(str)
+        if target.duplicated().any() or source.duplicated().any() or set(target) != set(units) or set(source) != set(units):
+            raise ValueError("toy shuffle mapping must be a complete bijection")
+        source_by_target = dict(zip(target, source))
+    profile = profile.set_index(profile["independent_unit_id"].astype(str))
+    rows: list[dict[str, object]] = []
+    for target in units:
+        source = source_by_target[target]
+        source_row = profile.loc[source]
+        # Explicit deterministic profile-to-beta transform, then attribute scoring.
+        mac_beta = 2.0 * float(source_row["mac_profile"]) - float(source_row["lipid_profile"])
+        lipid_beta = float(source_row["lipid_profile"]) + 0.5 * float(source_row["mac_profile"])
+        for food_row in food.itertuples(index=False):
+            raw_delta = mac_beta * float(food_row.mac_attribute) + lipid_beta * float(food_row.lipid_attribute)
+            score = float(np.clip(float(food_row.FCS2) + raw_delta, 1.0, 100.0))
+            rows.append(
+                {
+                    "individual_id": target,
+                    "component_id": target,
+                    "food_id": str(food_row.food_id),
+                    "FCS2": float(food_row.FCS2),
+                    "GMNPS_delta": score - float(food_row.FCS2),
+                    "GMNPS_score": score,
+                    "profile_source_unit_id": source,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def evaluate_microbiome_shuffle_rerun_from_paths(
+    paths: MicrobiomeShuffleArtifactPaths,
+) -> dict[str, object]:
+    """Live-verify both Phase 1 runs and evaluate the exact rerun bytes."""
+
+    rerun, provenance, source_hashes, registry_entry = (
+        _load_verified_supporting_evidence(
+            paths.rerun_score_table,
+            paths.provenance,
+            "microbiome_shuffle_rerun",
+        )
+    )
+    raw = {
+        "original_table": _immutable_read(paths.original_score_table, "original score table"),
+        "rerun_table": _immutable_read(paths.rerun_score_table, "rerun score table"),
+        "mapping": _immutable_read(paths.mapping, "shuffle mapping"),
+        "original_run_manifest": _immutable_read(paths.original_run_manifest, "original run manifest"),
+        "rerun_run_manifest": _immutable_read(paths.rerun_run_manifest, "rerun run manifest"),
+        "original_input_manifest": _immutable_read(paths.original_input_manifest, "original input manifest"),
+        "rerun_input_manifest": _immutable_read(paths.rerun_input_manifest, "rerun input manifest"),
+        "original_scoring_beta": _immutable_read(paths.original_scoring_beta, "original scoring beta"),
+        "rerun_scoring_beta": _immutable_read(paths.rerun_scoring_beta, "rerun scoring beta"),
+        "method_lock_manifest": _immutable_read(paths.method_lock_manifest, "method-lock manifest"),
+        "method_lock_locator": _immutable_read(paths.method_lock_artifact_locator, "method-lock artifact locator"),
+        "scoring_implementation": _immutable_read(_SCORING_IMPLEMENTATION, "scoring implementation"),
+    }
+    if sha256(raw["rerun_table"]).hexdigest() != source_hashes["table_sha256"]:
+        raise ValueError("rerun score table changed after supporting-source verification")
+    try:
+        original = pd.read_csv(BytesIO(raw["original_table"]))
+        mapping = pd.read_csv(BytesIO(raw["mapping"]))
+    except Exception as error:
+        raise ValueError("shuffle run score table or mapping is unreadable") from error
+
+    original_phase1 = verify_phase1_run_artifacts(
+        paths.original_score_table,
+        paths.original_run_manifest,
+        paths.original_success_marker,
+        paths.original_input_manifest,
+    )
+    rerun_phase1 = verify_phase1_run_artifacts(
+        paths.rerun_score_table,
+        paths.rerun_run_manifest,
+        paths.rerun_success_marker,
+        paths.rerun_input_manifest,
+    )
+    if load_method_lock_artifact_locator(paths.method_lock_artifact_locator) != paths.method_lock_artifacts:
+        raise ValueError("method-lock artifact locator does not match supplied paths")
+    method_lock = _json_bytes_object(raw["method_lock_manifest"], "method-lock manifest")
+    release_registry_hash = sha256(
+        _immutable_read(paths.method_lock_artifacts.release_registry, "trusted release registry")
+    ).hexdigest()
+    validate_method_lock_manifest(
+        method_lock,
+        paths.method_lock_artifacts,
+        expected_release_registry_sha256=release_registry_hash,
+    )
+    if raw["original_input_manifest"] != _immutable_read(
+        paths.method_lock_artifacts.input_manifest, "locked input manifest"
+    ):
+        raise ValueError("original run input manifest is not the method-locked manifest")
+    if raw["original_scoring_beta"] != _immutable_read(
+        paths.method_lock_artifacts.scoring_beta, "locked scoring beta"
+    ):
+        raise ValueError("original scoring beta is not the method-locked scoring beta")
+
+    original_run = _json_bytes_object(raw["original_run_manifest"], "original run manifest")
+    rerun_run = _json_bytes_object(raw["rerun_run_manifest"], "rerun run manifest")
+    for run, label in ((original_run, "original"), (rerun_run, "rerun")):
+        for field, expected in {
+            "method": "attribute_recomposition",
+            "method_role": "primary",
+            "score_centering": "none",
+            "production_label": "production",
+            "development_smoke_test": False,
+        }.items():
+            if run.get(field) != expected:
+                raise ValueError(f"{label} run {field} is not production locked")
+    if _scoring_contract(original_run) != _scoring_contract(rerun_run):
+        raise ValueError("original and rerun do not share the locked scoring contract")
+
+    original_input = _json_bytes_object(raw["original_input_manifest"], "original input manifest")
+    rerun_input = _json_bytes_object(raw["rerun_input_manifest"], "rerun input manifest")
+    original_files = original_input.get("files")
+    rerun_files = rerun_input.get("files")
+    if not isinstance(original_files, dict) or not isinstance(rerun_files, dict):
+        raise ValueError("both input manifests must contain files objects")
+    required_phase1_inputs = {
+        "development_beta": paths.method_lock_artifacts.development_beta,
+        "score_beta": paths.method_lock_artifacts.scoring_beta,
+        "food_metadata": paths.method_lock_artifacts.food_metadata,
+        "baseline_attribute_points": paths.method_lock_artifacts.baseline_attribute_points,
+        "food_exposures": paths.method_lock_artifacts.food_exposures,
+        "effective_attribute_weights": paths.method_lock_artifacts.effective_attribute_weights,
+    }
+    if (
+        set(original_files) != set(rerun_files)
+        or not set(required_phase1_inputs).issubset(original_files)
+    ):
+        raise ValueError("original and rerun input artifact sets must be identical")
+    for name, artifact_path in required_phase1_inputs.items():
+        if _manifest_file_digest(original_input, name) != sha256(
+            _immutable_read(artifact_path, f"method-locked {name}")
+        ).hexdigest():
+            raise ValueError(f"original input manifest does not bind method-locked {name}")
+    for name in original_files:
+        if name != "score_beta" and _manifest_file_digest(original_input, name) != _manifest_file_digest(rerun_input, name):
+            raise ValueError("original and rerun must use identical production food/method artifacts")
+    original_nonfiles = {key: value for key, value in original_input.items() if key != "files"}
+    rerun_nonfiles = {key: value for key, value in rerun_input.items() if key != "files"}
+    if original_nonfiles != rerun_nonfiles:
+        raise ValueError("original and rerun input method contracts differ")
+    if _manifest_file_digest(original_input, "score_beta") != sha256(raw["original_scoring_beta"]).hexdigest():
+        raise ValueError("original input manifest does not bind original scoring beta")
+    if _manifest_file_digest(rerun_input, "score_beta") != sha256(raw["rerun_scoring_beta"]).hexdigest():
+        raise ValueError("rerun input manifest does not bind rerun scoring beta")
+
+    observed = {
+        "original_table_sha256": sha256(raw["original_table"]).hexdigest(),
+        "rerun_table_sha256": sha256(raw["rerun_table"]).hexdigest(),
+        "mapping_sha256": sha256(raw["mapping"]).hexdigest(),
+        "original_scoring_manifest_sha256": sha256(raw["original_run_manifest"]).hexdigest(),
+        "rerun_scoring_manifest_sha256": sha256(raw["rerun_run_manifest"]).hexdigest(),
+        "locked_scoring_contract_sha256": _canonical_mapping_sha256(_scoring_contract(original_run)),
+        "original_input_manifest_sha256": sha256(raw["original_input_manifest"]).hexdigest(),
+        "rerun_input_manifest_sha256": sha256(raw["rerun_input_manifest"]).hexdigest(),
+        "original_scoring_beta_sha256": sha256(raw["original_scoring_beta"]).hexdigest(),
+        "rerun_scoring_beta_sha256": sha256(raw["rerun_scoring_beta"]).hexdigest(),
+        "method_lock_manifest_sha256": sha256(raw["method_lock_manifest"]).hexdigest(),
+        "method_lock_artifact_locator_sha256": sha256(raw["method_lock_locator"]).hexdigest(),
+        "phase1_release_registry_sha256": release_registry_hash,
+        "scoring_implementation_sha256": sha256(raw["scoring_implementation"]).hexdigest(),
+        "original_success_marker_sha256": original_phase1["phase1_success_marker_sha256"],
+        "rerun_success_marker_sha256": rerun_phase1["phase1_success_marker_sha256"],
+    }
+    for field, digest in observed.items():
+        if provenance.get(field) != digest:
+            raise ValueError(f"production provenance {field} does not match live artifacts")
+        if registry_entry.get(field) != digest:
+            raise ValueError(f"trusted supporting registry {field} does not match live artifacts")
+    # Analysis starts only after every live byte has matched provenance and the
+    # repository-trusted registry entry.
+    result = _evaluate_microbiome_shuffle_frames(original, rerun, mapping, production=True)
+    _verify_deranged_beta(
+        original, mapping, raw["original_scoring_beta"], raw["rerun_scoring_beta"]
+    )
+    result["verified_input_hashes"] = {**source_hashes, **observed}
+    return result
 
 
 def _spearman(left: pd.Series, right: pd.Series) -> float:
@@ -787,13 +1153,18 @@ def zoe_aggregate_rank_consistency(
     provenance_manifest: Mapping[str, object],
     *,
     allow_test_data: bool = False,
-    verified_source: VerifiedSupportingEvidence | None = None,
 ) -> dict[str, object]:
-    validate_evidence_provenance(
-        provenance_manifest,
-        allow_test_data=allow_test_data,
-        verified_source=verified_source,
-    )
+    """Testing/in-memory-only aggregate-rank summary."""
+
+    validate_evidence_provenance(provenance_manifest, allow_test_data=allow_test_data)
+    return _zoe_aggregate_rank_frame(aggregate_ranks, provenance_manifest)
+
+
+def _zoe_aggregate_rank_frame(
+    aggregate_ranks: pd.DataFrame,
+    provenance_manifest: Mapping[str, object],
+    verified_input_hashes: Mapping[str, str] | None = None,
+) -> dict[str, object]:
     if provenance_manifest.get("source_kind") != "zoe_aggregate_ranks":
         raise ValueError("ZOE analysis requires zoe_aggregate_ranks provenance")
     _require_columns(
@@ -801,6 +1172,7 @@ def zoe_aggregate_rank_consistency(
         {"food_id", "gmnps_rank", "zoe_rank", "rank_source"},
         "ZOE aggregate ranks",
     )
+    _reject_outcomes(aggregate_ranks)
     if aggregate_ranks["food_id"].duplicated().any():
         raise ValueError("ZOE aggregate ranks must have unique food_id")
     work = aggregate_ranks.copy()
@@ -814,6 +1186,9 @@ def zoe_aggregate_rank_consistency(
         "rank_sources": sorted(work["rank_source"].astype(str).unique()),
         "evidence_role": BIOLOGICAL_CONSISTENCY,
         "analysis_boundary": "aggregate_rank_summary_only",
+        "verified_input_hashes": (
+            dict(verified_input_hashes) if verified_input_hashes is not None else None
+        ),
     }
     if len(valid) < 3:
         return {
@@ -839,18 +1214,34 @@ def zoe_aggregate_rank_consistency(
     }
 
 
+def zoe_aggregate_rank_consistency_from_paths(
+    table_path: Path, provenance_path: Path
+) -> dict[str, object]:
+    """Verify trusted ZOE aggregate ranks and analyze those exact bytes."""
+
+    frame, manifest, hashes, _ = _load_verified_supporting_evidence(
+        table_path, provenance_path, "zoe_aggregate_ranks"
+    )
+    return _zoe_aggregate_rank_frame(frame, manifest, hashes)
+
+
 def knowledge_path_consistency(
     paths: pd.DataFrame,
     provenance_manifest: Mapping[str, object],
     *,
     allow_test_data: bool = False,
-    verified_source: VerifiedSupportingEvidence | None = None,
 ) -> dict[str, object]:
-    validate_evidence_provenance(
-        provenance_manifest,
-        allow_test_data=allow_test_data,
-        verified_source=verified_source,
-    )
+    """Testing/in-memory-only adjudicated-path summary."""
+
+    validate_evidence_provenance(provenance_manifest, allow_test_data=allow_test_data)
+    return _knowledge_path_frame(paths, provenance_manifest)
+
+
+def _knowledge_path_frame(
+    paths: pd.DataFrame,
+    provenance_manifest: Mapping[str, object],
+    verified_input_hashes: Mapping[str, str] | None = None,
+) -> dict[str, object]:
     if provenance_manifest.get("source_kind") != "knowledge_paths":
         raise ValueError("knowledge summary requires knowledge_paths provenance")
     required = {
@@ -858,6 +1249,7 @@ def knowledge_path_consistency(
         "is_direction_consistent", "path_provenance",
     }
     _require_columns(paths, required, "knowledge paths")
+    _reject_outcomes(paths)
     if paths["path_id"].duplicated().any():
         raise ValueError("path_id must be unique")
     for column in ("path_id", "source_node", "target_node", "path_provenance"):
@@ -875,7 +1267,21 @@ def knowledge_path_consistency(
         "n_path_provenance_sources": int(paths["path_provenance"].nunique()),
         "evidence_role": MECHANISTIC_CONSISTENCY,
         "analysis_boundary": "adjudicated_path_summary_only",
+        "verified_input_hashes": (
+            dict(verified_input_hashes) if verified_input_hashes is not None else None
+        ),
     }
+
+
+def knowledge_path_consistency_from_paths(
+    table_path: Path, provenance_path: Path
+) -> dict[str, object]:
+    """Verify trusted knowledge paths and summarize those exact bytes."""
+
+    frame, manifest, hashes, _ = _load_verified_supporting_evidence(
+        table_path, provenance_path, "knowledge_paths"
+    )
+    return _knowledge_path_frame(frame, manifest, hashes)
 
 
 __all__ = [
@@ -883,14 +1289,17 @@ __all__ = [
     "MECHANISTIC_CONSISTENCY",
     "BiologicalConsistencyConfig",
     "DiseaseConsistencyResult",
-    "VerifiedSupportingEvidence",
-    "VerifiedMicrobiomeShuffleRerun",
+    "MicrobiomeShuffleArtifactPaths",
     "canonical_frame_sha256",
     "disease_cohort_consistency",
+    "disease_cohort_consistency_from_paths",
     "evaluate_microbiome_shuffle_rerun",
+    "evaluate_microbiome_shuffle_rerun_from_paths",
     "knowledge_path_consistency",
+    "knowledge_path_consistency_from_paths",
+    "toy_profile_attribute_rescore",
     "validate_evidence_provenance",
     "verify_supporting_evidence_file",
-    "verify_microbiome_shuffle_rerun_files",
     "zoe_aggregate_rank_consistency",
+    "zoe_aggregate_rank_consistency_from_paths",
 ]
