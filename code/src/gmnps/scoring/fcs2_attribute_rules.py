@@ -308,11 +308,11 @@ def score_attribute(
         if selected.name == "fermentation_percent_calories" and context.get("is_other_fermented_product"):
             points = selected.high_points
     elif selected.kind == "log_ratio":
+        if not _ratio_gate_passes(selected, context):
+            return NOT_CALCULATED
         ratio = _finite_number(value, selected.name)
         if ratio <= 0:
             raise ValueError(f"{selected.name} must be greater than zero")
-        if not _ratio_gate_passes(selected, context):
-            return NOT_CALCULATED
         log_ratio = log(ratio)
         assert selected.low_target is not None and selected.high_target is not None
         fraction = (log_ratio - selected.low_target) / (selected.high_target - selected.low_target)

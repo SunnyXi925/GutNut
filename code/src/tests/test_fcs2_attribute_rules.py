@@ -87,10 +87,26 @@ def test_table_s10_log_ratios_apply_published_targets_and_minimum_exposure_gates
         context={"fat_energy_percent": 9.999},
     ) is NOT_CALCULATED
     assert score_attribute(
+        "unsaturated_to_saturated_fat_ratio",
+        math.inf,
+        context={"fat_energy_percent": 9.999},
+    ) is NOT_CALCULATED
+    assert score_attribute(
         "fiber_to_carbohydrate_ratio",
         math.exp(-0.78),
         context={"carbohydrate_energy_percent": 10.0},
     ) == pytest.approx(10.0)
+    assert score_attribute(
+        "fiber_to_carbohydrate_ratio",
+        math.inf,
+        context={"carbohydrate_energy_percent": 9.999},
+    ) is NOT_CALCULATED
+    with pytest.raises(ValueError, match="finite number"):
+        score_attribute(
+            "fiber_to_carbohydrate_ratio",
+            math.inf,
+            context={"carbohydrate_energy_percent": 10.0},
+        )
     assert score_attribute(
         "potassium_to_sodium_ratio",
         math.exp(3.30),
