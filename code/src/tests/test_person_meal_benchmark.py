@@ -5,6 +5,7 @@ They are not observed, controlled, aggregate, or manuscript benchmark results.
 """
 from __future__ import annotations
 
+from dataclasses import replace
 from hashlib import sha256
 import inspect
 import json
@@ -35,14 +36,74 @@ from gmnps.validation.person_meal_benchmark import (
 ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = ROOT / "code/src/configs/person_meal_validation.yaml"
 REGISTRY_PATH = ROOT / "code/src/configs/fcs2_fndds_release_registry.json"
+COHORT_SPLIT_PATH = ROOT / "code/src/gmnps/validation/cohort_split.py"
+BENCHMARK_PATH = ROOT / "code/src/gmnps/validation/person_meal_benchmark.py"
 
 
 def _sha(path: Path) -> str:
     return sha256(path.read_bytes()).hexdigest()
 
 
-def _testing_only_lock_fixture(tmp_path: Path):
+def _canonical_bytes(payload: object) -> bytes:
+    return (
+        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+
+
+def _testing_only_predictor_frame_bytes(predictors: pd.DataFrame) -> bytes:
+    rows = []
+    for raw_row in predictors.itertuples(index=False, name=None):
+        row = []
+        for value in raw_row:
+            if value is None or pd.isna(value):
+                row.append(None)
+            elif isinstance(value, np.generic):
+                row.append(value.item())
+            else:
+                row.append(value)
+        rows.append(row)
+    return _canonical_bytes(
+        {
+            "schema_version": "person-meal-predictor-frame-v1",
+            "construction_version": "testing-only-construction-v1",
+            "generated_stage": "pre-outcome_predictor_only",
+            "columns": list(predictors.columns),
+            "rows": rows,
+        }
+    )
+
+
+def _testing_only_block_sha256(
+    predictor_payload: dict[str, object],
+    predictor_sha256: str,
+    block: str,
+    columns: list[str],
+) -> str:
+    positions = [predictor_payload["columns"].index(column) for column in columns]
+    return sha256(
+        _canonical_bytes(
+            {
+                "schema_version": "person-meal-predictor-block-v1",
+                "construction_version": predictor_payload["construction_version"],
+                "predictor_frame_sha256": predictor_sha256,
+                "block": block,
+                "columns": columns,
+                "rows": [
+                    [row[position] for position in positions]
+                    for row in predictor_payload["rows"]
+                ],
+            }
+        )
+    ).hexdigest()
+
+
+def _testing_only_lock_fixture(
+    tmp_path: Path,
+    predictors: pd.DataFrame | None = None,
+):
     tmp_path.mkdir(parents=True, exist_ok=True)
+    if predictors is None:
+        predictors, _ = _testing_only_tables()
     config = tmp_path / "person_meal_validation.yaml"
     config.write_bytes(CONFIG_PATH.read_bytes())
     schema = tmp_path / "method_lock_manifest.schema.json"
@@ -51,15 +112,31 @@ def _testing_only_lock_fixture(tmp_path: Path):
     registry.write_bytes(REGISTRY_PATH.read_bytes())
     gate = tmp_path / "method_lock_gate.py"
     gate.write_bytes(b'"""testing-only gate byte fixture."""\n')
+    cohort_split = tmp_path / "cohort_split.py"
+    cohort_split.write_bytes(COHORT_SPLIT_PATH.read_bytes())
+    benchmark = tmp_path / "person_meal_benchmark.py"
+    benchmark.write_bytes(BENCHMARK_PATH.read_bytes())
+    predictor_frame = tmp_path / "predictor_frame.json"
+    predictor_frame.write_bytes(_testing_only_predictor_frame_bytes(predictors))
     feature_contract = tmp_path / "feature_contract.json"
-    feature_contract.write_bytes(_testing_only_feature_contract_bytes())
+    feature_contract.write_bytes(
+        _testing_only_feature_contract_bytes(predictors, predictor_frame.read_bytes())
+    )
 
     parsed_registry = load_release_registry_snapshot(registry.read_bytes())
+    benchmark_specification = json.loads(config.read_bytes())["benchmark_specification"]
     manifest = {
         "method_lock_schema_sha256": _sha(schema),
         "person_meal_validation_config_sha256": _sha(config),
         "method_lock_gate_implementation_sha256": _sha(gate),
+        "cohort_split_implementation_sha256": _sha(cohort_split),
+        "person_meal_benchmark_implementation_sha256": _sha(benchmark),
         "feature_contract_sha256": _sha(feature_contract),
+        "predictor_frame_sha256": _sha(predictor_frame),
+        "benchmark_specification": benchmark_specification,
+        "benchmark_specification_sha256": sha256(
+            _canonical_bytes(benchmark_specification)[:-1]
+        ).hexdigest(),
         "release_registry_snapshot": {
             "snapshot_sha256": _sha(registry),
             "schema_version": parsed_registry.schema_version,
@@ -75,12 +152,18 @@ def _testing_only_lock_fixture(tmp_path: Path):
         method_lock_schema=schema,
         release_registry=registry,
         gate_implementation=gate,
+        cohort_split_implementation=cohort_split,
+        person_meal_benchmark_implementation=benchmark,
         feature_contract=feature_contract,
+        predictor_frame=predictor_frame,
     )
     return paths, manifest_path, manifest
 
 
-def _testing_only_feature_contract_bytes() -> bytes:
+def _testing_only_feature_contract_bytes(
+    predictors: pd.DataFrame,
+    predictor_frame_bytes: bytes,
+) -> bytes:
     identifier_roles = {
         "participant_id": "identifier",
         "meal_id": "identifier",
@@ -90,7 +173,12 @@ def _testing_only_feature_contract_bytes() -> bytes:
         "cohort_id": "grouping",
     }
     feature_blocks = {
-        "clinical_demographic_diet": ["age", "diet_score", "diet_category"],
+        "clinical_demographic_diet": [
+            "age",
+            "diet_score",
+            "diet_category",
+            "diet_flag",
+        ],
         "fcs": ["fcs_score"],
         "microbiome": ["microbiome_1", "microbiome_2"],
         "legacy_final_score_offset": ["legacy_offset"],
@@ -112,7 +200,13 @@ def _testing_only_feature_contract_bytes() -> bytes:
             columns.append(
                 {
                     "name": name,
-                    "data_type": "string" if name == "diet_category" else "number",
+                    "data_type": (
+                        "category"
+                        if name == "diet_category"
+                        else "boolean"
+                        if name == "diet_flag"
+                        else "number"
+                    ),
                     "role": "predictor",
                     "nullable": name == "diet_category",
                     "source_artifact_id": f"testing-only-{block}",
@@ -157,6 +251,8 @@ def _testing_only_feature_contract_bytes() -> bytes:
         },
     }
     source_ids = {column["source_artifact_id"] for column in columns}
+    predictor_payload = json.loads(predictor_frame_bytes)
+    predictor_sha256 = sha256(predictor_frame_bytes).hexdigest()
     payload = {
         "schema_version": "person-meal-feature-contract-v1",
         "construction_version": "testing-only-construction-v1",
@@ -166,8 +262,19 @@ def _testing_only_feature_contract_bytes() -> bytes:
             source_id: sha256(source_id.encode()).hexdigest()
             for source_id in sorted(source_ids)
         },
+        "predictor_frame_artifact": {
+            "artifact_id": "testing-only-canonical-predictor-frame",
+            "schema_version": "person-meal-predictor-frame-v1",
+            "sha256": predictor_sha256,
+        },
         "block_artifact_sha256": {
-            block: sha256(block.encode()).hexdigest() for block in feature_blocks
+            block: _testing_only_block_sha256(
+                predictor_payload,
+                predictor_sha256,
+                block,
+                names,
+            )
+            for block, names in feature_blocks.items()
         },
         "feature_blocks": {
             block: {"artifact_id": block, "columns": names}
@@ -177,9 +284,10 @@ def _testing_only_feature_contract_bytes() -> bytes:
         "mapping_unit": {"column": "food_id", "role": "mapping_unit"},
         "comparators": comparators,
     }
-    return (
-        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
-    ).encode()
+    assert tuple(predictors.columns) == tuple(
+        column["name"] for column in columns
+    )
+    return _canonical_bytes(payload)
 
 
 def _testing_only_tables() -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -214,6 +322,7 @@ def _testing_only_tables() -> tuple[pd.DataFrame, pd.DataFrame]:
                     "age": age,
                     "diet_score": diet_score,
                     "diet_category": None if meal_number == 0 else f"testing-diet-{meal_number}",
+                    "diet_flag": meal_number % 2 == 0,
                     "fcs_score": fcs_score,
                     "microbiome_1": microbiome_1,
                     "microbiome_2": microbiome_2,
@@ -234,10 +343,24 @@ def _testing_only_tables() -> tuple[pd.DataFrame, pd.DataFrame]:
                     ),
                 }
             )
-    return pd.DataFrame(predictors), pd.DataFrame(outcomes)
+    outcome_frame = pd.DataFrame(outcomes)
+    outcome_frame.loc[outcome_frame.index[0], "glucose_iAUC_2h"] = np.nan
+    return pd.DataFrame(predictors), outcome_frame
 
 
-@pytest.mark.parametrize("tamper", ["config", "schema", "registry", "gate", "feature_contract"])
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "config",
+        "schema",
+        "registry",
+        "gate",
+        "cohort_split",
+        "benchmark",
+        "feature_contract",
+        "predictor_frame",
+    ],
+)
 def test_independent_task3_hash_revalidation_fails_closed_before_outcome_loader(
     tmp_path, monkeypatch, tamper
 ):
@@ -258,7 +381,10 @@ def test_independent_task3_hash_revalidation_fails_closed_before_outcome_loader(
         "schema": paths.method_lock_schema,
         "registry": paths.release_registry,
         "gate": paths.gate_implementation,
+        "cohort_split": paths.cohort_split_implementation,
+        "benchmark": paths.person_meal_benchmark_implementation,
         "feature_contract": paths.feature_contract,
+        "predictor_frame": paths.predictor_frame,
     }[tamper]
     target.write_bytes(target.read_bytes() + b"tamper")
 
@@ -344,7 +470,7 @@ def test_registry_constants_are_compared_with_live_registry_bytes(tmp_path, monk
 
 def _run_testing_only_benchmark(tmp_path, monkeypatch):
     predictors, outcomes = _testing_only_tables()
-    paths, manifest_path, _ = _testing_only_lock_fixture(tmp_path)
+    paths, manifest_path, _ = _testing_only_lock_fixture(tmp_path, predictors)
     validation_calls: list[str] = []
 
     def record_validation(*args, **kwargs):
@@ -371,7 +497,6 @@ def _run_testing_only_benchmark(tmp_path, monkeypatch):
         "testing-only-controlled-source",
         manifest_path=manifest_path,
         method_lock_paths=paths,
-        predictors=predictors,
     )
     assert validation_calls == ["task2-validator"]
     return result
@@ -409,6 +534,15 @@ def test_all_locked_comparators_use_identical_rows_and_splits(tmp_path, monkeypa
         "outcome_source_sha256",
         "predictor_frame_sha256",
         "feature_contract_sha256",
+        "cohort_split_implementation_sha256",
+        "person_meal_benchmark_implementation_sha256",
+        "benchmark_specification_id",
+        "benchmark_specification_sha256",
+        "seed_derivation_id",
+        "outer_split_seed",
+        "inner_cv_seed",
+        "bootstrap_seed",
+        "permutation_seed",
         "software_versions",
         "n_participants",
         "n_person_meals",
@@ -423,6 +557,10 @@ def test_all_locked_comparators_use_identical_rows_and_splits(tmp_path, monkeypa
     }
     assert required_provenance.issubset(result.absolute_metrics.columns)
     assert required_provenance.issubset(result.paired_metrics.columns)
+    assert {"fit_seed", "outer_split_seed", "inner_cv_seed"}.issubset(
+        result.fit_audit.columns
+    )
+    assert {"outer_fit_seed", "inference_cluster_id"}.issubset(predictions.columns)
     assert set(result.paired_metrics["reference"]) == set(REQUIRED_COMPARATORS) - {
         "locked_attribute_gmnps"
     }
@@ -456,6 +594,55 @@ def test_all_locked_comparators_use_identical_rows_and_splits(tmp_path, monkeypa
     }.issubset(missingness.columns)
     categorical = missingness.loc[missingness["variable"].eq("diet_category")]
     assert categorical["missing_n"].gt(0).any()
+    assert set(missingness["denominator_scope"]) == {
+        "split_all_rows",
+        "finite_outcome_analysis_set",
+    }
+    glucose_missingness = missingness.loc[
+        missingness["endpoint"].eq("glucose_iAUC_2h")
+    ]
+    denominator_sizes = glucose_missingness.groupby(
+        ["analysis_mode", "outer_fold", "split", "cohort", "variable"]
+    )["n_rows"].agg(list)
+    assert any(len(set(values)) > 1 for values in denominator_sizes)
+    assert glucose_missingness.loc[
+        glucose_missingness["denominator_scope"].eq(
+            "finite_outcome_analysis_set"
+        )
+        & glucose_missingness["variable_role"].eq("outcome"),
+        "missing_n",
+    ].eq(0).all()
+
+    status = result.analysis_status
+    assert set(status["analysis_status"]) == {
+        "completed",
+        "descriptive",
+        "not_estimable",
+    }
+    completed = status.loc[
+        status["endpoint"].isin({"glucose_iAUC_2h", "tg_6h_rise"})
+    ]
+    assert completed.loc[
+        completed["analysis_mode"].eq("subject_held_out"), "analysis_status"
+    ].eq("completed").all()
+    assert completed.loc[
+        ~completed["analysis_mode"].eq("subject_held_out"), "analysis_status"
+    ].eq("descriptive").all()
+
+    secondary_absolute = result.absolute_metrics.loc[
+        ~result.absolute_metrics["analysis_mode"].eq("subject_held_out")
+    ]
+    secondary_paired = result.paired_metrics.loc[
+        ~result.paired_metrics["analysis_mode"].eq("subject_held_out")
+    ]
+    assert secondary_absolute["inference_status"].eq("descriptive").all()
+    assert secondary_absolute[["ci_lower", "ci_upper"]].isna().all().all()
+    assert secondary_absolute["bootstrap_replicates_requested"].eq(0).all()
+    assert secondary_paired["inference_status"].eq("descriptive").all()
+    assert secondary_paired[
+        ["ci_lower", "ci_upper", "permutation_p_value", "adjusted_p_value"]
+    ].isna().all().all()
+    assert secondary_paired["permutation_replicates_requested"].eq(0).all()
 
     primary = result.paired_metrics.loc[
         result.paired_metrics["test_role"].eq("primary")
@@ -512,10 +699,168 @@ def test_benchmark_is_deterministic_including_null_comparators(tmp_path, monkeyp
     assert_frame_equal(first.fit_audit, second.fit_audit)
     assert_frame_equal(first.split_audit, second.split_audit)
     assert_frame_equal(first.missingness_source, second.missingness_source)
+    assert_frame_equal(first.analysis_status, second.analysis_status)
+
+
+def test_primary_inference_clusters_family_twin_components(tmp_path, monkeypatch):
+    result = _run_testing_only_benchmark(tmp_path, monkeypatch)
+    primary_predictions = result.predictions.loc[
+        result.predictions["analysis_mode"].eq("subject_held_out")
+    ]
+    by_participant = primary_predictions.groupby("participant_id")[
+        "inference_cluster_id"
+    ].first()
+    for participant_number in range(0, 20, 2):
+        left = f"testing-p{participant_number:02d}"
+        right = f"testing-p{participant_number + 1:02d}"
+        assert by_participant[left] == by_participant[right]
+    assert result.absolute_metrics.loc[
+        result.absolute_metrics["analysis_mode"].eq("subject_held_out"),
+        "inference_unit",
+    ].eq("family_twin_connected_component").all()
+
+
+def test_secondary_mode_split_failure_is_structured_and_preserves_primary(
+    tmp_path, monkeypatch
+):
+    real_splitter = benchmark_module.make_nested_group_splits
+
+    def fail_food_mode(*args, **kwargs):
+        if kwargs.get("secondary_holdout") == "food_id":
+            raise ValueError("testing-only insufficient food groups")
+        return real_splitter(*args, **kwargs)
+
+    monkeypatch.setattr(benchmark_module, "make_nested_group_splits", fail_food_mode)
+    result = _run_testing_only_benchmark(tmp_path, monkeypatch)
+
+    food_status = result.analysis_status.loc[
+        result.analysis_status["analysis_mode"].eq("subject_plus_food_held_out")
+    ]
+    assert food_status["analysis_status"].eq("not_estimable").all()
+    assert food_status["reason"].str.contains("insufficient food groups").all()
+    assert not result.predictions["analysis_mode"].eq(
+        "subject_plus_food_held_out"
+    ).any()
+    assert result.predictions["analysis_mode"].eq("subject_held_out").any()
+
+
+def test_primary_failure_is_reported_only_after_all_four_modes_are_attempted(
+    tmp_path, monkeypatch
+):
+    real_splitter = benchmark_module.make_nested_group_splits
+    attempted: list[str | None] = []
+
+    def fail_primary_mode(*args, **kwargs):
+        secondary = kwargs.get("secondary_holdout")
+        attempted.append(secondary)
+        if secondary is None:
+            raise ValueError("testing-only primary not estimable")
+        return real_splitter(*args, **kwargs)
+
+    monkeypatch.setattr(benchmark_module, "make_nested_group_splits", fail_primary_mode)
+    with pytest.raises(ValueError, match="primary analysis is not estimable"):
+        _run_testing_only_benchmark(tmp_path, monkeypatch)
+    assert attempted == [None, "food_id", "meal_id", "cohort_id"]
 
 
 def test_benchmark_api_requires_trusted_path_contract_not_caller_object():
-    assert "feature_contract" not in inspect.signature(run_person_meal_benchmark).parameters
+    parameters = inspect.signature(run_person_meal_benchmark).parameters
+    assert "feature_contract" not in parameters
+    assert "predictors" not in parameters
+
+
+def test_task3_loads_exact_bound_predictor_values_from_canonical_bytes(
+    tmp_path, monkeypatch
+):
+    predictors, _ = _testing_only_tables()
+    paths, manifest_path, _ = _testing_only_lock_fixture(tmp_path, predictors)
+    monkeypatch.setattr(
+        benchmark_module, "validate_method_lock_manifest", lambda *args, **kwargs: None
+    )
+
+    verified = validate_benchmark_method_lock(
+        manifest_path=manifest_path,
+        method_lock_paths=paths,
+    )
+
+    assert_frame_equal(verified.predictor_frame, predictors)
+    assert verified.predictor_frame_sha256 == _sha(paths.predictor_frame)
+
+
+def test_predictor_value_tamper_and_declared_digest_mismatch_fail_before_outcomes(
+    tmp_path, monkeypatch
+):
+    predictors, _ = _testing_only_tables()
+    paths, manifest_path, manifest = _testing_only_lock_fixture(tmp_path, predictors)
+    monkeypatch.setattr(
+        benchmark_module, "validate_method_lock_manifest", lambda *args, **kwargs: None
+    )
+    outcome_reads: list[str] = []
+    monkeypatch.setattr(
+        benchmark_module,
+        "load_outcome_table_after_gate",
+        lambda *args, **kwargs: outcome_reads.append("outcome-read"),
+    )
+    payload = json.loads(paths.predictor_frame.read_bytes())
+    age_position = payload["columns"].index("age")
+    payload["rows"][0][age_position] += 1.0
+    paths.predictor_frame.write_bytes(_canonical_bytes(payload))
+
+    with pytest.raises(BenchmarkAccessBlocked, match="predictor|digest|hash|artifact"):
+        load_locked_outcomes_for_benchmark(
+            "testing-only-controlled-source",
+            manifest_path=manifest_path,
+            method_lock_paths=paths,
+        )
+    assert outcome_reads == []
+
+    paths.predictor_frame.write_bytes(_testing_only_predictor_frame_bytes(predictors))
+    manifest["predictor_frame_sha256"] = "0" * 64
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(BenchmarkAccessBlocked, match="predictor|digest|hash|artifact"):
+        load_locked_outcomes_for_benchmark(
+            "testing-only-controlled-source",
+            manifest_path=manifest_path,
+            method_lock_paths=paths,
+        )
+    assert outcome_reads == []
+
+
+def test_predictor_symlink_and_path_swap_fail_closed(tmp_path, monkeypatch):
+    predictors, _ = _testing_only_tables()
+    paths, manifest_path, _ = _testing_only_lock_fixture(tmp_path, predictors)
+    monkeypatch.setattr(
+        benchmark_module, "validate_method_lock_manifest", lambda *args, **kwargs: None
+    )
+    original = paths.predictor_frame
+    target = tmp_path / "predictor-target.json"
+    target.write_bytes(original.read_bytes())
+    original.unlink()
+    original.symlink_to(target)
+    with pytest.raises(BenchmarkAccessBlocked, match="predictor|symlink|regular|unreadable"):
+        validate_benchmark_method_lock(
+            manifest_path=manifest_path,
+            method_lock_paths=paths,
+        )
+
+    original.unlink()
+    original.write_bytes(target.read_bytes())
+    replacement = tmp_path / "predictor-replacement.json"
+    replacement.write_bytes(target.read_bytes())
+    real_open = benchmark_module.os.open
+
+    def swap_after_open(path, flags):
+        descriptor = real_open(path, flags)
+        if Path(path) == original:
+            replacement.replace(original)
+        return descriptor
+
+    monkeypatch.setattr(benchmark_module.os, "open", swap_after_open)
+    with pytest.raises(BenchmarkAccessBlocked, match="changed|swap|predictor|immutable"):
+        validate_benchmark_method_lock(
+            manifest_path=manifest_path,
+            method_lock_paths=paths,
+        )
 
 
 def test_categorical_preprocessing_has_explicit_missing_indicator():
@@ -574,6 +919,61 @@ def test_exact_contract_rejects_unknown_predictor_columns(tmp_path, monkeypatch)
     )
     with pytest.raises(ValueError, match="unknown|exact|contract"):
         validate_feature_contract(predictors, lock.feature_contract)
+
+
+@pytest.mark.parametrize(
+    ("column", "bad_value", "message"),
+    [
+        ("age", "not-a-number", "numeric|number"),
+        ("participant_id", 123, "string"),
+        ("diet_category", 123, "category"),
+        ("diet_flag", "true", "boolean"),
+    ],
+)
+def test_contract_validates_every_declared_data_type(
+    tmp_path, monkeypatch, column, bad_value, message
+):
+    predictors, _ = _testing_only_tables()
+    paths, manifest_path, _ = _testing_only_lock_fixture(tmp_path, predictors)
+    monkeypatch.setattr(
+        benchmark_module, "validate_method_lock_manifest", lambda *args, **kwargs: None
+    )
+    lock = validate_benchmark_method_lock(
+        manifest_path=manifest_path,
+        method_lock_paths=paths,
+    )
+    predictors[column] = predictors[column].astype(object)
+    predictors.loc[predictors.index[0], column] = bad_value
+    with pytest.raises(ValueError, match=message):
+        validate_feature_contract(predictors, lock.feature_contract)
+
+
+@pytest.mark.parametrize("mutation", ["wrong_mapping_column", "second_mapping_role"])
+def test_contract_requires_food_id_as_the_single_mapping_unit(
+    tmp_path, monkeypatch, mutation
+):
+    predictors, _ = _testing_only_tables()
+    paths, manifest_path, manifest = _testing_only_lock_fixture(tmp_path, predictors)
+    payload = json.loads(paths.feature_contract.read_bytes())
+    if mutation == "wrong_mapping_column":
+        payload["mapping_unit"]["column"] = "meal_id"
+    else:
+        next(
+            column for column in payload["columns"] if column["name"] == "meal_id"
+        )["role"] = "mapping_unit"
+    paths.feature_contract.write_bytes(_canonical_bytes(payload))
+    manifest["feature_contract_sha256"] = _sha(paths.feature_contract)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(
+        benchmark_module, "validate_method_lock_manifest", lambda *args, **kwargs: None
+    )
+    with pytest.raises(
+        (BenchmarkAccessBlocked, ValueError), match="mapping|food_id|feature contract"
+    ):
+        validate_benchmark_method_lock(
+            manifest_path=manifest_path,
+            method_lock_paths=paths,
+        )
 
 
 @pytest.mark.parametrize("mutation", ["identifier_in_block", "duplicate_alias", "illegal_overlap"])
@@ -683,3 +1083,27 @@ def test_permutation_null_swaps_complete_participant_clusters():
     assert result.null_distribution == pytest.approx(tuple(expected))
     assert result.n_participants == 2
     assert 0.0 < result.p_value <= 1.0
+
+
+@pytest.mark.parametrize("resampler", ["bootstrap", "permutation"])
+def test_low_valid_resampling_fraction_fails_closed_for_preregistered_primary(
+    tmp_path, monkeypatch, resampler
+):
+    if resampler == "bootstrap":
+        real_resampler = benchmark_module.participant_bootstrap_ci
+
+        def low_valid(*args, **kwargs):
+            return replace(real_resampler(*args, **kwargs), valid_replicates=0)
+
+        monkeypatch.setattr(benchmark_module, "participant_bootstrap_ci", low_valid)
+    else:
+        real_resampler = benchmark_module.participant_permutation_test
+
+        def low_valid(*args, **kwargs):
+            return replace(real_resampler(*args, **kwargs), valid_replicates=0)
+
+        monkeypatch.setattr(
+            benchmark_module, "participant_permutation_test", low_valid
+        )
+    with pytest.raises(ValueError, match="primary.*not estimable|valid.*fraction"):
+        _run_testing_only_benchmark(tmp_path, monkeypatch)

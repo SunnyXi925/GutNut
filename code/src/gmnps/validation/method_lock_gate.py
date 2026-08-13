@@ -14,6 +14,7 @@ from math import isfinite
 import os
 from pathlib import Path
 import re
+import stat
 import tempfile
 from typing import Mapping, Sequence
 
@@ -65,6 +66,12 @@ _TRUSTED_METHOD_LOCK_SCHEMA_PATH = (
 _TRUSTED_RELEASE_REGISTRY_PATH = (
     _REPOSITORY_ROOT / "code/src/configs/fcs2_fndds_release_registry.json"
 )
+_TRUSTED_COHORT_SPLIT_PATH = (
+    _REPOSITORY_ROOT / "code/src/gmnps/validation/cohort_split.py"
+)
+_TRUSTED_PERSON_MEAL_BENCHMARK_PATH = (
+    _REPOSITORY_ROOT / "code/src/gmnps/validation/person_meal_benchmark.py"
+)
 
 
 class MethodLockError(ValueError):
@@ -78,8 +85,11 @@ class MethodLockArtifactPaths:
     method_lock_schema: Path
     person_meal_validation_config: Path
     feature_contract: Path
+    predictor_frame: Path
     release_registry: Path
     gate_implementation: Path
+    cohort_split_implementation: Path
+    person_meal_benchmark_implementation: Path
     development_beta: Path
     normalization_state: Path
     scoring_beta: Path
@@ -139,12 +149,177 @@ def canonical_ids_sha256(identifiers: Sequence[str]) -> str:
 
 
 def _read_bytes(path: Path, label: str) -> bytes:
+    descriptor: int | None = None
     try:
-        if not path.is_file():
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags)
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode):
             raise MethodLockError(f"{label} is missing or is not a regular file")
-        return path.read_bytes()
+        chunks = []
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        after = os.fstat(descriptor)
+        live = os.stat(path, follow_symlinks=False)
+        identity_before = (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
+        )
+        identity_after = (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+        )
+        identity_live = (
+            live.st_dev,
+            live.st_ino,
+            live.st_size,
+            live.st_mtime_ns,
+        )
+        if identity_before != identity_after or identity_after != identity_live:
+            raise MethodLockError(f"{label} changed during immutable read")
+        return b"".join(chunks)
     except OSError as error:
         raise MethodLockError(f"{label} is missing or unreadable") from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def _canonical_json_bytes(payload: object) -> bytes:
+    try:
+        return (
+            json.dumps(
+                payload,
+                ensure_ascii=True,
+                allow_nan=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n"
+        ).encode("utf-8")
+    except (TypeError, ValueError) as error:
+        raise MethodLockError("payload cannot be represented as canonical JSON") from error
+
+
+def _load_unique_json_bytes(raw: bytes, label: str) -> object:
+    def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise MethodLockError(f"{label} contains duplicate JSON key {key}")
+            result[key] = value
+        return result
+
+    try:
+        payload = json.loads(raw, object_pairs_hook=unique_object)
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise MethodLockError(f"{label} is not valid JSON") from error
+    if raw != _canonical_json_bytes(payload):
+        raise MethodLockError(f"{label} does not use canonical JSON bytes")
+    return payload
+
+
+def validate_predictor_artifact_binding(
+    feature_contract_bytes: bytes,
+    predictor_frame_bytes: bytes,
+) -> dict[str, object]:
+    """Validate exact pre-outcome predictor values and all feature-block digests."""
+
+    contract = _load_unique_json_bytes(feature_contract_bytes, "feature contract")
+    frame = _load_unique_json_bytes(predictor_frame_bytes, "predictor frame")
+    if not isinstance(contract, dict) or not isinstance(frame, dict):
+        raise MethodLockError("predictor artifact contracts must be JSON objects")
+    if set(frame) != {
+        "schema_version",
+        "construction_version",
+        "generated_stage",
+        "columns",
+        "rows",
+    }:
+        raise MethodLockError("canonical predictor frame fields are not exact")
+    if (
+        frame["schema_version"] != "person-meal-predictor-frame-v1"
+        or frame["generated_stage"] != "pre-outcome_predictor_only"
+        or not isinstance(frame["construction_version"], str)
+        or not frame["construction_version"]
+    ):
+        raise MethodLockError("canonical predictor frame provenance is invalid")
+    columns = frame["columns"]
+    rows = frame["rows"]
+    if (
+        not isinstance(columns, list)
+        or not columns
+        or any(not isinstance(column, str) or not column for column in columns)
+        or len(set(columns)) != len(columns)
+        or not isinstance(rows, list)
+        or not rows
+        or any(not isinstance(row, list) or len(row) != len(columns) for row in rows)
+    ):
+        raise MethodLockError("canonical predictor frame matrix is invalid")
+    if (
+        contract.get("schema_version") != "person-meal-feature-contract-v1"
+        or contract.get("generated_stage") != "pre-outcome_predictor_only"
+        or contract.get("construction_version") != frame["construction_version"]
+    ):
+        raise MethodLockError("feature contract and predictor frame provenance differ")
+    contract_columns = contract.get("columns")
+    if not isinstance(contract_columns, list) or [
+        item.get("name") if isinstance(item, dict) else None for item in contract_columns
+    ] != columns:
+        raise MethodLockError("feature contract and predictor frame columns differ")
+    artifact = contract.get("predictor_frame_artifact")
+    predictor_sha256 = sha256(predictor_frame_bytes).hexdigest()
+    if (
+        not isinstance(artifact, dict)
+        or set(artifact) != {"artifact_id", "schema_version", "sha256"}
+        or artifact.get("schema_version") != frame["schema_version"]
+        or artifact.get("sha256") != predictor_sha256
+        or not isinstance(artifact.get("artifact_id"), str)
+        or not artifact.get("artifact_id")
+    ):
+        raise MethodLockError("predictor frame artifact digest binding is invalid")
+    feature_blocks = contract.get("feature_blocks")
+    expected_block_hashes = contract.get("block_artifact_sha256")
+    if (
+        not isinstance(feature_blocks, dict)
+        or not feature_blocks
+        or not isinstance(expected_block_hashes, dict)
+        or set(feature_blocks) != set(expected_block_hashes)
+    ):
+        raise MethodLockError("predictor block artifact digest contract is invalid")
+    for block, specification in feature_blocks.items():
+        if not isinstance(specification, dict) or not isinstance(
+            specification.get("columns"), list
+        ):
+            raise MethodLockError(f"predictor block {block} contract is invalid")
+        block_columns = specification["columns"]
+        if any(column not in columns for column in block_columns):
+            raise MethodLockError(f"predictor block {block} references unknown columns")
+        positions = [columns.index(column) for column in block_columns]
+        observed = sha256(
+            _canonical_json_bytes(
+                {
+                    "schema_version": "person-meal-predictor-block-v1",
+                    "construction_version": frame["construction_version"],
+                    "predictor_frame_sha256": predictor_sha256,
+                    "block": block,
+                    "columns": block_columns,
+                    "rows": [
+                        [row[position] for position in positions] for row in rows
+                    ],
+                }
+            )
+        ).hexdigest()
+        if expected_block_hashes.get(block) != observed:
+            raise MethodLockError(f"predictor block {block} artifact digest mismatch")
+    return frame
 
 
 def _read_json(path: Path, label: str) -> tuple[bytes, object]:
@@ -419,6 +594,22 @@ def _require_installed_gate(path: Path) -> bytes:
     return _read_bytes(supplied, "gate implementation")
 
 
+def _require_installed_task3_implementation(
+    path: Path,
+    *,
+    trusted_path: Path,
+    label: str,
+) -> bytes:
+    try:
+        supplied = path.resolve(strict=True)
+        trusted = trusted_path.resolve(strict=True)
+    except OSError as error:
+        raise MethodLockError(f"{label} implementation is missing or unreadable") from error
+    if supplied != trusted:
+        raise MethodLockError(f"{label} path is not the installed implementation")
+    return _read_bytes(supplied, f"{label} implementation")
+
+
 def _require_trusted_path(
     path: Path,
     *,
@@ -484,9 +675,29 @@ def _expected_manifest(
         paths.person_meal_validation_config,
         "person-meal validation config",
     )
+    try:
+        config_payload = json.loads(config_bytes)
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise MethodLockError("person-meal validation config is not valid JSON") from error
+    benchmark_specification = _schema_const(schema, "benchmark_specification")
+    if (
+        not isinstance(config_payload, dict)
+        or config_payload.get("benchmark_specification") != benchmark_specification
+    ):
+        raise MethodLockError(
+            "person-meal validation config benchmark specification is not frozen"
+        )
     feature_contract_bytes = _read_bytes(
         paths.feature_contract,
         "feature-contract artifact",
+    )
+    predictor_frame_bytes = _read_bytes(
+        paths.predictor_frame,
+        "canonical predictor-frame artifact",
+    )
+    validate_predictor_artifact_binding(
+        feature_contract_bytes,
+        predictor_frame_bytes,
     )
     _require_trusted_path(
         paths.release_registry,
@@ -512,6 +723,16 @@ def _expected_manifest(
     if not registry.approved_artifacts:
         raise MethodLockError("trusted release registry has no approved entry")
     gate_bytes = _require_installed_gate(paths.gate_implementation)
+    cohort_split_bytes = _require_installed_task3_implementation(
+        paths.cohort_split_implementation,
+        trusted_path=_TRUSTED_COHORT_SPLIT_PATH,
+        label="cohort split",
+    )
+    benchmark_bytes = _require_installed_task3_implementation(
+        paths.person_meal_benchmark_implementation,
+        trusted_path=_TRUSTED_PERSON_MEAL_BENCHMARK_PATH,
+        label="person-meal benchmark",
+    )
 
     development_beta = _load_canonical_beta(paths.development_beta, "development beta")
     scoring_beta = _load_canonical_beta(paths.scoring_beta, "scoring beta")
@@ -580,9 +801,18 @@ def _expected_manifest(
         "scoring_beta_sha256": scoring_beta.canonical_sha256,
         "person_meal_validation_config_sha256": sha256(config_bytes).hexdigest(),
         "feature_contract_sha256": sha256(feature_contract_bytes).hexdigest(),
+        "predictor_frame_sha256": sha256(predictor_frame_bytes).hexdigest(),
         "mapping_version": _schema_const(schema, "mapping_version"),
         "implementation_source_sha256": implementation_source_sha256,
         "method_lock_gate_implementation_sha256": sha256(gate_bytes).hexdigest(),
+        "cohort_split_implementation_sha256": sha256(cohort_split_bytes).hexdigest(),
+        "person_meal_benchmark_implementation_sha256": sha256(
+            benchmark_bytes
+        ).hexdigest(),
+        "benchmark_specification": benchmark_specification,
+        "benchmark_specification_sha256": canonical_json_sha256(
+            benchmark_specification
+        ),
         "fixed_parameters": _schema_const(schema, "fixed_parameters"),
         "validation_embargo": _schema_const(schema, "validation_embargo"),
     }
@@ -630,10 +860,17 @@ def validate_method_lock_manifest(
         ("method_lock_schema_sha256", "method-lock schema hash"),
         ("person_meal_validation_config_sha256", "validation config hash"),
         ("feature_contract_sha256", "feature-contract hash"),
+        ("predictor_frame_sha256", "predictor-frame hash"),
         (
             "method_lock_gate_implementation_sha256",
             "gate implementation hash",
         ),
+        ("cohort_split_implementation_sha256", "cohort split implementation hash"),
+        (
+            "person_meal_benchmark_implementation_sha256",
+            "person-meal benchmark implementation hash",
+        ),
+        ("benchmark_specification_sha256", "benchmark specification hash"),
         ("development_beta_sha256", "development beta hash"),
         ("scoring_beta_sha256", "scoring beta hash"),
         ("normalization_state_fingerprint", "normalization-state fingerprint"),
@@ -760,5 +997,6 @@ __all__ = [
     "canonical_json_sha256",
     "generate_method_lock_manifest",
     "validate_method_lock_manifest",
+    "validate_predictor_artifact_binding",
     "write_method_lock_manifest",
 ]

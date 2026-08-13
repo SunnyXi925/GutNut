@@ -131,21 +131,42 @@ _LOCKED_PERSON_MEAL_CONFIG = {
             "name": "subject_held_out",
             "role": "primary",
             "secondary_unit": None,
+            "estimand": "generalization_to_unseen_family_twin_connected_components",
+            "inference_policy": "family_twin_connected_component_cluster",
         },
         {
             "name": "subject_plus_food_held_out",
             "role": "secondary",
             "secondary_unit": "food_id",
+            "estimand": (
+                "descriptive_joint_generalization_to_unseen_subject_components_and_foods"
+            ),
+            "inference_policy": "descriptive_only",
+            "descriptive_reason": (
+                "multiway_subject_component_and_food_inference_not_implemented"
+            ),
         },
         {
             "name": "subject_plus_meal_held_out",
             "role": "secondary",
             "secondary_unit": "meal_id",
+            "estimand": (
+                "descriptive_joint_generalization_to_unseen_subject_components_and_meals"
+            ),
+            "inference_policy": "descriptive_only",
+            "descriptive_reason": (
+                "multiway_subject_component_and_meal_inference_not_implemented"
+            ),
         },
         {
             "name": "cohort_held_out",
             "role": "secondary",
             "secondary_unit": "cohort_id",
+            "estimand": (
+                "descriptive_generalization_to_unseen_whole_linked_cohort_components"
+            ),
+            "inference_policy": "descriptive_only",
+            "descriptive_reason": "cohort_cluster_inference_not_implemented",
         },
     ],
     "split": {
@@ -182,6 +203,59 @@ _LOCKED_PERSON_MEAL_CONFIG = {
         "secondary_correction": "holm_within_analysis_mode_endpoint_metric",
         "null_comparators": ["random_microbiome", "shuffled_mapping"],
         "null_test_role": "exploratory",
+    },
+    "benchmark_specification": {
+        "specification_id": "person-meal-ridge-nested-v1",
+        "estimator": {
+            "class": "sklearn.linear_model.Ridge",
+            "solver": "lsqr",
+            "alpha_grid": [0.1, 1.0, 10.0],
+            "fit_intercept": True,
+            "tol": 0.0001,
+            "max_iter": None,
+            "copy_x": True,
+            "positive": False,
+        },
+        "preprocessing": {
+            "numeric_imputation": "median_with_indicator",
+            "numeric_scaling": "standard_mean_and_variance",
+            "categorical_imputation": "most_frequent",
+            "categorical_missing_indicator": "explicit_all_columns",
+            "categorical_encoding": "one_hot_ignore_unknown_dense",
+            "remainder": "drop",
+        },
+        "tuning": {
+            "metric": "mae",
+            "scope": "development_inner_folds_only",
+            "selection_rule": "minimum_mean_inner_mae_then_smallest_alpha",
+        },
+        "seed_derivation": {
+            "identifier": "additive-indexed-v1",
+            "split_formula": (
+                "base_plus_mode_10000019_plus_outer_fold_for_inner"
+            ),
+            "fit_formula": (
+                "base_plus_mode_10000019_plus_endpoint_1000003_plus_"
+                "comparator_10007_plus_outer_101_plus_inner"
+            ),
+            "resample_formula": (
+                "base_plus_mode_10000019_plus_endpoint_1000003_plus_"
+                "comparison_10007_plus_metric"
+            ),
+        },
+        "bootstrap": {
+            "replicates": 2_000,
+            "ci_level": 0.95,
+            "method": "cluster_percentile",
+            "minimum_valid_fraction": 0.9,
+        },
+        "permutation": {
+            "replicates": 2_000,
+            "method": "complete_cluster_label_swap",
+            "alternative": "two_sided",
+            "plus_one_correction": True,
+            "minimum_valid_fraction": 0.9,
+        },
     },
     "seeds": {
         "outer_split": 1729,

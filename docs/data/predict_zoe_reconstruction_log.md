@@ -179,7 +179,7 @@ same-immutable-bytes loader. No entry was added to
 
 `code/src/configs/person_meal_validation.yaml` is JSON-compatible YAML with
 review-hardened pre-outcome SHA-256
-`291946d087998dfac7e43c7edd719a8be8a86f8744700b9bac4718bde3964018`.
+`a8208ebe9c254d163825f9ff8e57f8005aaaed2cd528f680db7a30e1f6662ed7`.
 It defines the source-independent `participant_id + meal_id` unique key;
 requires both primary endpoints (`glucose_iAUC_2h` and `tg_6h_rise`); applies a
 predeclared availability policy to secondary `c_peptide_iAUC_2h`; and freezes
@@ -189,22 +189,32 @@ participant/family/twin-aware splitting, the four fixed subject, subject-plus-
 food, subject-plus-meal and whole-cohort analysis modes, nested cross-validation,
 two primary endpoint tests with Holm correction, and seeds. It also defines the
 required schema and generation stage for a future canonical predictor-only
-feature contract. The current real feature contract does not exist.
+frame and feature contract, the complete Ridge/preprocessing/tuning
+specification, analysis-mode estimands and inference policies, deterministic
+seed derivation, and minimum valid bootstrap/permutation fractions. The current
+real predictor frame and feature contract do not exist.
 These are preregistration declarations only; no response value or outcome
 summary was read to define them.
 
 The synchronized method-lock schema SHA-256 is
-`b9894ccf1ac57c2b37603c05566c320d02f6b966d113691ebb105bfd66b59ee5`,
+`4726aed7568fa9b8ca2ce46228239887e6e9a3026c9270629b0812ae4d3d78a6`,
 and the reviewed gate implementation SHA-256 is
-`91a0c2721c002a7395f2f1165996e63541b88efc13f98f6dca67c29fadc7fec2`.
-The schema now requires `feature_contract_sha256`; the existing Phase 1
-`implementation_source_sha256` constants were not changed. No placeholder
-feature contract or run manifest was created.
+`e47f1825e30a67008fc0bf5d73884426174996d0769583eb93bf7e2aced3931e`.
+The reviewed cohort-split and benchmark implementation SHA-256 values are
+`510d5a584a9fa27067baa60758438ab6dfb7a1f2d3c2afb8284a627520d1df25`
+and
+`294ae374c3507e7591c9c4b73930b844b429dc07d80e4577d3543b70d7726202`,
+respectively. The schema now requires predictor-frame/feature-contract hashes,
+both Task 3 implementation hashes and the canonical benchmark specification
+hash. The existing Phase 1 `implementation_source_sha256` constants were not
+changed. No placeholder predictor frame, feature contract or run manifest was
+created.
 
 ## Stages 2C and 2D
 
 Stage 2C is blocked because there is no disjoint held-out scoring beta, no
-complete approved production food bundle, and no approved registry entry. The
+complete approved production food bundle, no canonical predictor frame or
+feature contract, and no approved registry entry. The
 empty trusted registry snapshot has SHA-256
 `ece380ff9f913d540f286011b97f50110afd9321f4b2a0045018510dae668ba3`.
 The manifest writer now requires explicit expected hashes for both this

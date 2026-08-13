@@ -24,6 +24,8 @@ from gmnps.validation import method_lock_gate as gate_module
 ROOT = Path(__file__).resolve().parents[3]
 SCHEMA_PATH = ROOT / "docs/methods/method_lock_manifest.schema.json"
 GATE_PATH = ROOT / "code/src/gmnps/validation/method_lock_gate.py"
+COHORT_SPLIT_PATH = ROOT / "code/src/gmnps/validation/cohort_split.py"
+BENCHMARK_PATH = ROOT / "code/src/gmnps/validation/person_meal_benchmark.py"
 CANONICAL_RELEASES = [f"FNDDS {start}-{start + 1}" for start in range(2001, 2018, 2)]
 ARTIFACT_KEYS = (
     "official_fcs",
@@ -35,10 +37,118 @@ ARTIFACT_KEYS = (
 IMPLEMENTATION_HASHES = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))[
     "properties"
 ]["implementation_source_sha256"]["const"]
+BENCHMARK_SPECIFICATION = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))[
+    "properties"
+]["benchmark_specification"]["const"]
 
 
 def _write_json(path: Path, payload: object) -> None:
     path.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _canonical_bytes(payload: object) -> bytes:
+    return (
+        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+
+
+def _predictor_artifact_fixture(tmp_path: Path) -> tuple[Path, Path]:
+    columns = [
+        "participant_id",
+        "meal_id",
+        "food_id",
+        "family_id",
+        "twin_id",
+        "cohort_id",
+        "clinical_feature",
+        "fcs_score",
+        "microbiome_feature",
+        "legacy_score",
+        "gmnps_score",
+    ]
+    frame_payload = {
+        "schema_version": "person-meal-predictor-frame-v1",
+        "construction_version": "testing-only-construction-v1",
+        "generated_stage": "pre-outcome_predictor_only",
+        "columns": columns,
+        "rows": [
+            ["p1", "m1", "f1", "fam1", None, "c1", 1.0, 2.0, 3.0, 4.0, 5.0],
+            ["p2", "m2", "f2", "fam2", None, "c2", 1.5, 2.5, 3.5, 4.5, 5.5],
+        ],
+    }
+    predictor_frame = tmp_path / "predictor_frame.json"
+    predictor_frame.write_bytes(_canonical_bytes(frame_payload))
+    predictor_sha256 = sha256(predictor_frame.read_bytes()).hexdigest()
+    blocks = {
+        "clinical_demographic_diet": ["clinical_feature"],
+        "fcs": ["fcs_score"],
+        "microbiome": ["microbiome_feature"],
+        "legacy_final_score_offset": ["legacy_score"],
+        "locked_attribute_gmnps": ["gmnps_score"],
+    }
+    block_hashes = {}
+    for block, block_columns in blocks.items():
+        positions = [columns.index(column) for column in block_columns]
+        block_hashes[block] = sha256(
+            _canonical_bytes(
+                {
+                    "schema_version": "person-meal-predictor-block-v1",
+                    "construction_version": frame_payload["construction_version"],
+                    "predictor_frame_sha256": predictor_sha256,
+                    "block": block,
+                    "columns": block_columns,
+                    "rows": [
+                        [row[position] for position in positions]
+                        for row in frame_payload["rows"]
+                    ],
+                }
+            )
+        ).hexdigest()
+    feature_contract = tmp_path / "feature_contract.json"
+    feature_contract.write_bytes(
+        _canonical_bytes(
+            {
+                "schema_version": "person-meal-feature-contract-v1",
+                "construction_version": "testing-only-construction-v1",
+                "generated_stage": "pre-outcome_predictor_only",
+                "columns": [
+                    {
+                        "name": column,
+                        "data_type": (
+                            "string" if column in columns[:6] else "number"
+                        ),
+                        "role": (
+                            "identifier"
+                            if column in {"participant_id", "meal_id"}
+                            else "mapping_unit"
+                            if column == "food_id"
+                            else "grouping"
+                            if column in {"family_id", "twin_id", "cohort_id"}
+                            else "predictor"
+                        ),
+                        "nullable": column == "twin_id",
+                        "source_artifact_id": "testing-only",
+                    }
+                    for column in columns
+                ],
+                "source_artifact_sha256": {"testing-only": "1" * 64},
+                "predictor_frame_artifact": {
+                    "artifact_id": "testing-only-canonical-predictor-frame",
+                    "schema_version": "person-meal-predictor-frame-v1",
+                    "sha256": predictor_sha256,
+                },
+                "block_artifact_sha256": block_hashes,
+                "feature_blocks": {
+                    block: {"artifact_id": block, "columns": block_columns}
+                    for block, block_columns in blocks.items()
+                },
+                "allowed_overlaps": [],
+                "mapping_unit": {"column": "food_id", "role": "mapping_unit"},
+                "comparators": {},
+            }
+        )
+    )
+    return predictor_frame, feature_contract
 
 
 def _registry_sha256(paths: MethodLockArtifactPaths) -> str:
@@ -183,19 +293,25 @@ def _fixture(
     registry_path = tmp_path / "release_registry.json"
     _write_json(registry_path, registry)
     config = tmp_path / "person_meal_validation.yaml"
-    config.write_text("schema_version: person-meal-validation-v1\n", encoding="utf-8")
-    feature_contract = tmp_path / "feature_contract.json"
-    feature_contract.write_bytes(
-        b'{"generated_stage":"pre-outcome_predictor_only","schema_version":"testing-only"}\n'
+    _write_json(
+        config,
+        {
+            "schema_version": "person-meal-validation-testing-only",
+            "benchmark_specification": BENCHMARK_SPECIFICATION,
+        },
     )
+    predictor_frame, feature_contract = _predictor_artifact_fixture(tmp_path)
     schema = tmp_path / "method_lock_manifest.schema.json"
     schema.write_bytes(SCHEMA_PATH.read_bytes())
     paths = MethodLockArtifactPaths(
         method_lock_schema=schema,
         person_meal_validation_config=config,
         feature_contract=feature_contract,
+        predictor_frame=predictor_frame,
         release_registry=registry_path,
         gate_implementation=GATE_PATH,
+        cohort_split_implementation=COHORT_SPLIT_PATH,
+        person_meal_benchmark_implementation=BENCHMARK_PATH,
         development_beta=development_beta,
         normalization_state=normalization_state,
         scoring_beta=scoring_beta,
@@ -225,8 +341,11 @@ def test_artifact_contract_is_explicit_and_has_no_outcome_or_label_path():
         "method_lock_schema",
         "person_meal_validation_config",
         "feature_contract",
+        "predictor_frame",
         "release_registry",
         "gate_implementation",
+        "cohort_split_implementation",
+        "person_meal_benchmark_implementation",
         "development_beta",
         "normalization_state",
         "scoring_beta",
@@ -265,9 +384,34 @@ def test_generator_binds_external_schema_config_registry_gate_and_approved_entry
     assert manifest["feature_contract_sha256"] == sha256(
         paths.feature_contract.read_bytes()
     ).hexdigest()
+    assert manifest["predictor_frame_sha256"] == sha256(
+        paths.predictor_frame.read_bytes()
+    ).hexdigest()
     assert manifest["method_lock_gate_implementation_sha256"] == sha256(
         GATE_PATH.read_bytes()
     ).hexdigest()
+    assert manifest["cohort_split_implementation_sha256"] == sha256(
+        COHORT_SPLIT_PATH.read_bytes()
+    ).hexdigest()
+    assert manifest["person_meal_benchmark_implementation_sha256"] == sha256(
+        BENCHMARK_PATH.read_bytes()
+    ).hexdigest()
+    specification = manifest["benchmark_specification"]
+    assert specification["specification_id"] == "person-meal-ridge-nested-v1"
+    assert specification["estimator"] == {
+        "class": "sklearn.linear_model.Ridge",
+        "solver": "lsqr",
+        "alpha_grid": [0.1, 1.0, 10.0],
+        "fit_intercept": True,
+        "tol": 0.0001,
+        "max_iter": None,
+        "copy_x": True,
+        "positive": False,
+    }
+    assert specification["preprocessing"]["remainder"] == "drop"
+    assert manifest["benchmark_specification_sha256"] == canonical_json_sha256(
+        specification
+    )
     snapshot = manifest["release_registry_snapshot"]
     assert snapshot["snapshot_sha256"] == sha256(paths.release_registry.read_bytes()).hexdigest()
     assert snapshot["schema_version"] == "fcs2-fndds-release-registry-schema-v1"
@@ -388,6 +532,7 @@ def test_generator_fails_closed_on_overlap_or_missing_approved_entry(
         "method_lock_schema",
         "person_meal_validation_config",
         "feature_contract",
+        "predictor_frame",
         "release_registry",
         "scoring_beta",
         "food_exposures",
@@ -427,6 +572,19 @@ def test_validator_rejects_manifest_schema_failure_and_gate_hash_tampering(
     with pytest.raises(MethodLockError, match="gate|implementation"):
         _validate(changed, paths)
 
+    changed_split = dict(manifest)
+    changed_split["cohort_split_implementation_sha256"] = "0" * 64
+    with pytest.raises(MethodLockError, match="cohort|split|implementation"):
+        _validate(changed_split, paths)
+
+
+def test_task3_implementation_paths_must_be_installed_files(tmp_path, monkeypatch):
+    paths, _ = _fixture(tmp_path, monkeypatch=monkeypatch)
+    alternate = tmp_path / "alternate_cohort_split.py"
+    alternate.write_bytes(paths.cohort_split_implementation.read_bytes())
+    with pytest.raises(MethodLockError, match="cohort|split|installed|path"):
+        _generate(replace(paths, cohort_split_implementation=alternate))
+
 
 def test_feature_contract_is_required_and_tamper_evident(tmp_path, monkeypatch):
     paths, _ = _fixture(tmp_path, monkeypatch=monkeypatch)
@@ -437,8 +595,48 @@ def test_feature_contract_is_required_and_tamper_evident(tmp_path, monkeypatch):
         _generate(paths)
 
     paths.feature_contract.write_bytes(b'{"testing_only":"changed"}\n')
-    with pytest.raises(MethodLockError, match="feature.contract.*hash|bound artifacts"):
+    with pytest.raises(
+        MethodLockError,
+        match="feature.contract.*(hash|provenance)|bound artifacts",
+    ):
         _validate(manifest, paths)
+
+
+def test_predictor_values_are_bound_and_symlinks_fail_closed(tmp_path, monkeypatch):
+    paths, _ = _fixture(tmp_path, monkeypatch=monkeypatch)
+    manifest = _generate(paths)
+    payload = json.loads(paths.predictor_frame.read_bytes())
+    payload["rows"][0][-1] = 99.0
+    paths.predictor_frame.write_bytes(_canonical_bytes(payload))
+    with pytest.raises(MethodLockError, match="predictor|artifact|hash|binding"):
+        _validate(manifest, paths)
+
+    paths, _ = _fixture(tmp_path / "symlink", monkeypatch=monkeypatch)
+    target = tmp_path / "predictor-target.json"
+    target.write_bytes(paths.predictor_frame.read_bytes())
+    paths.predictor_frame.unlink()
+    paths.predictor_frame.symlink_to(target)
+    with pytest.raises(MethodLockError, match="predictor|symlink|regular|unreadable"):
+        _generate(paths)
+
+
+def test_predictor_path_swap_during_task2_immutable_read_fails_closed(
+    tmp_path, monkeypatch
+):
+    paths, _ = _fixture(tmp_path, monkeypatch=monkeypatch)
+    replacement = tmp_path / "predictor-replacement.json"
+    replacement.write_bytes(paths.predictor_frame.read_bytes())
+    real_open = gate_module.os.open
+
+    def swap_after_open(path, flags):
+        descriptor = real_open(path, flags)
+        if Path(path) == paths.predictor_frame:
+            replacement.replace(paths.predictor_frame)
+        return descriptor
+
+    monkeypatch.setattr(gate_module.os, "open", swap_after_open)
+    with pytest.raises(MethodLockError, match="changed|immutable|predictor"):
+        _generate(paths)
 
 
 def test_generator_does_not_create_a_run_level_manifest_or_open_outcomes(

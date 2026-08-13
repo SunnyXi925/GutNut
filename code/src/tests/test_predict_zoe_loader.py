@@ -39,6 +39,8 @@ ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = ROOT / "code/src/configs/person_meal_validation.yaml"
 SCHEMA_PATH = ROOT / "docs/methods/method_lock_manifest.schema.json"
 GATE_PATH = ROOT / "code/src/gmnps/validation/method_lock_gate.py"
+COHORT_SPLIT_PATH = ROOT / "code/src/gmnps/validation/cohort_split.py"
+BENCHMARK_PATH = ROOT / "code/src/gmnps/validation/person_meal_benchmark.py"
 CANONICAL_RELEASES = [f"FNDDS {start}-{start + 1}" for start in range(2001, 2018, 2)]
 PRODUCTION_ARTIFACT_KEYS = (
     "official_fcs",
@@ -61,7 +63,40 @@ def _write_csv(path: Path, rows: list[dict[str, object]]) -> None:
     pd.DataFrame(rows).to_csv(path, index=False)
 
 
-def _testing_only_feature_contract_bytes() -> bytes:
+def _canonical_bytes(payload: object) -> bytes:
+    return (
+        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+
+
+def _testing_only_predictor_frame_bytes() -> bytes:
+    return _canonical_bytes(
+        {
+            "schema_version": "person-meal-predictor-frame-v1",
+            "construction_version": "testing-only-construction-v1",
+            "generated_stage": "pre-outcome_predictor_only",
+            "columns": [
+                "participant_id",
+                "meal_id",
+                "food_id",
+                "family_id",
+                "twin_id",
+                "cohort_id",
+                "clinical_feature",
+                "fcs_score",
+                "microbiome_feature",
+                "legacy_score",
+                "gmnps_score",
+            ],
+            "rows": [
+                ["p1", "m1", "f1", "fam1", None, "c1", 1.0, 2.0, 3.0, 4.0, 5.0],
+                ["p2", "m2", "f2", "fam2", None, "c2", 1.5, 2.5, 3.5, 4.5, 5.5],
+            ],
+        }
+    )
+
+
+def _testing_only_feature_contract_bytes(predictor_frame_bytes: bytes) -> bytes:
     structural = {
         "participant_id": "identifier",
         "meal_id": "identifier",
@@ -78,6 +113,8 @@ def _testing_only_feature_contract_bytes() -> bytes:
         "locked_attribute_gmnps": ["gmnps_score"],
     }
     source_id = "testing-only-predictor-source"
+    predictor_payload = json.loads(predictor_frame_bytes)
+    predictor_sha256 = sha256(predictor_frame_bytes).hexdigest()
     columns = [
         {
             "name": name,
@@ -142,8 +179,33 @@ def _testing_only_feature_contract_bytes() -> bytes:
         "generated_stage": "pre-outcome_predictor_only",
         "columns": columns,
         "source_artifact_sha256": {source_id: sha256(source_id.encode()).hexdigest()},
+        "predictor_frame_artifact": {
+            "artifact_id": "testing-only-canonical-predictor-frame",
+            "schema_version": "person-meal-predictor-frame-v1",
+            "sha256": predictor_sha256,
+        },
         "block_artifact_sha256": {
-            block: sha256(block.encode()).hexdigest() for block in blocks
+            block: sha256(
+                _canonical_bytes(
+                    {
+                        "schema_version": "person-meal-predictor-block-v1",
+                        "construction_version": predictor_payload[
+                            "construction_version"
+                        ],
+                        "predictor_frame_sha256": predictor_sha256,
+                        "block": block,
+                        "columns": names,
+                        "rows": [
+                            [
+                                row[predictor_payload["columns"].index(column)]
+                                for column in names
+                            ]
+                            for row in predictor_payload["rows"]
+                        ],
+                    }
+                )
+            ).hexdigest()
+            for block, names in blocks.items()
         },
         "feature_blocks": {
             block: {"artifact_id": block, "columns": names}
@@ -153,9 +215,7 @@ def _testing_only_feature_contract_bytes() -> bytes:
         "mapping_unit": {"column": "food_id", "role": "mapping_unit"},
         "comparators": comparators,
     }
-    return (
-        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
-    ).encode()
+    return _canonical_bytes(payload)
 
 
 def _predictor_record(
@@ -421,8 +481,12 @@ def _real_method_lock_fixture(tmp_path: Path, monkeypatch):
     schema.write_bytes(SCHEMA_PATH.read_bytes())
     config = lock_root / "person_meal_validation.yaml"
     config.write_bytes(CONFIG_PATH.read_bytes())
+    predictor_frame = lock_root / "predictor_frame.json"
+    predictor_frame.write_bytes(_testing_only_predictor_frame_bytes())
     feature_contract = lock_root / "feature_contract.json"
-    feature_contract.write_bytes(_testing_only_feature_contract_bytes())
+    feature_contract.write_bytes(
+        _testing_only_feature_contract_bytes(predictor_frame.read_bytes())
+    )
 
     implementation_hashes = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))[
         "properties"
@@ -440,8 +504,11 @@ def _real_method_lock_fixture(tmp_path: Path, monkeypatch):
         method_lock_schema=schema,
         person_meal_validation_config=config,
         feature_contract=feature_contract,
+        predictor_frame=predictor_frame,
         release_registry=release_registry,
         gate_implementation=GATE_PATH,
+        cohort_split_implementation=COHORT_SPLIT_PATH,
+        person_meal_benchmark_implementation=BENCHMARK_PATH,
         development_beta=development,
         normalization_state=normalization,
         scoring_beta=scoring,
@@ -641,11 +708,55 @@ def test_frozen_config_contains_source_independent_complete_outcome_contract():
         "subject_plus_meal_held_out",
         "cohort_held_out",
     ]
+    modes = {mode["name"]: mode for mode in payload["analysis_modes"]}
+    assert modes["subject_held_out"]["estimand"] == (
+        "generalization_to_unseen_family_twin_connected_components"
+    )
+    assert modes["subject_held_out"]["inference_policy"] == (
+        "family_twin_connected_component_cluster"
+    )
+    for name in (
+        "subject_plus_food_held_out",
+        "subject_plus_meal_held_out",
+        "cohort_held_out",
+    ):
+        assert modes[name]["inference_policy"] == "descriptive_only"
+        assert modes[name]["estimand"]
     assert payload["feature_contract"]["generated_stage"] == (
         "pre-outcome_predictor_only"
     )
     assert payload["primary_tests"]["multiplicity_method"] == "holm"
     assert len(payload["primary_tests"]["tests"]) == 2
+    specification = payload["benchmark_specification"]
+    assert specification["specification_id"] == "person-meal-ridge-nested-v1"
+    assert specification["estimator"] == {
+        "class": "sklearn.linear_model.Ridge",
+        "solver": "lsqr",
+        "alpha_grid": [0.1, 1.0, 10.0],
+        "fit_intercept": True,
+        "tol": 0.0001,
+        "max_iter": None,
+        "copy_x": True,
+        "positive": False,
+    }
+    assert specification["preprocessing"]["categorical_missing_indicator"] == (
+        "explicit_all_columns"
+    )
+    assert specification["tuning"] == {
+        "metric": "mae",
+        "scope": "development_inner_folds_only",
+        "selection_rule": "minimum_mean_inner_mae_then_smallest_alpha",
+    }
+    assert specification["bootstrap"]["replicates"] == 2000
+    assert specification["bootstrap"]["minimum_valid_fraction"] == 0.9
+    assert specification["permutation"]["replicates"] == 2000
+    assert specification["permutation"]["minimum_valid_fraction"] == 0.9
+    assert specification["seed_derivation"]["identifier"] == (
+        "additive-indexed-v1"
+    )
+    assert specification["seed_derivation"]["split_formula"] == (
+        "base_plus_mode_10000019_plus_outer_fold_for_inner"
+    )
 
 
 def test_frozen_config_missing_modified_or_wrong_hash_fails_closed(tmp_path):

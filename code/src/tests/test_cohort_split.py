@@ -8,7 +8,10 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from gmnps.validation.cohort_split import make_nested_group_splits
+from gmnps.validation.cohort_split import (
+    family_twin_component_ids,
+    make_nested_group_splits,
+)
 
 
 def _testing_only_participant_meals() -> pd.DataFrame:
@@ -178,6 +181,21 @@ def test_family_and_twin_links_are_closed_transitively():
     for nested in plan:
         test = _values(frame, nested.outer.test_positions, "participant_id")
         assert linked.isdisjoint(test) or linked.issubset(test)
+
+
+def test_family_twin_component_ids_expose_the_transitive_inference_unit():
+    frame = _testing_only_participant_meals()
+    frame.loc[frame["participant_id"].eq("testing-p02"), "twin_id"] = "testing-bridge"
+    frame.loc[frame["participant_id"].eq("testing-p03"), "twin_id"] = "testing-bridge"
+
+    observed = family_twin_component_ids(frame)
+
+    linked = frame["participant_id"].isin(
+        {"testing-p01", "testing-p02", "testing-p03", "testing-p04"}
+    )
+    assert observed.loc[linked].nunique() == 1
+    assert observed.loc[~linked].notna().all()
+    assert observed.index.equals(frame.index)
 
 
 def test_split_plan_is_deterministic_and_rejects_inconsistent_participant_metadata():

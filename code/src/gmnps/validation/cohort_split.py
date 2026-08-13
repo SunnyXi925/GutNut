@@ -129,6 +129,23 @@ def _component_by_participant(frame: pd.DataFrame) -> dict[str, str]:
     return canonical
 
 
+def family_twin_component_ids(frame: pd.DataFrame) -> pd.Series:
+    """Return the transitive family/twin component for every input row.
+
+    The identifier is the lexicographically smallest participant in each
+    connected component, making it deterministic and suitable as the primary
+    cluster-resampling unit.
+    """
+
+    if not isinstance(frame, pd.DataFrame):
+        raise TypeError("frame must be a pandas DataFrame")
+    components = _component_by_participant(frame)
+    participants = frame[_PARTICIPANT_COLUMN].map(
+        lambda value: _nonempty_string(value, _PARTICIPANT_COLUMN)
+    )
+    return participants.map(components).rename("family_twin_component_id")
+
+
 def _balanced_assignment(
     weights: Mapping[str, int],
     *,
@@ -380,4 +397,9 @@ def make_nested_group_splits(
     return tuple(nested)
 
 
-__all__ = ["GroupSplit", "NestedGroupSplit", "make_nested_group_splits"]
+__all__ = [
+    "GroupSplit",
+    "NestedGroupSplit",
+    "family_twin_component_ids",
+    "make_nested_group_splits",
+]

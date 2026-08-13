@@ -21,7 +21,7 @@ from typing import Mapping
 
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_numeric_dtype
+from pandas.api.types import is_bool_dtype, is_numeric_dtype
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import MissingIndicator, SimpleImputer
 from sklearn.linear_model import Ridge
@@ -41,8 +41,15 @@ from gmnps.scoring.attribute_gmnps import (
     FCS2_FNDDS_REGISTRY_VERSION,
     load_release_registry_snapshot,
 )
-from gmnps.validation.cohort_split import NestedGroupSplit, make_nested_group_splits
-from gmnps.validation.method_lock_gate import validate_method_lock_manifest
+from gmnps.validation.cohort_split import (
+    NestedGroupSplit,
+    family_twin_component_ids,
+    make_nested_group_splits,
+)
+from gmnps.validation.method_lock_gate import (
+    validate_method_lock_manifest,
+    validate_predictor_artifact_binding,
+)
 
 
 REQUIRED_COMPARATORS = (
@@ -62,12 +69,18 @@ _METRICS = (
     "calibration_slope",
     "calibration_intercept",
 )
-_ALPHA_GRID = (0.1, 1.0, 10.0)
+_LOCKED_ALPHA_GRID = (0.1, 1.0, 10.0)
+_ALPHA_GRID = _LOCKED_ALPHA_GRID
+_RIDGE_SOLVER = "lsqr"
 _TUNING_METRIC = "mae"
 BOOTSTRAP_REPLICATES = 2_000
 PERMUTATION_REPLICATES = 2_000
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _KEY_COLUMNS = ("participant_id", "meal_id")
+_MODE_SEED_STRIDE = 10_000_019
+_ENDPOINT_SEED_STRIDE = 1_000_003
+_COMPARISON_SEED_STRIDE = 10_007
+_OUTER_FOLD_SEED_STRIDE = 101
 _FEATURE_BLOCKS = (
     "clinical_demographic_diet",
     "fcs",
@@ -101,6 +114,10 @@ class BenchmarkAccessBlocked(PermissionError):
     """Raised before benchmark outcome access when trust cannot be proven."""
 
 
+class PrimaryAnalysisNotEstimable(ValueError):
+    """Raised after all modes are attempted when a primary test cannot be estimated."""
+
+
 @dataclass(frozen=True)
 class FeatureColumn:
     """One exact column declared by the pre-outcome predictor-only stage."""
@@ -121,6 +138,7 @@ class FeatureContract:
     generated_stage: str
     columns: tuple[FeatureColumn, ...]
     source_artifact_sha256: tuple[tuple[str, str], ...]
+    predictor_frame_sha256: str
     block_artifact_sha256: tuple[tuple[str, str], ...]
     feature_blocks: tuple[tuple[str, tuple[str, ...]], ...]
     allowed_overlaps: tuple[tuple[str, str], ...]
@@ -147,6 +165,8 @@ class VerifiedBenchmarkLock:
     manifest_sha256: str
     config: FrozenValidationConfig
     feature_contract: FeatureContract
+    predictor_frame: pd.DataFrame
+    predictor_frame_sha256: str
 
 
 @dataclass(frozen=True)
@@ -162,9 +182,15 @@ class BootstrapInterval:
     estimate: float
     lower: float
     upper: float
-    n_participants: int
+    n_clusters: int
     requested_replicates: int
     valid_replicates: int
+
+    @property
+    def n_participants(self) -> int:
+        """Backward-compatible alias for callers supplying participant clusters."""
+
+        return self.n_clusters
 
 
 @dataclass(frozen=True)
@@ -172,9 +198,15 @@ class PermutationTestResult:
     estimate_delta: float
     p_value: float
     null_distribution: tuple[float, ...]
-    n_participants: int
+    n_clusters: int
     requested_replicates: int
     valid_replicates: int
+
+    @property
+    def n_participants(self) -> int:
+        """Backward-compatible alias for callers supplying participant clusters."""
+
+        return self.n_clusters
 
 
 @dataclass(frozen=True)
@@ -186,6 +218,7 @@ class BenchmarkResult:
     splits: Mapping[str, tuple[NestedGroupSplit, ...]]
     split_audit: pd.DataFrame
     missingness_source: pd.DataFrame
+    analysis_status: pd.DataFrame
 
 
 def _read_regular_bytes(path: Path, label: str) -> bytes:
@@ -193,8 +226,8 @@ def _read_regular_bytes(path: Path, label: str) -> bytes:
     try:
         flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
         descriptor = os.open(path, flags)
-        metadata = os.fstat(descriptor)
-        if not stat.S_ISREG(metadata.st_mode):
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode):
             raise BenchmarkAccessBlocked(
                 f"benchmark method-lock {label} is missing or is not a regular file"
             )
@@ -204,6 +237,30 @@ def _read_regular_bytes(path: Path, label: str) -> bytes:
             if not chunk:
                 break
             chunks.append(chunk)
+        after = os.fstat(descriptor)
+        live = os.stat(path, follow_symlinks=False)
+        identity_before = (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
+        )
+        identity_after = (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+        )
+        identity_live = (
+            live.st_dev,
+            live.st_ino,
+            live.st_size,
+            live.st_mtime_ns,
+        )
+        if identity_before != identity_after or identity_after != identity_live:
+            raise BenchmarkAccessBlocked(
+                f"benchmark method-lock {label} changed during immutable read"
+            )
         return b"".join(chunks)
     except OSError as error:
         raise BenchmarkAccessBlocked(
@@ -263,6 +320,7 @@ def _parse_feature_contract(raw: bytes, digest: str) -> FeatureContract:
         "generated_stage",
         "columns",
         "source_artifact_sha256",
+        "predictor_frame_artifact",
         "block_artifact_sha256",
         "feature_blocks",
         "allowed_overlaps",
@@ -332,6 +390,18 @@ def _parse_feature_contract(raw: bytes, digest: str) -> FeatureContract:
     if set(source_hashes) != {column.source_artifact_id for column in columns}:
         raise ValueError("feature contract source artifact hashes are incomplete or extra")
     block_hashes = digest_map("block_artifact_sha256")
+    predictor_artifact = payload["predictor_frame_artifact"]
+    if (
+        not isinstance(predictor_artifact, dict)
+        or set(predictor_artifact) != {"artifact_id", "schema_version", "sha256"}
+        or predictor_artifact.get("schema_version")
+        != "person-meal-predictor-frame-v1"
+        or not isinstance(predictor_artifact.get("artifact_id"), str)
+        or not predictor_artifact.get("artifact_id")
+        or not isinstance(predictor_artifact.get("sha256"), str)
+        or _SHA256_PATTERN.fullmatch(predictor_artifact["sha256"]) is None
+    ):
+        raise ValueError("feature contract predictor-frame artifact is invalid")
 
     raw_blocks = payload["feature_blocks"]
     if not isinstance(raw_blocks, dict) or tuple(sorted(raw_blocks)) != tuple(
@@ -393,8 +463,16 @@ def _parse_feature_contract(raw: bytes, digest: str) -> FeatureContract:
     mapping = payload["mapping_unit"]
     if not isinstance(mapping, dict) or set(mapping) != {"column", "role"}:
         raise ValueError("feature contract mapping unit fields are not exact")
-    if mapping["role"] != "mapping_unit" or role_by_column.get(mapping["column"]) != "mapping_unit":
-        raise ValueError("feature contract mapping unit role is invalid")
+    mapping_columns = sorted(
+        name for name, role in role_by_column.items() if role == "mapping_unit"
+    )
+    if (
+        mapping != {"column": "food_id", "role": "mapping_unit"}
+        or mapping_columns != ["food_id"]
+    ):
+        raise ValueError(
+            "feature contract mapping unit must be uniquely and exactly food_id"
+        )
 
     raw_comparators = payload["comparators"]
     if not isinstance(raw_comparators, dict) or set(raw_comparators) != set(
@@ -426,6 +504,7 @@ def _parse_feature_contract(raw: bytes, digest: str) -> FeatureContract:
         generated_stage=str(payload["generated_stage"]),
         columns=tuple(columns),
         source_artifact_sha256=tuple(sorted(source_hashes.items())),
+        predictor_frame_sha256=str(predictor_artifact["sha256"]),
         block_artifact_sha256=tuple(sorted(block_hashes.items())),
         feature_blocks=tuple((block, blocks[block]) for block in _FEATURE_BLOCKS),
         allowed_overlaps=tuple(sorted(allowed_overlaps)),
@@ -433,6 +512,14 @@ def _parse_feature_contract(raw: bytes, digest: str) -> FeatureContract:
         comparators=tuple(comparators),
         sha256=digest,
     )
+
+
+def _predictor_frame_from_payload(payload: Mapping[str, object]) -> pd.DataFrame:
+    columns = payload.get("columns")
+    rows = payload.get("rows")
+    if not isinstance(columns, list) or not isinstance(rows, list):
+        raise ValueError("canonical predictor frame matrix is invalid")
+    return pd.DataFrame.from_records(rows, columns=columns)
 
 
 def _require_digest(value: object, label: str) -> str:
@@ -482,6 +569,15 @@ def validate_benchmark_method_lock(
     registry_path = _path_from_lock(method_lock_paths, "release_registry")
     gate_path = _path_from_lock(method_lock_paths, "gate_implementation")
     feature_contract_path = _path_from_lock(method_lock_paths, "feature_contract")
+    predictor_frame_path = _path_from_lock(method_lock_paths, "predictor_frame")
+    cohort_split_path = _path_from_lock(
+        method_lock_paths,
+        "cohort_split_implementation",
+    )
+    benchmark_path = _path_from_lock(
+        method_lock_paths,
+        "person_meal_benchmark_implementation",
+    )
     config_bytes = _read_regular_bytes(config_path, "validation config")
     schema_bytes = _read_regular_bytes(schema_path, "schema")
     registry_bytes = _read_regular_bytes(registry_path, "release registry")
@@ -490,12 +586,31 @@ def validate_benchmark_method_lock(
         feature_contract_path,
         "feature contract",
     )
+    predictor_frame_bytes = _read_regular_bytes(
+        predictor_frame_path,
+        "canonical predictor frame",
+    )
+    cohort_split_bytes = _read_regular_bytes(
+        cohort_split_path,
+        "cohort split implementation",
+    )
+    benchmark_bytes = _read_regular_bytes(
+        benchmark_path,
+        "person-meal benchmark implementation",
+    )
 
     live_hashes = {
         "person_meal_validation_config_sha256": sha256(config_bytes).hexdigest(),
         "method_lock_schema_sha256": sha256(schema_bytes).hexdigest(),
         "method_lock_gate_implementation_sha256": sha256(gate_bytes).hexdigest(),
         "feature_contract_sha256": sha256(feature_contract_bytes).hexdigest(),
+        "predictor_frame_sha256": sha256(predictor_frame_bytes).hexdigest(),
+        "cohort_split_implementation_sha256": sha256(
+            cohort_split_bytes
+        ).hexdigest(),
+        "person_meal_benchmark_implementation_sha256": sha256(
+            benchmark_bytes
+        ).hexdigest(),
     }
     for field, observed in live_hashes.items():
         expected = _require_digest(manifest.get(field), field)
@@ -545,6 +660,19 @@ def validate_benchmark_method_lock(
         raise BenchmarkAccessBlocked(
             "benchmark method-lock frozen validation config is invalid"
         ) from error
+    benchmark_specification = config.payload.get("benchmark_specification")
+    if manifest.get("benchmark_specification") != benchmark_specification:
+        raise BenchmarkAccessBlocked(
+            "benchmark method-lock estimator/tuning specification changed"
+        )
+    expected_specification_sha256 = _require_digest(
+        manifest.get("benchmark_specification_sha256"),
+        "benchmark specification",
+    )
+    if _canonical_hash(benchmark_specification) != expected_specification_sha256:
+        raise BenchmarkAccessBlocked(
+            "benchmark method-lock estimator/tuning specification hash changed"
+        )
     try:
         feature_contract = _parse_feature_contract(
             feature_contract_bytes,
@@ -554,11 +682,24 @@ def validate_benchmark_method_lock(
         raise BenchmarkAccessBlocked(
             "benchmark method-lock feature contract is invalid"
         ) from error
+    try:
+        predictor_payload = validate_predictor_artifact_binding(
+            feature_contract_bytes,
+            predictor_frame_bytes,
+        )
+        predictor_frame = _predictor_frame_from_payload(predictor_payload)
+        validate_feature_contract(predictor_frame, feature_contract)
+    except Exception as error:
+        raise BenchmarkAccessBlocked(
+            "benchmark method-lock predictor artifact binding is invalid"
+        ) from error
     return VerifiedBenchmarkLock(
         manifest=MappingProxyType(manifest),
         manifest_sha256=sha256(manifest_bytes).hexdigest(),
         config=config,
         feature_contract=feature_contract,
+        predictor_frame=predictor_frame,
+        predictor_frame_sha256=live_hashes["predictor_frame_sha256"],
     )
 
 
@@ -609,12 +750,25 @@ def validate_feature_contract(
         values = frame[column.name]
         if not column.nullable and values.isna().any():
             raise ValueError(f"nonnullable contract column {column.name} contains missing values")
-        if column.data_type == "number" and not is_numeric_dtype(values):
-            raise ValueError(f"contract column {column.name} is not numeric")
         if column.data_type == "number":
+            if not is_numeric_dtype(values) or is_bool_dtype(values):
+                raise ValueError(f"contract column {column.name} is not numeric")
             numeric = values.to_numpy(dtype=float)
             if np.isinf(numeric).any():
                 raise ValueError(f"contract column {column.name} contains infinite values")
+        else:
+            observed = values.loc[values.notna()].tolist()
+            if column.data_type == "boolean" and (
+                not is_bool_dtype(values)
+                and any(not isinstance(value, (bool, np.bool_)) for value in observed)
+            ):
+                raise ValueError(f"contract column {column.name} is not boolean")
+            if column.data_type in {"string", "category"} and any(
+                not isinstance(value, str) for value in observed
+            ):
+                raise ValueError(
+                    f"contract column {column.name} is not {column.data_type}"
+                )
 
 
 def _finite_vectors(
@@ -732,7 +886,7 @@ def participant_bootstrap_ci(
         estimate=float(estimate),
         lower=float(lower),
         upper=float(upper),
-        n_participants=len(unique),
+        n_clusters=len(unique),
         requested_replicates=n_bootstrap,
         valid_replicates=len(finite_replicates),
     )
@@ -800,7 +954,7 @@ def participant_permutation_test(
         estimate_delta=float(observed),
         p_value=p_value,
         null_distribution=tuple(float(value) for value in null),
-        n_participants=len(unique),
+        n_clusters=len(unique),
         requested_replicates=n_permutations,
         valid_replicates=int(np.isfinite(null).sum()),
     )
@@ -951,6 +1105,55 @@ def _endpoint_specs(config: FrozenValidationConfig) -> tuple[dict[str, object], 
     return endpoints
 
 
+def _benchmark_specification(config: FrozenValidationConfig) -> Mapping[str, object]:
+    specification = config.payload.get("benchmark_specification")
+    if not isinstance(specification, dict):
+        raise ValueError("frozen validation config omits benchmark specification")
+    estimator = specification.get("estimator")
+    preprocessing = specification.get("preprocessing")
+    tuning = specification.get("tuning")
+    bootstrap = specification.get("bootstrap")
+    permutation = specification.get("permutation")
+    seed_derivation = specification.get("seed_derivation")
+    if (
+        specification.get("specification_id") != "person-meal-ridge-nested-v1"
+        or not isinstance(estimator, dict)
+        or estimator.get("class") != "sklearn.linear_model.Ridge"
+        or estimator.get("solver") != _RIDGE_SOLVER
+        or tuple(estimator.get("alpha_grid", ())) != _LOCKED_ALPHA_GRID
+        or estimator.get("fit_intercept") is not True
+        or estimator.get("tol") != 0.0001
+        or estimator.get("max_iter") is not None
+        or estimator.get("copy_x") is not True
+        or estimator.get("positive") is not False
+        or preprocessing
+        != {
+            "numeric_imputation": "median_with_indicator",
+            "numeric_scaling": "standard_mean_and_variance",
+            "categorical_imputation": "most_frequent",
+            "categorical_missing_indicator": "explicit_all_columns",
+            "categorical_encoding": "one_hot_ignore_unknown_dense",
+            "remainder": "drop",
+        }
+        or tuning
+        != {
+            "metric": _TUNING_METRIC,
+            "scope": "development_inner_folds_only",
+            "selection_rule": "minimum_mean_inner_mae_then_smallest_alpha",
+        }
+        or not isinstance(bootstrap, dict)
+        or bootstrap.get("replicates") != 2_000
+        or not isinstance(permutation, dict)
+        or permutation.get("replicates") != 2_000
+        or not isinstance(seed_derivation, dict)
+        or seed_derivation.get("identifier") != "additive-indexed-v1"
+        or seed_derivation.get("split_formula")
+        != "base_plus_mode_10000019_plus_outer_fold_for_inner"
+    ):
+        raise ValueError("frozen benchmark estimator/tuning specification changed")
+    return MappingProxyType(specification)
+
+
 def _comparator_columns(
     contract: FeatureContract,
 ) -> dict[str, tuple[str, ...]]:
@@ -975,8 +1178,15 @@ def _pipeline(frame: pd.DataFrame, alpha: float) -> Pipeline:
                 "numeric",
                 Pipeline(
                     [
-                        ("impute", SimpleImputer(strategy="median", add_indicator=True)),
-                        ("scale", StandardScaler()),
+                        (
+                            "impute",
+                            SimpleImputer(
+                                strategy="median",
+                                add_indicator=True,
+                                keep_empty_features=False,
+                            ),
+                        ),
+                        ("scale", StandardScaler(with_mean=True, with_std=True)),
                     ]
                 ),
                 numeric,
@@ -988,10 +1198,21 @@ def _pipeline(frame: pd.DataFrame, alpha: float) -> Pipeline:
                 "categorical",
                 Pipeline(
                     [
-                        ("impute", SimpleImputer(strategy="most_frequent")),
+                        (
+                            "impute",
+                            SimpleImputer(
+                                strategy="most_frequent",
+                                add_indicator=False,
+                                keep_empty_features=False,
+                            ),
+                        ),
                         (
                             "encode",
-                            OneHotEncoder(handle_unknown="ignore", sparse_output=False),
+                            OneHotEncoder(
+                                handle_unknown="ignore",
+                                sparse_output=False,
+                                drop=None,
+                            ),
                         ),
                     ]
                 ),
@@ -1013,7 +1234,18 @@ def _pipeline(frame: pd.DataFrame, alpha: float) -> Pipeline:
                 "preprocess",
                 ColumnTransformer(transformers, remainder="drop"),
             ),
-            ("model", Ridge(alpha=float(alpha), solver="lsqr")),
+            (
+                "model",
+                Ridge(
+                    alpha=float(alpha),
+                    solver=_RIDGE_SOLVER,
+                    fit_intercept=True,
+                    tol=0.0001,
+                    max_iter=None,
+                    copy_X=True,
+                    positive=False,
+                ),
+            ),
         ]
     )
 
@@ -1095,18 +1327,10 @@ def _feature_pair(
     *,
     seed: int,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    train = (
-        frame.iloc[train_positions]
-        .loc[:, list(columns)]
-        .copy()
-        .replace({None: np.nan})
-    )
-    evaluation = (
-        frame.iloc[evaluation_positions]
-        .loc[:, list(columns)]
-        .copy()
-        .replace({None: np.nan})
-    )
+    train = frame.iloc[train_positions].loc[:, list(columns)].copy()
+    evaluation = frame.iloc[evaluation_positions].loc[:, list(columns)].copy()
+    train = train.where(train.notna(), np.nan)
+    evaluation = evaluation.where(evaluation.notna(), np.nan)
     if comparator == "random_microbiome":
         return _random_microbiome(train, evaluation, seed=seed)
     if comparator == "shuffled_mapping":
@@ -1158,38 +1382,55 @@ def _missingness_source_table(
                 rows = frame.iloc[list(positions)]
                 for cohort_id, cohort_rows in rows.groupby("cohort_id", sort=True):
                     for endpoint_name in endpoint_names:
-                        for variable in (*predictor_columns, endpoint_name):
-                            values = cohort_rows[variable]
-                            if variable == endpoint_name:
-                                missing = ~_outcome_available(values)
-                                variable_role = "outcome"
-                            else:
-                                missing = values.isna().to_numpy()
-                                variable_role = "predictor"
-                            n_rows = len(cohort_rows)
-                            records.append(
-                                {
-                                    "endpoint": endpoint_name,
-                                    "cohort": str(cohort_id),
-                                    "analysis_mode": analysis_mode,
-                                    "outer_fold": nested.outer.fold_id,
-                                    "split": split_name,
-                                    "variable": variable,
-                                    "variable_role": variable_role,
-                                    "n_rows": n_rows,
-                                    "n_participants": int(
-                                        cohort_rows["participant_id"].nunique()
-                                    ),
-                                    "missing_n": int(np.sum(missing)),
-                                    "missing_rate": float(np.mean(missing)),
-                                }
-                            )
+                        finite_outcome = _outcome_available(cohort_rows[endpoint_name])
+                        denominator_sets = (
+                            ("split_all_rows", cohort_rows),
+                            (
+                                "finite_outcome_analysis_set",
+                                cohort_rows.loc[finite_outcome],
+                            ),
+                        )
+                        for denominator_scope, denominator_rows in denominator_sets:
+                            for variable in (*predictor_columns, endpoint_name):
+                                values = denominator_rows[variable]
+                                if variable == endpoint_name:
+                                    missing = ~_outcome_available(values)
+                                    variable_role = "outcome"
+                                else:
+                                    missing = values.isna().to_numpy()
+                                    variable_role = "predictor"
+                                n_rows = len(denominator_rows)
+                                records.append(
+                                    {
+                                        "endpoint": endpoint_name,
+                                        "cohort": str(cohort_id),
+                                        "analysis_mode": analysis_mode,
+                                        "outer_fold": nested.outer.fold_id,
+                                        "split": split_name,
+                                        "denominator_scope": denominator_scope,
+                                        "variable": variable,
+                                        "variable_role": variable_role,
+                                        "n_rows": n_rows,
+                                        "n_participants": int(
+                                            denominator_rows[
+                                                "participant_id"
+                                            ].nunique()
+                                        ),
+                                        "missing_n": int(np.sum(missing)),
+                                        "missing_rate": (
+                                            float(np.mean(missing))
+                                            if n_rows
+                                            else math.nan
+                                        ),
+                                    }
+                                )
     return pd.DataFrame.from_records(records).sort_values(
         [
             "analysis_mode",
             "endpoint",
             "outer_fold",
             "split",
+            "denominator_scope",
             "cohort",
             "variable_role",
             "variable",
@@ -1229,6 +1470,7 @@ def _prepare_joined_frame(
         + "::"
         + joined["meal_id"].astype(str),
     )
+    joined["inference_cluster_id"] = family_twin_component_ids(joined).to_numpy()
     return joined
 
 
@@ -1239,199 +1481,286 @@ def _benchmark_predictions_for_mode(
     endpoints: tuple[dict[str, object], ...],
     *,
     analysis_mode: str,
+    mode_index: int,
     secondary_holdout: str | None,
-) -> tuple[pd.DataFrame, pd.DataFrame, tuple[NestedGroupSplit, ...]]:
+) -> tuple[
+    pd.DataFrame,
+    pd.DataFrame,
+    tuple[NestedGroupSplit, ...],
+    list[dict[str, object]],
+]:
     split_config = config.payload["split"]
     seeds = config.payload["seeds"]
+    outer_split_seed = int(seeds["outer_split"]) + mode_index * _MODE_SEED_STRIDE
+    inner_cv_seed = int(seeds["inner_cv"]) + mode_index * _MODE_SEED_STRIDE
     splits = make_nested_group_splits(
         frame,
         outer_folds=int(split_config["outer_folds"]),
         inner_folds=int(split_config["inner_folds"]),
-        outer_seed=int(seeds["outer_split"]),
-        inner_seed=int(seeds["inner_cv"]),
+        outer_seed=outer_split_seed,
+        inner_seed=inner_cv_seed,
         secondary_holdout=secondary_holdout,
     )
     comparator_columns = _comparator_columns(feature_contract)
     prediction_rows: list[dict[str, object]] = []
     audit_rows: list[dict[str, object]] = []
+    status_rows: list[dict[str, object]] = []
     endpoint_seed_offset = {
-        str(endpoint["name"]): index * 1_000_003
+        str(endpoint["name"]): index * _ENDPOINT_SEED_STRIDE
         for index, endpoint in enumerate(endpoints)
     }
     comparator_seed_offset = {
-        comparator: index * 10_007
+        comparator: index * _COMPARISON_SEED_STRIDE
         for index, comparator in enumerate(REQUIRED_COMPARATORS)
     }
 
     for endpoint in endpoints:
         endpoint_name = str(endpoint["name"])
         if endpoint_name not in frame.columns:
-            if endpoint.get("role") == "primary":
-                raise ValueError(f"required primary endpoint {endpoint_name} is missing")
-            continue
-        for comparator in REQUIRED_COMPARATORS:
-            columns = comparator_columns[comparator]
-            for nested in splits:
-                inner_scores: dict[float, list[float]] = {
-                    alpha: [] for alpha in _ALPHA_GRID
+            status_rows.append(
+                {
+                    "analysis_mode": analysis_mode,
+                    "endpoint": endpoint_name,
+                    "endpoint_role": str(endpoint["role"]),
+                    "analysis_status": "not_estimable",
+                    "reason": "endpoint_not_available_in_trusted_outcome_projection",
+                    "n_prediction_rows": 0,
+                    "outer_split_seed": outer_split_seed,
+                    "inner_cv_seed": inner_cv_seed,
                 }
-                for inner in nested.inner:
-                    inner_train = np.asarray(inner.train_positions, dtype=int)
-                    inner_validation = np.asarray(inner.test_positions, dtype=int)
-                    train_available = _outcome_available(
-                        frame.iloc[inner_train][endpoint_name]
-                    )
-                    validation_available = _outcome_available(
-                        frame.iloc[inner_validation][endpoint_name]
-                    )
-                    inner_train = inner_train[train_available]
-                    inner_validation = inner_validation[validation_available]
-                    if len(inner_train) == 0 or len(inner_validation) == 0:
-                        raise ValueError(
-                            f"endpoint {endpoint_name} has an empty nested development fold"
+            )
+            continue
+        prediction_start = len(prediction_rows)
+        audit_start = len(audit_rows)
+        try:
+            for comparator in REQUIRED_COMPARATORS:
+                columns = comparator_columns[comparator]
+                for nested in splits:
+                    inner_scores: dict[float, list[float]] = {
+                        alpha: [] for alpha in _ALPHA_GRID
+                    }
+                    for inner in nested.inner:
+                        inner_train = np.asarray(inner.train_positions, dtype=int)
+                        inner_validation = np.asarray(inner.test_positions, dtype=int)
+                        inner_train = inner_train[
+                            _outcome_available(frame.iloc[inner_train][endpoint_name])
+                        ]
+                        inner_validation = inner_validation[
+                            _outcome_available(
+                                frame.iloc[inner_validation][endpoint_name]
+                            )
+                        ]
+                        if len(inner_train) == 0 or len(inner_validation) == 0:
+                            raise ValueError(
+                                f"endpoint {endpoint_name} has an empty nested "
+                                "development fold"
+                            )
+                        fit_seed = (
+                            inner_cv_seed
+                            + endpoint_seed_offset[endpoint_name]
+                            + comparator_seed_offset[comparator]
+                            + nested.outer.fold_id * _OUTER_FOLD_SEED_STRIDE
+                            + inner.fold_id
                         )
-                    stage_seed = (
-                        int(seeds["inner_cv"])
+                        x_train, x_validation = _feature_pair(
+                            frame,
+                            comparator,
+                            columns,
+                            feature_contract,
+                            inner_train,
+                            inner_validation,
+                            seed=fit_seed,
+                        )
+                        y_train = frame.iloc[inner_train][endpoint_name].to_numpy(
+                            dtype=float
+                        )
+                        y_validation = frame.iloc[inner_validation][
+                            endpoint_name
+                        ].to_numpy(dtype=float)
+                        for alpha in _ALPHA_GRID:
+                            estimator = _pipeline(x_train, alpha)
+                            estimator.fit(x_train, y_train)
+                            prediction = estimator.predict(x_validation)
+                            inner_scores[alpha].append(
+                                compute_regression_metrics(
+                                    y_validation, prediction
+                                )[_TUNING_METRIC]
+                            )
+                            audit_rows.append(
+                                {
+                                    "analysis_mode": analysis_mode,
+                                    "endpoint": endpoint_name,
+                                    "comparator": comparator,
+                                    "outer_fold": nested.outer.fold_id,
+                                    "stage": "inner_tuning",
+                                    "inner_fold": inner.fold_id,
+                                    "alpha": alpha,
+                                    "fit_seed": fit_seed,
+                                    "outer_split_seed": outer_split_seed,
+                                    "inner_cv_seed": inner_cv_seed,
+                                    "fit_participant_ids": _fit_participant_ids(
+                                        frame, inner_train
+                                    ),
+                                    "validation_participant_ids": (
+                                        _fit_participant_ids(
+                                            frame, inner_validation
+                                        )
+                                    ),
+                                }
+                            )
+                    selected_alpha = min(
+                        _ALPHA_GRID,
+                        key=lambda alpha: (
+                            float(np.mean(inner_scores[alpha])),
+                            alpha,
+                        ),
+                    )
+                    outer_train = np.asarray(
+                        nested.outer.train_positions, dtype=int
+                    )
+                    outer_test = np.asarray(nested.outer.test_positions, dtype=int)
+                    outer_train = outer_train[
+                        _outcome_available(frame.iloc[outer_train][endpoint_name])
+                    ]
+                    outer_test = outer_test[
+                        _outcome_available(frame.iloc[outer_test][endpoint_name])
+                    ]
+                    if len(outer_train) == 0 or len(outer_test) == 0:
+                        raise ValueError(
+                            f"endpoint {endpoint_name} has an empty outer analysis fold"
+                        )
+                    outer_fit_seed = (
+                        outer_split_seed
                         + endpoint_seed_offset[endpoint_name]
                         + comparator_seed_offset[comparator]
-                        + nested.outer.fold_id * 101
-                        + inner.fold_id
+                        + nested.outer.fold_id * _OUTER_FOLD_SEED_STRIDE
                     )
-                    x_train, x_validation = _feature_pair(
+                    x_train, x_test = _feature_pair(
                         frame,
                         comparator,
                         columns,
                         feature_contract,
-                        inner_train,
-                        inner_validation,
-                        seed=stage_seed,
+                        outer_train,
+                        outer_test,
+                        seed=outer_fit_seed,
                     )
-                    y_train = frame.iloc[inner_train][endpoint_name].to_numpy(dtype=float)
-                    y_validation = frame.iloc[inner_validation][endpoint_name].to_numpy(
+                    y_train = frame.iloc[outer_train][endpoint_name].to_numpy(
                         dtype=float
                     )
-                    for alpha in _ALPHA_GRID:
-                        estimator = _pipeline(x_train, alpha)
-                        estimator.fit(x_train, y_train)
-                        prediction = estimator.predict(x_validation)
-                        inner_scores[alpha].append(
-                            compute_regression_metrics(y_validation, prediction)[
-                                _TUNING_METRIC
-                            ]
-                        )
-                        audit_rows.append(
-                            {
-                                "analysis_mode": analysis_mode,
-                                "endpoint": endpoint_name,
-                                "comparator": comparator,
-                                "outer_fold": nested.outer.fold_id,
-                                "stage": "inner_tuning",
-                                "inner_fold": inner.fold_id,
-                                "alpha": alpha,
-                                "fit_participant_ids": _fit_participant_ids(
-                                    frame, inner_train
-                                ),
-                                "validation_participant_ids": _fit_participant_ids(
-                                    frame, inner_validation
-                                ),
-                            }
-                        )
-                selected_alpha = min(
-                    _ALPHA_GRID,
-                    key=lambda alpha: (
-                        float(np.mean(inner_scores[alpha])),
-                        alpha,
-                    ),
-                )
-                outer_train = np.asarray(nested.outer.train_positions, dtype=int)
-                outer_test = np.asarray(nested.outer.test_positions, dtype=int)
-                outer_train = outer_train[
-                    _outcome_available(frame.iloc[outer_train][endpoint_name])
-                ]
-                outer_test = outer_test[
-                    _outcome_available(frame.iloc[outer_test][endpoint_name])
-                ]
-                if len(outer_train) == 0 or len(outer_test) == 0:
-                    raise ValueError(
-                        f"endpoint {endpoint_name} has an empty outer analysis fold"
-                    )
-                outer_seed = (
-                    int(seeds["outer_split"])
-                    + endpoint_seed_offset[endpoint_name]
-                    + comparator_seed_offset[comparator]
-                    + nested.outer.fold_id * 101
-                )
-                x_train, x_test = _feature_pair(
-                    frame,
-                    comparator,
-                    columns,
-                    feature_contract,
-                    outer_train,
-                    outer_test,
-                    seed=outer_seed,
-                )
-                y_train = frame.iloc[outer_train][endpoint_name].to_numpy(dtype=float)
-                estimator = _pipeline(x_train, selected_alpha)
-                estimator.fit(x_train, y_train)
-                prediction = estimator.predict(x_test)
-                audit_rows.append(
-                    {
-                        "analysis_mode": analysis_mode,
-                        "endpoint": endpoint_name,
-                        "comparator": comparator,
-                        "outer_fold": nested.outer.fold_id,
-                        "stage": "outer_refit",
-                        "inner_fold": None,
-                        "alpha": selected_alpha,
-                        "fit_participant_ids": _fit_participant_ids(frame, outer_train),
-                        "validation_participant_ids": _fit_participant_ids(
-                            frame, outer_test
-                        ),
-                    }
-                )
-                test_rows = frame.iloc[outer_test]
-                for row, y_pred in zip(test_rows.itertuples(index=False), prediction):
-                    prediction_rows.append(
+                    estimator = _pipeline(x_train, selected_alpha)
+                    estimator.fit(x_train, y_train)
+                    prediction = estimator.predict(x_test)
+                    audit_rows.append(
                         {
                             "analysis_mode": analysis_mode,
-                            "row_id": row.row_id,
-                            "participant_id": row.participant_id,
-                            "meal_id": row.meal_id,
                             "endpoint": endpoint_name,
-                            "outer_fold": nested.outer.fold_id,
                             "comparator": comparator,
-                            "y_true": float(getattr(row, endpoint_name)),
-                            "y_pred": float(y_pred),
-                            "selected_alpha": float(selected_alpha),
+                            "outer_fold": nested.outer.fold_id,
+                            "stage": "outer_refit",
+                            "inner_fold": None,
+                            "alpha": selected_alpha,
+                            "fit_seed": outer_fit_seed,
+                            "outer_split_seed": outer_split_seed,
+                            "inner_cv_seed": inner_cv_seed,
+                            "fit_participant_ids": _fit_participant_ids(
+                                frame, outer_train
+                            ),
+                            "validation_participant_ids": _fit_participant_ids(
+                                frame, outer_test
+                            ),
                         }
                     )
+                    test_rows = frame.iloc[outer_test]
+                    for row, y_pred in zip(
+                        test_rows.itertuples(index=False), prediction
+                    ):
+                        prediction_rows.append(
+                            {
+                                "analysis_mode": analysis_mode,
+                                "row_id": row.row_id,
+                                "participant_id": row.participant_id,
+                                "meal_id": row.meal_id,
+                                "inference_cluster_id": row.inference_cluster_id,
+                                "endpoint": endpoint_name,
+                                "outer_fold": nested.outer.fold_id,
+                                "comparator": comparator,
+                                "y_true": float(getattr(row, endpoint_name)),
+                                "y_pred": float(y_pred),
+                                "selected_alpha": float(selected_alpha),
+                                "outer_fit_seed": outer_fit_seed,
+                                "outer_split_seed": outer_split_seed,
+                                "inner_cv_seed": inner_cv_seed,
+                            }
+                        )
+        except (TypeError, ValueError, FloatingPointError) as error:
+            del prediction_rows[prediction_start:]
+            del audit_rows[audit_start:]
+            status_rows.append(
+                {
+                    "analysis_mode": analysis_mode,
+                    "endpoint": endpoint_name,
+                    "endpoint_role": str(endpoint["role"]),
+                    "analysis_status": "not_estimable",
+                    "reason": f"{type(error).__name__}: {error}",
+                    "n_prediction_rows": 0,
+                    "outer_split_seed": outer_split_seed,
+                    "inner_cv_seed": inner_cv_seed,
+                }
+            )
+        else:
+            status_rows.append(
+                {
+                    "analysis_mode": analysis_mode,
+                    "endpoint": endpoint_name,
+                    "endpoint_role": str(endpoint["role"]),
+                    "analysis_status": (
+                        "completed"
+                        if analysis_mode == "subject_held_out"
+                        else "descriptive"
+                    ),
+                    "reason": None,
+                    "n_prediction_rows": len(prediction_rows) - prediction_start,
+                    "outer_split_seed": outer_split_seed,
+                    "inner_cv_seed": inner_cv_seed,
+                }
+            )
     predictions = pd.DataFrame.from_records(prediction_rows)
     comparator_order = {value: index for index, value in enumerate(REQUIRED_COMPARATORS)}
-    predictions["__comparator_order__"] = predictions["comparator"].map(comparator_order)
-    predictions = predictions.sort_values(
-        ["analysis_mode", "endpoint", "outer_fold", "__comparator_order__", "row_id"],
-        kind="mergesort",
-    ).drop(columns="__comparator_order__").reset_index(drop=True)
+    if not predictions.empty:
+        predictions["__comparator_order__"] = predictions["comparator"].map(
+            comparator_order
+        )
+        predictions = predictions.sort_values(
+            [
+                "analysis_mode",
+                "endpoint",
+                "outer_fold",
+                "__comparator_order__",
+                "row_id",
+            ],
+            kind="mergesort",
+        ).drop(columns="__comparator_order__").reset_index(drop=True)
     audit = pd.DataFrame.from_records(audit_rows)
-    audit["__comparator_order__"] = audit["comparator"].map(comparator_order)
-    audit = audit.sort_values(
-        [
-            "endpoint",
-            "analysis_mode",
-            "outer_fold",
-            "__comparator_order__",
-            "stage",
-            "inner_fold",
-            "alpha",
-        ],
-        kind="mergesort",
-        na_position="last",
-    ).drop(columns="__comparator_order__").reset_index(drop=True)
-    audit["inner_fold"] = pd.Series(
-        [None if pd.isna(value) else int(value) for value in audit["inner_fold"]],
-        dtype=object,
-    )
-    return predictions, audit, splits
+    if not audit.empty:
+        audit["__comparator_order__"] = audit["comparator"].map(comparator_order)
+        audit = audit.sort_values(
+            [
+                "endpoint",
+                "analysis_mode",
+                "outer_fold",
+                "__comparator_order__",
+                "stage",
+                "inner_fold",
+                "alpha",
+            ],
+            kind="mergesort",
+            na_position="last",
+        ).drop(columns="__comparator_order__").reset_index(drop=True)
+        audit["inner_fold"] = pd.Series(
+            [None if pd.isna(value) else int(value) for value in audit["inner_fold"]],
+            dtype=object,
+        )
+    return predictions, audit, splits, status_rows
 
 
 def _benchmark_predictions(
@@ -1444,6 +1773,7 @@ def _benchmark_predictions(
     pd.DataFrame,
     Mapping[str, tuple[NestedGroupSplit, ...]],
     pd.DataFrame,
+    pd.DataFrame,
 ]:
     raw_modes = config.payload.get("analysis_modes")
     if not isinstance(raw_modes, list):
@@ -1452,6 +1782,7 @@ def _benchmark_predictions(
     audit_tables = []
     split_plans: dict[str, tuple[NestedGroupSplit, ...]] = {}
     split_audit_rows = []
+    status_rows: list[dict[str, object]] = []
     expected_modes = (
         "subject_held_out",
         "subject_plus_food_held_out",
@@ -1460,22 +1791,93 @@ def _benchmark_predictions(
     )
     if tuple(mode.get("name") for mode in raw_modes if isinstance(mode, dict)) != expected_modes:
         raise ValueError("frozen analysis mode names or order changed")
-    for mode in raw_modes:
+    for mode_index, mode in enumerate(raw_modes):
         mode_name = str(mode["name"])
         secondary_holdout = mode.get("secondary_unit")
-        predictions, audit, splits = _benchmark_predictions_for_mode(
-            frame,
-            config,
-            feature_contract,
-            endpoints,
-            analysis_mode=mode_name,
-            secondary_holdout=(
-                None if secondary_holdout is None else str(secondary_holdout)
-            ),
-        )
-        prediction_tables.append(predictions)
-        audit_tables.append(audit)
+        mode_status = "completed" if mode_name == "subject_held_out" else "descriptive"
+        mode_reason: str | None = None
+        try:
+            predictions, audit, splits, endpoint_status = (
+                _benchmark_predictions_for_mode(
+                    frame,
+                    config,
+                    feature_contract,
+                    endpoints,
+                    analysis_mode=mode_name,
+                    mode_index=mode_index,
+                    secondary_holdout=(
+                        None
+                        if secondary_holdout is None
+                        else str(secondary_holdout)
+                    ),
+                )
+            )
+        except (TypeError, ValueError, FloatingPointError) as error:
+            predictions = pd.DataFrame()
+            audit = pd.DataFrame()
+            splits = ()
+            mode_status = "not_estimable"
+            mode_reason = f"{type(error).__name__}: {error}"
+            endpoint_status = [
+                {
+                    "analysis_mode": mode_name,
+                    "endpoint": str(endpoint["name"]),
+                    "endpoint_role": str(endpoint["role"]),
+                    "analysis_status": "not_estimable",
+                    "reason": mode_reason,
+                    "n_prediction_rows": 0,
+                    "outer_split_seed": (
+                        int(config.payload["seeds"]["outer_split"])
+                        + mode_index * _MODE_SEED_STRIDE
+                    ),
+                    "inner_cv_seed": (
+                        int(config.payload["seeds"]["inner_cv"])
+                        + mode_index * _MODE_SEED_STRIDE
+                    ),
+                }
+                for endpoint in endpoints
+            ]
+        if not predictions.empty:
+            prediction_tables.append(predictions)
+        if not audit.empty:
+            audit_tables.append(audit)
+        for status in endpoint_status:
+            status_rows.append(
+                {
+                    **status,
+                    "analysis_role": str(mode["role"]),
+                    "secondary_unit": secondary_holdout,
+                    "estimand": str(mode["estimand"]),
+                    "inference_policy": str(mode["inference_policy"]),
+                }
+            )
         split_plans[mode_name] = splits
+        if not splits:
+            split_audit_rows.append(
+                {
+                    "analysis_mode": mode_name,
+                    "analysis_role": str(mode["role"]),
+                    "secondary_unit": secondary_holdout,
+                    "analysis_status": mode_status,
+                    "reason": mode_reason,
+                    "outer_fold": None,
+                    "train_n_rows": 0,
+                    "test_n_rows": 0,
+                    "dropped_n_rows": 0,
+                    "dropped_n_participants": 0,
+                    "dropped_n_person_meals": 0,
+                    "dropped_row_ids": (),
+                    "dropped_reason": None,
+                    "outer_split_seed": (
+                        int(config.payload["seeds"]["outer_split"])
+                        + mode_index * _MODE_SEED_STRIDE
+                    ),
+                    "inner_cv_seed": (
+                        int(config.payload["seeds"]["inner_cv"])
+                        + mode_index * _MODE_SEED_STRIDE
+                    ),
+                }
+            )
         for nested in splits:
             outer = nested.outer
             dropped_reason = (
@@ -1488,6 +1890,8 @@ def _benchmark_predictions(
                     "analysis_mode": mode_name,
                     "analysis_role": str(mode["role"]),
                     "secondary_unit": secondary_holdout,
+                    "analysis_status": mode_status,
+                    "reason": mode_reason,
                     "outer_fold": outer.fold_id,
                     "train_n_rows": len(outer.train_positions),
                     "test_n_rows": len(outer.test_positions),
@@ -1502,13 +1906,36 @@ def _benchmark_predictions(
                         frame.iloc[list(outer.dropped_positions)]["row_id"].astype(str)
                     ),
                     "dropped_reason": dropped_reason,
+                    "outer_split_seed": (
+                        int(config.payload["seeds"]["outer_split"])
+                        + mode_index * _MODE_SEED_STRIDE
+                    ),
+                    "inner_cv_seed": (
+                        int(config.payload["seeds"]["inner_cv"])
+                        + mode_index * _MODE_SEED_STRIDE
+                    ),
                 }
             )
+    status = pd.DataFrame.from_records(status_rows)
+    primary_failures = status.loc[
+        status["analysis_role"].eq("primary")
+        & status["endpoint_role"].eq("primary")
+        & ~status["analysis_status"].eq("completed")
+    ]
+    if not primary_failures.empty:
+        reasons = "; ".join(
+            f"{row.endpoint}: {row.reason}"
+            for row in primary_failures.itertuples(index=False)
+        )
+        raise PrimaryAnalysisNotEstimable(
+            f"primary analysis is not estimable after all modes were attempted: {reasons}"
+        )
     return (
         pd.concat(prediction_tables, ignore_index=True),
         pd.concat(audit_tables, ignore_index=True),
         MappingProxyType(split_plans),
         pd.DataFrame.from_records(split_audit_rows),
+        status,
     )
 
 
@@ -1520,7 +1947,16 @@ def _metric_tables(
     feature_contract: FeatureContract,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     seeds = config.payload["seeds"]
+    specification = _benchmark_specification(config)
+    mode_specs = {
+        str(mode["name"]): dict(mode)
+        for mode in config.payload["analysis_modes"]
+    }
+    mode_indices = {name: index for index, name in enumerate(mode_specs)}
     endpoint_by_name = {str(endpoint["name"]): endpoint for endpoint in endpoints}
+    endpoint_indices = {
+        str(endpoint["name"]): index for index, endpoint in enumerate(endpoints)
+    }
     absolute_rows = []
     paired_rows = []
     contract_comparators = {
@@ -1528,6 +1964,15 @@ def _metric_tables(
         for name, blocks, transform, role in feature_contract.comparators
     }
     block_hashes = dict(feature_contract.block_artifact_sha256)
+    minimum_bootstrap_fraction = float(
+        specification["bootstrap"]["minimum_valid_fraction"]
+    )
+    minimum_permutation_fraction = float(
+        specification["permutation"]["minimum_valid_fraction"]
+    )
+
+    def enough_valid(requested: int, valid: int, minimum: float) -> bool:
+        return requested > 0 and valid / requested >= minimum
 
     def opportunity(comparator: str) -> str:
         specification = contract_comparators[comparator]
@@ -1553,48 +1998,120 @@ def _metric_tables(
         ["analysis_mode", "endpoint"], sort=False
     ):
         endpoint_hash = _canonical_hash(endpoint_by_name[endpoint_name])
+        mode_spec = mode_specs[analysis_mode]
+        mode_index = mode_indices[analysis_mode]
+        endpoint_index = endpoint_indices[endpoint_name]
+        inferential = mode_spec["inference_policy"] == (
+            "family_twin_connected_component_cluster"
+        )
+        analysis_status = "completed" if inferential else "descriptive"
+        outer_split_seed = (
+            int(seeds["outer_split"]) + mode_index * _MODE_SEED_STRIDE
+        )
+        inner_cv_seed = int(seeds["inner_cv"]) + mode_index * _MODE_SEED_STRIDE
         for comparator_index, comparator in enumerate(REQUIRED_COMPARATORS):
             comparator_frame = endpoint_predictions.loc[
                 endpoint_predictions["comparator"].eq(comparator)
             ].sort_values("row_id")
             y = comparator_frame["y_true"].to_numpy(dtype=float)
             pred = comparator_frame["y_pred"].to_numpy(dtype=float)
-            participants = comparator_frame["participant_id"].astype(str).to_numpy()
+            clusters = comparator_frame["inference_cluster_id"].astype(str).to_numpy()
             metadata = {
                 **provenance,
                 "endpoint": endpoint_name,
                 "analysis_mode": analysis_mode,
+                "analysis_status": analysis_status,
+                "estimand": str(mode_spec["estimand"]),
+                "inference_policy": str(mode_spec["inference_policy"]),
+                "inference_unit": (
+                    "family_twin_connected_component"
+                    if inferential
+                    else "none_descriptive_only"
+                ),
                 "comparator": comparator,
                 "comparator_information_opportunity": opportunity(comparator),
                 "n_participants": int(comparator_frame["participant_id"].nunique()),
                 "n_person_meals": int(comparator_frame["row_id"].nunique()),
-                "split_seed": int(seeds["outer_split"]),
+                "inference_n_clusters": int(
+                    comparator_frame["inference_cluster_id"].nunique()
+                ),
+                "split_seed": outer_split_seed,
+                "outer_split_seed": outer_split_seed,
+                "inner_cv_seed": inner_cv_seed,
+                "outer_fit_seeds": json.dumps(
+                    sorted(
+                        int(value)
+                        for value in comparator_frame["outer_fit_seed"].unique()
+                    )
+                ),
                 "endpoint_config_sha256": endpoint_hash,
                 "validation_config_sha256": config.sha256,
             }
             for metric_index, metric in enumerate(_METRICS):
-                interval = participant_bootstrap_ci(
-                    y,
-                    pred,
-                    participants,
-                    metric=metric,
-                    n_bootstrap=BOOTSTRAP_REPLICATES,
-                    seed=int(seeds["bootstrap"])
-                    + comparator_index * 1_009
-                    + metric_index,
+                bootstrap_seed = (
+                    int(seeds["bootstrap"])
+                    + mode_index * _MODE_SEED_STRIDE
+                    + endpoint_index * _ENDPOINT_SEED_STRIDE
+                    + comparator_index * _COMPARISON_SEED_STRIDE
+                    + metric_index
                 )
+                estimate = compute_regression_metrics(y, pred)[metric]
+                if inferential:
+                    interval = participant_bootstrap_ci(
+                        y,
+                        pred,
+                        clusters,
+                        metric=metric,
+                        n_bootstrap=BOOTSTRAP_REPLICATES,
+                        seed=bootstrap_seed,
+                    )
+                    bootstrap_valid = enough_valid(
+                        interval.requested_replicates,
+                        interval.valid_replicates,
+                        minimum_bootstrap_fraction,
+                    )
+                    inference_status = (
+                        "completed" if bootstrap_valid else "not_estimable"
+                    )
+                    ci_lower = interval.lower if bootstrap_valid else math.nan
+                    ci_upper = interval.upper if bootstrap_valid else math.nan
+                    ci_method = (
+                        "family_twin_component_cluster_percentile_bootstrap_95"
+                        if bootstrap_valid
+                        else "not_estimable_insufficient_valid_bootstrap"
+                    )
+                    bootstrap_requested = interval.requested_replicates
+                    bootstrap_valid_count = interval.valid_replicates
+                else:
+                    inference_status = "descriptive"
+                    ci_lower = ci_upper = math.nan
+                    ci_method = "not_applicable_descriptive_only"
+                    bootstrap_requested = bootstrap_valid_count = 0
                 absolute_rows.append(
                     {
                         **metadata,
                         "metric": metric,
-                        "estimate": interval.estimate,
-                        "ci_lower": interval.lower,
-                        "ci_upper": interval.upper,
-                        "ci_method": "participant_cluster_percentile_bootstrap_95",
-                        "bootstrap_replicates_requested": interval.requested_replicates,
-                        "bootstrap_replicates_valid": interval.valid_replicates,
+                        "estimate": estimate,
+                        "inference_status": inference_status,
+                        "ci_lower": ci_lower,
+                        "ci_upper": ci_upper,
+                        "ci_method": ci_method,
+                        "bootstrap_seed": bootstrap_seed if inferential else None,
+                        "permutation_seed": None,
+                        "bootstrap_replicates_requested": bootstrap_requested,
+                        "bootstrap_replicates_valid": bootstrap_valid_count,
+                        "bootstrap_minimum_valid_fraction": (
+                            minimum_bootstrap_fraction if inferential else None
+                        ),
+                        "bootstrap_valid_fraction": (
+                            bootstrap_valid_count / bootstrap_requested
+                            if bootstrap_requested
+                            else math.nan
+                        ),
                         "permutation_replicates_requested": 0,
                         "permutation_replicates_valid": 0,
+                        "permutation_minimum_valid_fraction": None,
+                        "permutation_valid_fraction": math.nan,
                         "test_role": "descriptive",
                         "correction_family": "none",
                         "multiplicity_method": "none",
@@ -1618,11 +2135,19 @@ def _metric_tables(
             y = model_frame["y_true"].to_numpy(dtype=float)
             model_prediction = model_frame["y_pred"].to_numpy(dtype=float)
             reference_prediction = reference_frame["y_pred"].to_numpy(dtype=float)
-            participants = model_frame["participant_id"].astype(str).to_numpy()
+            clusters = model_frame["inference_cluster_id"].astype(str).to_numpy()
             metadata = {
                 **provenance,
                 "endpoint": endpoint_name,
                 "analysis_mode": analysis_mode,
+                "analysis_status": analysis_status,
+                "estimand": str(mode_spec["estimand"]),
+                "inference_policy": str(mode_spec["inference_policy"]),
+                "inference_unit": (
+                    "family_twin_connected_component"
+                    if inferential
+                    else "none_descriptive_only"
+                ),
                 "comparator": "locked_attribute_gmnps",
                 "reference": reference_name,
                 "comparator_information_opportunity": opportunity(
@@ -1631,63 +2156,152 @@ def _metric_tables(
                 "reference_information_opportunity": opportunity(reference_name),
                 "n_participants": int(model_frame["participant_id"].nunique()),
                 "n_person_meals": int(model_frame["row_id"].nunique()),
-                "split_seed": int(seeds["outer_split"]),
+                "inference_n_clusters": int(
+                    model_frame["inference_cluster_id"].nunique()
+                ),
+                "split_seed": outer_split_seed,
+                "outer_split_seed": outer_split_seed,
+                "inner_cv_seed": inner_cv_seed,
+                "outer_fit_seeds": json.dumps(
+                    sorted(
+                        int(value) for value in model_frame["outer_fit_seed"].unique()
+                    )
+                ),
                 "endpoint_config_sha256": endpoint_hash,
                 "validation_config_sha256": config.sha256,
             }
             for metric_index, metric in enumerate(_METRICS):
                 bootstrap_seed = (
                     int(seeds["bootstrap"])
-                    + reference_index * 1_009
+                    + mode_index * _MODE_SEED_STRIDE
+                    + endpoint_index * _ENDPOINT_SEED_STRIDE
+                    + (len(REQUIRED_COMPARATORS) + reference_index)
+                    * _COMPARISON_SEED_STRIDE
                     + metric_index
                 )
                 permutation_seed = (
                     int(seeds["permutation"])
-                    + reference_index * 1_009
+                    + mode_index * _MODE_SEED_STRIDE
+                    + endpoint_index * _ENDPOINT_SEED_STRIDE
+                    + (len(REQUIRED_COMPARATORS) + reference_index)
+                    * _COMPARISON_SEED_STRIDE
                     + metric_index
                 )
-                interval = participant_bootstrap_ci(
-                    y,
-                    model_prediction,
-                    participants,
-                    metric=metric,
-                    n_bootstrap=BOOTSTRAP_REPLICATES,
-                    seed=bootstrap_seed,
-                    reference_prediction=reference_prediction,
-                )
-                permutation = participant_permutation_test(
+                estimate_delta = _metric_delta(
                     y,
                     model_prediction,
                     reference_prediction,
-                    participants,
-                    metric=metric,
-                    n_permutations=PERMUTATION_REPLICATES,
-                    seed=permutation_seed,
+                    metric,
                 )
-                finite_null = np.asarray(permutation.null_distribution, dtype=float)
-                finite_null = finite_null[np.isfinite(finite_null)]
+                if inferential:
+                    interval = participant_bootstrap_ci(
+                        y,
+                        model_prediction,
+                        clusters,
+                        metric=metric,
+                        n_bootstrap=BOOTSTRAP_REPLICATES,
+                        seed=bootstrap_seed,
+                        reference_prediction=reference_prediction,
+                    )
+                    permutation = participant_permutation_test(
+                        y,
+                        model_prediction,
+                        reference_prediction,
+                        clusters,
+                        metric=metric,
+                        n_permutations=PERMUTATION_REPLICATES,
+                        seed=permutation_seed,
+                    )
+                    bootstrap_valid = enough_valid(
+                        interval.requested_replicates,
+                        interval.valid_replicates,
+                        minimum_bootstrap_fraction,
+                    )
+                    permutation_valid = enough_valid(
+                        permutation.requested_replicates,
+                        permutation.valid_replicates,
+                        minimum_permutation_fraction,
+                    )
+                    inference_status = (
+                        "completed"
+                        if bootstrap_valid and permutation_valid
+                        else "not_estimable"
+                    )
+                    finite_null = np.asarray(
+                        permutation.null_distribution, dtype=float
+                    )
+                    finite_null = finite_null[np.isfinite(finite_null)]
+                    ci_lower = interval.lower if bootstrap_valid else math.nan
+                    ci_upper = interval.upper if bootstrap_valid else math.nan
+                    p_value = (
+                        permutation.p_value if permutation_valid else math.nan
+                    )
+                    null_mean = (
+                        float(np.mean(finite_null))
+                        if permutation_valid and len(finite_null)
+                        else math.nan
+                    )
+                    ci_method = (
+                        "paired_family_twin_component_cluster_percentile_bootstrap_95"
+                        if bootstrap_valid
+                        else "not_estimable_insufficient_valid_bootstrap"
+                    )
+                    bootstrap_requested = interval.requested_replicates
+                    bootstrap_valid_count = interval.valid_replicates
+                    permutation_requested = permutation.requested_replicates
+                    permutation_valid_count = permutation.valid_replicates
+                else:
+                    inference_status = "descriptive"
+                    ci_lower = ci_upper = p_value = null_mean = math.nan
+                    ci_method = "not_applicable_descriptive_only"
+                    bootstrap_requested = bootstrap_valid_count = 0
+                    permutation_requested = permutation_valid_count = 0
                 paired_rows.append(
                     {
                         **metadata,
                         "metric": metric,
-                        "estimate_delta": interval.estimate,
-                        "ci_lower": interval.lower,
-                        "ci_upper": interval.upper,
-                        "ci_method": "paired_participant_cluster_percentile_bootstrap_95",
-                        "bootstrap_replicates_requested": interval.requested_replicates,
-                        "bootstrap_replicates_valid": interval.valid_replicates,
-                        "permutation_replicates_requested": permutation.requested_replicates,
-                        "permutation_replicates_valid": permutation.valid_replicates,
-                        "permutation_p_value": permutation.p_value,
-                        "permutation_null_mean": (
-                            float(np.mean(finite_null))
-                            if len(finite_null)
+                        "estimate_delta": estimate_delta,
+                        "inference_status": inference_status,
+                        "ci_lower": ci_lower,
+                        "ci_upper": ci_upper,
+                        "ci_method": ci_method,
+                        "bootstrap_seed": bootstrap_seed if inferential else None,
+                        "permutation_seed": permutation_seed if inferential else None,
+                        "bootstrap_replicates_requested": bootstrap_requested,
+                        "bootstrap_replicates_valid": bootstrap_valid_count,
+                        "bootstrap_minimum_valid_fraction": (
+                            minimum_bootstrap_fraction if inferential else None
+                        ),
+                        "bootstrap_valid_fraction": (
+                            bootstrap_valid_count / bootstrap_requested
+                            if bootstrap_requested
                             else math.nan
                         ),
+                        "permutation_replicates_requested": permutation_requested,
+                        "permutation_replicates_valid": permutation_valid_count,
+                        "permutation_minimum_valid_fraction": (
+                            minimum_permutation_fraction if inferential else None
+                        ),
+                        "permutation_valid_fraction": (
+                            permutation_valid_count / permutation_requested
+                            if permutation_requested
+                            else math.nan
+                        ),
+                        "permutation_p_value": p_value,
+                        "permutation_null_mean": null_mean,
                     }
                 )
     absolute = pd.DataFrame.from_records(absolute_rows)
     paired = _annotate_paired_tests(pd.DataFrame.from_records(paired_rows), config)
+    failed_primary = paired.loc[
+        paired["test_role"].eq("primary")
+        & ~paired["inference_status"].eq("completed")
+    ]
+    if not failed_primary.empty:
+        raise PrimaryAnalysisNotEstimable(
+            "preregistered primary inference is not estimable because the valid "
+            "bootstrap or permutation fraction is below the frozen minimum"
+        )
     return absolute, paired
 
 
@@ -1696,7 +2310,6 @@ def run_person_meal_benchmark(
     *,
     manifest_path: Path,
     method_lock_paths: object,
-    predictors: pd.DataFrame,
 ) -> BenchmarkResult:
     """Run every locked comparator after the fail-closed production gate."""
 
@@ -1708,16 +2321,13 @@ def run_person_meal_benchmark(
     endpoint_specs = _endpoint_specs(locked.verified_lock.config)
     endpoint_names = tuple(str(endpoint["name"]) for endpoint in endpoint_specs)
     feature_contract = locked.verified_lock.feature_contract
-    validate_feature_contract(
-        predictors,
-        feature_contract,
-    )
+    predictors = locked.verified_lock.predictor_frame
     joined = _prepare_joined_frame(
         predictors,
         locked.outcome.frame,
         endpoint_names,
     )
-    predictions, fit_audit, splits, split_audit = _benchmark_predictions(
+    predictions, fit_audit, splits, split_audit, analysis_status = _benchmark_predictions(
         joined,
         locked.verified_lock.config,
         feature_contract,
@@ -1729,12 +2339,28 @@ def run_person_meal_benchmark(
         endpoint_specs,
         splits,
     )
+    manifest = locked.verified_lock.manifest
+    specification = _benchmark_specification(locked.verified_lock.config)
     provenance = {
         "manifest_sha256": locked.verified_lock.manifest_sha256,
         "outcome_source_id": locked.outcome.source_id,
         "outcome_source_sha256": locked.outcome.sha256,
-        "predictor_frame_sha256": _predictor_frame_sha256(predictors),
+        "predictor_frame_sha256": locked.verified_lock.predictor_frame_sha256,
         "feature_contract_sha256": feature_contract.sha256,
+        "method_lock_gate_implementation_sha256": manifest[
+            "method_lock_gate_implementation_sha256"
+        ],
+        "cohort_split_implementation_sha256": manifest[
+            "cohort_split_implementation_sha256"
+        ],
+        "person_meal_benchmark_implementation_sha256": manifest[
+            "person_meal_benchmark_implementation_sha256"
+        ],
+        "benchmark_specification_id": specification["specification_id"],
+        "benchmark_specification_sha256": manifest[
+            "benchmark_specification_sha256"
+        ],
+        "seed_derivation_id": specification["seed_derivation"]["identifier"],
         "predictor_source_artifact_sha256": json.dumps(
             dict(feature_contract.source_artifact_sha256),
             sort_keys=True,
@@ -1742,6 +2368,17 @@ def run_person_meal_benchmark(
         ),
         "software_versions": _software_versions(),
     }
+    for column, value in provenance.items():
+        analysis_status[column] = value
+        split_audit[column] = value
+    analysis_status["validation_config_sha256"] = locked.verified_lock.config.sha256
+    analysis_status["endpoint_config_sha256"] = analysis_status["endpoint"].map(
+        {
+            str(endpoint["name"]): _canonical_hash(endpoint)
+            for endpoint in endpoint_specs
+        }
+    )
+    split_audit["validation_config_sha256"] = locked.verified_lock.config.sha256
     absolute_metrics, paired_metrics = _metric_tables(
         predictions,
         locked.verified_lock.config,
@@ -1757,6 +2394,7 @@ def run_person_meal_benchmark(
         splits=splits,
         split_audit=split_audit,
         missingness_source=missingness_source,
+        analysis_status=analysis_status,
     )
 
 
@@ -1769,6 +2407,7 @@ __all__ = [
     "FeatureContract",
     "LockedOutcomeInput",
     "PermutationTestResult",
+    "PrimaryAnalysisNotEstimable",
     "REQUIRED_COMPARATORS",
     "VerifiedBenchmarkLock",
     "compute_regression_metrics",
