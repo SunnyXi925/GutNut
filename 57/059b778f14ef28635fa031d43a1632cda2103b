@@ -1,0 +1,43 @@
+code/src/tests/test_attribute_calibration.py
+  s_4d75bbbcc79dac::t_1553cf33f6c909 333-339
+  s_4d75bbbcc79dac::t_05a10e5aacf5b2 12,18,96-104,330-332,340-343,481-586
+  s_4d75bbbcc79dac::t_e1485e573f04fa 587-588
+code/src/tests/test_attribute_recomposition.py
+  s_4d75bbbcc79dac::t_1c1c7473a3d1a2 471
+  s_4d75bbbcc79dac::t_05a10e5aacf5b2 1,13,141-149,445,467-469,475-532
+  s_4d75bbbcc79dac::t_e1485e573f04fa 533-534
+code/src/gmnps/scoring/attribute_recomposition.py
+  s_4d75bbbcc79dac::t_476cf7fc232cac 17,504-509,548,550,554,557-559,591-599,601-611,638-642,661-665,683,685,695,768-774
+  s_4d75bbbcc79dac::t_1553cf33f6c909 650-652,677-679
+code/src/gmnps/scoring/attribute_calibration.py
+  s_4d75bbbcc79dac::t_f1060913a360de 9,34-46,104-106,111-120,180-242
+  s_4d75bbbcc79dac::t_1441b6433ff213 20
+  s_4d75bbbcc79dac::t_7c459d1e81e1b0 565-586,591-706,715-745
+  s_4d75bbbcc79dac::t_c7c9f797ce59b2 707-714
+  s_4d75bbbcc79dac::t_a6c0aab1582f47 768,850-872
+  s_4d75bbbcc79dac::t_1553cf33f6c909 587-590
+  s_4d75bbbcc79dac::t_e1485e573f04fa 243-244
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "57059b778f14ef28635fa031d43a1632cda2103b",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  },
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 6,
+      "accepted_lines": 6
+    }
+  }
+}
