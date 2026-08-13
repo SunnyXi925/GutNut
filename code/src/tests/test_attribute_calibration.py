@@ -9,11 +9,13 @@ import pytest
 from gmnps.scoring.attribute_calibration import (
     ATTRIBUTE_POINT_FRACTION_MODES,
     BETA_NORMALIZATION_METHOD_VERSION,
+    AttributeCalibrationResult,
     BetaNormalizationState,
     attribute_response,
     calibrate_attribute_points,
     fit_beta_normalization,
     transform_beta,
+    validate_calibration_result,
 )
 from gmnps.scoring.fcs2_attribute_mapping import (
     PRIMARY_ATTRIBUTE_MAPPINGS,
@@ -86,6 +88,15 @@ def _forge_state(state, **changes):
     forged = object.__new__(BetaNormalizationState)
     for field in fields(BetaNormalizationState):
         object.__setattr__(forged, field.name, getattr(state, field.name))
+    for name, value in changes.items():
+        object.__setattr__(forged, name, value)
+    return forged
+
+
+def _forge_calibration(result, **changes):
+    forged = object.__new__(AttributeCalibrationResult)
+    for field in fields(AttributeCalibrationResult):
+        object.__setattr__(forged, field.name, getattr(result, field.name))
     for name, value in changes.items():
         object.__setattr__(forged, name, value)
     return forged
@@ -316,6 +327,20 @@ def test_calibration_zero_response_exactly_recovers_baseline_and_not_calculated(
     assert result.points.loc[pair, "potassium_to_sodium_ratio"] is NOT_CALCULATED
     assert result.deltas.loc[pair, "potassium_to_sodium_ratio"] is NOT_CALCULATED
 
+    diagnostic = result.diagnostics.loc[
+        ("person_1", "food_1", "potassium_to_sodium_ratio")
+    ]
+    numeric_fields = [
+        "baseline_points",
+        "attribute_response",
+        "raw_delta",
+        "point_delta",
+    ]
+    assert diagnostic[numeric_fields].isna().all()
+    assert bool(diagnostic["clipped"]) is False
+    assert bool(diagnostic["not_calculated"]) is True
+    assert diagnostic["mode"] == "primary"
+
 
 @pytest.mark.parametrize(
     ("mode", "fraction_cap"),
@@ -451,6 +476,114 @@ def test_calibration_requires_exact_food_and_attribute_labels():
         calibrate_attribute_points(baseline.drop(columns="vitamin_c"), valid)
     with pytest.raises(ValueError, match="exact response food IDs"):
         calibrate_attribute_points(baseline.drop(index="food_2"), valid)
+
+
+def test_calibration_result_carries_frozen_end_to_end_provenance():
+    _, responses = _response_result()
+
+    result = calibrate_attribute_points(_baseline(), responses, mode="high")
+
+    assert result.normalization_fingerprint == responses.normalization_fingerprint
+    assert result.mapping_version == responses.mapping_version
+    assert result.reviewed_targets == responses.reviewed_targets
+    assert result.response_fingerprint == responses.response_fingerprint
+    assert result.calibration_mode == "high"
+    assert result.calibration_fraction == ATTRIBUTE_POINT_FRACTION_MODES["high"]
+    assert len(result.calibration_fingerprint) == 64
+    assert validate_calibration_result(result) is result
+    with pytest.raises(FrozenInstanceError):
+        result.mapping_version = "forged"
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"mapping_version": "fiber_all_ratio"}, "fingerprint|mapping"),
+        ({"reviewed_targets": ("zinc",)}, "reviewed target"),
+        ({"response_fingerprint": "0" * 64}, "response fingerprint|calibration fingerprint"),
+        ({"calibration_mode": "low"}, "mode|calibration fingerprint"),
+        ({"calibration_fraction": 0.10}, "fraction|calibration fingerprint"),
+        ({"calibration_fingerprint": "0" * 64}, "calibration fingerprint"),
+    ],
+)
+def test_validate_calibration_result_rejects_forged_provenance(changes, message):
+    _, responses = _response_result()
+    result = calibrate_attribute_points(_baseline(), responses)
+
+    with pytest.raises(ValueError, match=message):
+        validate_calibration_result(_forge_calibration(result, **changes))
+
+
+def test_validate_rejects_synchronized_nonreviewed_target_forgery():
+    _, responses = _response_result()
+    result = calibrate_attribute_points(_baseline(), responses)
+    points = result.points.copy()
+    deltas = result.deltas.copy()
+    diagnostics = result.diagnostics.copy()
+    pair = ("person_0", "food_1")
+    key = (*pair, "zinc")
+    response = 1.0
+    raw_delta = 2.0 * np.tanh(response / 2.0)
+    points.loc[pair, "zinc"] += raw_delta
+    deltas.loc[pair, "zinc"] = raw_delta
+    diagnostics.loc[key, "attribute_response"] = response
+    diagnostics.loc[key, "raw_delta"] = raw_delta
+    diagnostics.loc[key, "point_delta"] = raw_delta
+
+    forged = _forge_calibration(
+        result,
+        points=points,
+        deltas=deltas,
+        diagnostics=diagnostics,
+    )
+
+    with pytest.raises(ValueError, match="outside reviewed target|calibration fingerprint"):
+        validate_calibration_result(forged)
+
+
+def test_calibration_fingerprint_binds_matrix_labels_and_complete_diagnostics():
+    _, responses = _response_result()
+    result = calibrate_attribute_points(_baseline(), responses)
+
+    points = result.points.rename(columns={"vitamin_c": "forged_vitamin_c"})
+    with pytest.raises(ValueError, match="attribute labels|calibration fingerprint"):
+        validate_calibration_result(_forge_calibration(result, points=points))
+
+    diagnostics = result.diagnostics.copy()
+    diagnostics.loc[("person_0", "food_1", "vitamin_c"), "lower_bound"] = 1.0
+    with pytest.raises(ValueError, match="bounds|calibration fingerprint"):
+        validate_calibration_result(_forge_calibration(result, diagnostics=diagnostics))
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("baseline_points", 0.0),
+        ("attribute_response", 0.0),
+        ("raw_delta", 0.0),
+        ("point_delta", 0.0),
+        ("clipped", True),
+        ("not_calculated", False),
+        ("mode", "low"),
+        ("fraction_cap", 0.10),
+    ],
+)
+def test_validate_rejects_tampered_not_calculated_diagnostics(column, value):
+    state = fit_beta_normalization(_development_beta())
+    raw = pd.DataFrame(0.0, index=["person_1"], columns=state.nutrient_order)
+    responses = attribute_response(state, raw, _complete_exposures())
+    result = calibrate_attribute_points(
+        _baseline(not_calculated=("potassium_to_sodium_ratio",)), responses
+    )
+    diagnostics = result.diagnostics.copy()
+    diagnostics.loc[
+        ("person_1", "food_1", "potassium_to_sodium_ratio"), column
+    ] = value
+
+    with pytest.raises(ValueError, match="NOT_CALCULATED|mode|fraction|calibration fingerprint"):
+        validate_calibration_result(
+            _forge_calibration(result, diagnostics=diagnostics)
+        )
 
 
 def test_public_functions_have_no_outcome_or_final_score_inputs():

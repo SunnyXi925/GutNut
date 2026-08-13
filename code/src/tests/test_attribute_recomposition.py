@@ -1,4 +1,4 @@
-from dataclasses import FrozenInstanceError, replace
+from dataclasses import FrozenInstanceError, fields, replace
 import inspect
 
 import numpy as np
@@ -10,6 +10,7 @@ from gmnps.scoring.attribute_calibration import (
     attribute_response,
     calibrate_attribute_points,
     fit_beta_normalization,
+    validate_calibration_result,
 )
 from gmnps.scoring.attribute_recomposition import (
     FINAL_DEVIATION_CAP_MODES,
@@ -135,6 +136,15 @@ def _decomposition(official, baseline, domains):
         baseline.loc[:, columns],
         recomputed_domains=domains,
     )
+
+
+def _forge_calibration(result, **changes):
+    forged = object.__new__(AttributeCalibrationResult)
+    for field in fields(AttributeCalibrationResult):
+        object.__setattr__(forged, field.name, getattr(result, field.name))
+    for name, value in changes.items():
+        object.__setattr__(forged, name, value)
+    return forged
 
 
 @pytest.mark.parametrize("official_values", [[1.0, 47.0, 100.0], [5.0, 55.0, 95.0]])
@@ -432,11 +442,7 @@ def test_recomposition_rejects_arbitrary_frames_and_calibration_tampering():
 
     changed = calibration.points.copy()
     changed.loc[("person_1", "food_1"), "vitamin_c"] += 1.0
-    tampered = AttributeCalibrationResult(
-        points=changed,
-        deltas=calibration.deltas,
-        diagnostics=calibration.diagnostics,
-    )
+    tampered = _forge_calibration(calibration, points=changed)
     with pytest.raises(ValueError, match="calibration.*inconsistent|tamper"):
         recompute_personalized_domains(decomposition, tampered)
 
@@ -458,10 +464,72 @@ def test_nonpersonalized_attributes_in_selected_domains_must_stay_at_baseline():
     diagnostics.loc[key, "attribute_response"] = response
     diagnostics.loc[key, "raw_delta"] = raw_delta
     diagnostics.loc[key, "point_delta"] = raw_delta
-    forged = AttributeCalibrationResult(points, deltas, diagnostics)
+    forged = _forge_calibration(
+        calibration, points=points, deltas=deltas, diagnostics=diagnostics
+    )
 
-    with pytest.raises(ValueError, match="nonpersonalized attribute.*zinc"):
+    with pytest.raises(ValueError, match="outside reviewed target.*zinc"):
         recompute_personalized_domains(decomposition, forged)
+
+
+def test_recomposition_inherits_exact_task3_provenance_without_reminting():
+    baseline = _baseline()
+    decomposition = _decomposition(
+        pd.Series([50.0], index=baseline.index, name="FCS2"), baseline, ("vitamins",)
+    )
+    calibration = _calibration(baseline)
+
+    recomputed = recompute_personalized_domains(decomposition, calibration)
+
+    assert validate_calibration_result(calibration) is calibration
+    assert recomputed.calibration_fingerprint == calibration.calibration_fingerprint
+    assert recomputed.normalization_fingerprint == calibration.normalization_fingerprint
+    assert recomputed.mapping_version == calibration.mapping_version
+    assert recomputed.reviewed_targets == calibration.reviewed_targets
+    assert recomputed.response_fingerprint == calibration.response_fingerprint
+    assert recomputed.calibration_mode == calibration.calibration_mode
+    assert recomputed.calibration_fraction == calibration.calibration_fraction
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"mapping_version": "fiber_all_ratio"},
+        {"reviewed_targets": ("zinc",)},
+        {"response_fingerprint": "0" * 64},
+        {"calibration_mode": "low"},
+        {"calibration_fraction": 0.10},
+    ],
+)
+def test_recomposition_rejects_forged_task3_provenance(changes):
+    baseline = _baseline()
+    decomposition = _decomposition(
+        pd.Series([50.0], index=baseline.index, name="FCS2"), baseline, ("vitamins",)
+    )
+    calibration = _forge_calibration(_calibration(baseline), **changes)
+
+    with pytest.raises(ValueError, match="fingerprint|mapping|reviewed target|mode|fraction"):
+        recompute_personalized_domains(decomposition, calibration)
+
+
+def test_recomposition_rejects_tampered_not_calculated_audit():
+    baseline = _baseline(not_calculated=("potassium_to_sodium_ratio",))
+    decomposition = _decomposition(
+        pd.Series([50.0], index=baseline.index, name="FCS2"),
+        baseline,
+        ("nutrient_ratios",),
+    )
+    calibration = _calibration(baseline)
+    diagnostics = calibration.diagnostics.copy()
+    diagnostics.loc[
+        ("person_1", "food_1", "potassium_to_sodium_ratio"), "clipped"
+    ] = True
+
+    with pytest.raises(ValueError, match="NOT_CALCULATED|calibration fingerprint"):
+        recompute_personalized_domains(
+            decomposition,
+            _forge_calibration(calibration, diagnostics=diagnostics),
+        )
 
 
 def test_composition_rejects_cross_decomposition_provenance():

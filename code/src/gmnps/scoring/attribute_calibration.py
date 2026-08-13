@@ -6,7 +6,7 @@ from hashlib import sha256
 import json
 from math import isfinite
 from types import MappingProxyType
-from typing import Mapping, NamedTuple
+from typing import Mapping
 
 import numpy as np
 import pandas as pd
@@ -17,7 +17,7 @@ from gmnps.scoring.fcs2_attribute_mapping import (
     SENSITIVITY_ATTRIBUTE_MAPPINGS,
     build_food_specific_response,
 )
-from gmnps.scoring.fcs2_attribute_rules import FCS2_RULES, NotCalculated
+from gmnps.scoring.fcs2_attribute_rules import FCS2_RULES, NOT_CALCULATED, NotCalculated
 
 
 BETA_NORMALIZATION_METHOD_VERSION = "median_mad_iqr_sd_v1"
@@ -31,6 +31,19 @@ _IQR_NORMAL_CONSISTENCY = 1.349
 _ALLOWED_SCALE_METHODS = frozenset({"mad", "iqr", "standard_deviation", "unit"})
 _ACTIVE_ATTRIBUTES = tuple(name for name, rule in FCS2_RULES.items() if rule.active)
 _HEX_DIGITS = frozenset("0123456789abcdef")
+_CALIBRATION_DIAGNOSTIC_COLUMNS = (
+    "baseline_points",
+    "attribute_response",
+    "raw_delta",
+    "point_delta",
+    "lower_bound",
+    "upper_bound",
+    "lambda_points",
+    "fraction_cap",
+    "mode",
+    "clipped",
+    "not_calculated",
+)
 
 
 @dataclass(frozen=True)
@@ -88,12 +101,23 @@ class AttributeResponseResult:
     diagnostics: pd.DataFrame
 
 
-class AttributeCalibrationResult(NamedTuple):
-    """Calibrated native points, point deltas, and element diagnostics."""
+@dataclass(frozen=True)
+class AttributeCalibrationResult:
+    """Calibrated points bound to validated response and audit provenance."""
 
     points: pd.DataFrame
     deltas: pd.DataFrame
     diagnostics: pd.DataFrame
+    normalization_fingerprint: str
+    mapping_version: str
+    reviewed_targets: tuple[str, ...]
+    response_fingerprint: str
+    calibration_mode: str
+    calibration_fraction: float
+    calibration_fingerprint: str
+
+    def __post_init__(self) -> None:
+        validate_calibration_result(self)
 
 
 def _require_frame(value: object, label: str) -> pd.DataFrame:
@@ -151,6 +175,71 @@ def _sha256_payload(payload: object) -> str:
         separators=(",", ":"),
     )
     return sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _canonical_scalar(value: object) -> object:
+    if isinstance(value, NotCalculated):
+        return {"type": "not_calculated"}
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    if isinstance(value, (int, np.integer)):
+        return int(value)
+    if isinstance(value, (float, np.floating)):
+        numeric = float(value)
+        if np.isnan(numeric):
+            return {"type": "nan"}
+        if not isfinite(numeric):
+            raise ValueError("fingerprinted numeric values must be finite or NaN")
+        return numeric
+    if value is None or isinstance(value, str):
+        return value
+    raise ValueError(f"unsupported fingerprint value type: {type(value).__name__}")
+
+
+def _frame_payload(frame: pd.DataFrame) -> dict[str, object]:
+    if isinstance(frame.index, pd.MultiIndex):
+        index_values = [
+            [_canonical_scalar(item) for item in index_value]
+            for index_value in frame.index.tolist()
+        ]
+    else:
+        index_values = [[_canonical_scalar(item)] for item in frame.index.tolist()]
+    return {
+        "columns": [_canonical_scalar(column) for column in frame.columns],
+        "index_names": [_canonical_scalar(name) for name in frame.index.names],
+        "index_values": index_values,
+        "values": [
+            [_canonical_scalar(item) for item in row]
+            for row in frame.to_numpy(dtype=object).tolist()
+        ],
+    }
+
+
+def _calibration_fingerprint(
+    *,
+    points: pd.DataFrame,
+    deltas: pd.DataFrame,
+    diagnostics: pd.DataFrame,
+    normalization_fingerprint: str,
+    mapping_version: str,
+    reviewed_targets: tuple[str, ...],
+    response_fingerprint: str,
+    calibration_mode: str,
+    calibration_fraction: float,
+) -> str:
+    return _sha256_payload(
+        {
+            "calibration_fraction": float(calibration_fraction),
+            "calibration_mode": calibration_mode,
+            "deltas": _frame_payload(deltas),
+            "diagnostics": _frame_payload(diagnostics),
+            "mapping_version": mapping_version,
+            "normalization_fingerprint": normalization_fingerprint,
+            "points": _frame_payload(points),
+            "response_fingerprint": response_fingerprint,
+            "reviewed_targets": list(reviewed_targets),
+        }
+    )
 
 
 def _normalization_fingerprint(
@@ -473,6 +562,187 @@ def _finite_number(value: object, label: str) -> float:
     return numeric
 
 
+def _exact_bool(value: object, expected: bool) -> bool:
+    return isinstance(value, (bool, np.bool_)) and bool(value) is expected
+
+
+def _numeric_nan(value: object) -> bool:
+    return isinstance(value, (float, np.floating)) and np.isnan(float(value))
+
+
+def validate_calibration_result(
+    result: AttributeCalibrationResult,
+) -> AttributeCalibrationResult:
+    """Strictly validate a Task 3 result and its complete provenance chain."""
+
+    if not isinstance(result, AttributeCalibrationResult):
+        raise TypeError("result must be an AttributeCalibrationResult")
+    if not _is_sha256(result.normalization_fingerprint):
+        raise ValueError("calibration normalization fingerprint must be a SHA-256 digest")
+    if not _is_sha256(result.response_fingerprint):
+        raise ValueError("calibration response fingerprint must be a SHA-256 digest")
+    if not isinstance(result.mapping_version, str):
+        raise ValueError("calibration mapping version must be a reviewed version")
+    expected_targets = _reviewed_targets(result.mapping_version)
+    if (
+        not isinstance(result.reviewed_targets, tuple)
+        or result.reviewed_targets != expected_targets
+    ):
+        raise ValueError("calibration reviewed target set does not match its mapping version")
+    if (
+        not isinstance(result.calibration_mode, str)
+        or result.calibration_mode not in ATTRIBUTE_POINT_FRACTION_MODES
+    ):
+        raise ValueError("calibration mode is not a locked named mode")
+    expected_fraction = float(ATTRIBUTE_POINT_FRACTION_MODES[result.calibration_mode])
+    fraction = _finite_number(result.calibration_fraction, "calibration fraction")
+    if fraction != expected_fraction:
+        raise ValueError("calibration fraction does not match its named mode")
+
+    points = _require_frame(result.points, "calibration points")
+    deltas = _require_frame(result.deltas, "calibration deltas")
+    diagnostics = _require_frame(result.diagnostics, "calibration diagnostics")
+    if not isinstance(points.index, pd.MultiIndex) or points.index.nlevels != 2:
+        raise ValueError("calibration points must use an individual_id, food_id index")
+    if tuple(points.index.names) != ("individual_id", "food_id"):
+        raise ValueError("calibration point index labels are not canonical")
+    if not points.index.equals(deltas.index):
+        raise ValueError("calibration point and delta row labels must be identical")
+    if tuple(points.columns) != _ACTIVE_ATTRIBUTES:
+        raise ValueError("calibration points must contain the exact active attribute labels")
+    if not points.columns.equals(deltas.columns):
+        raise ValueError("calibration point and delta attribute labels must be identical")
+    for individual_id, food_id in points.index:
+        if not isinstance(individual_id, str) or not individual_id:
+            raise ValueError("calibration individual IDs must be nonempty strings")
+        if not isinstance(food_id, str) or not food_id:
+            raise ValueError("calibration food IDs must be nonempty strings")
+
+    if not isinstance(diagnostics.index, pd.MultiIndex) or diagnostics.index.nlevels != 3:
+        raise ValueError("calibration diagnostics must use a three-level canonical index")
+    expected_diagnostic_index = pd.MultiIndex.from_tuples(
+        [
+            (individual_id, food_id, attribute)
+            for individual_id, food_id in points.index
+            for attribute in _ACTIVE_ATTRIBUTES
+        ],
+        names=["individual_id", "food_id", "attribute"],
+    )
+    if not diagnostics.index.equals(expected_diagnostic_index):
+        raise ValueError("calibration diagnostics row labels are not canonical")
+    if tuple(diagnostics.columns) != _CALIBRATION_DIAGNOSTIC_COLUMNS:
+        raise ValueError("calibration diagnostics columns are not canonical")
+
+    for individual_id, food_id in points.index:
+        for attribute in _ACTIVE_ATTRIBUTES:
+            key = (individual_id, food_id, attribute)
+            point = points.loc[(individual_id, food_id), attribute]
+            delta = deltas.loc[(individual_id, food_id), attribute]
+            diagnostic = diagnostics.loc[key]
+            rule = FCS2_RULES[attribute]
+            lower = min(float(rule.low_points), float(rule.high_points))
+            upper = max(float(rule.low_points), float(rule.high_points))
+            expected_lambda = expected_fraction * (upper - lower)
+            if diagnostic["mode"] != result.calibration_mode:
+                raise ValueError("calibration diagnostic mode is mixed or inconsistent")
+            numeric_metadata = {
+                "lower_bound": lower,
+                "upper_bound": upper,
+                "lambda_points": expected_lambda,
+                "fraction_cap": expected_fraction,
+            }
+            for column, expected in numeric_metadata.items():
+                actual = _finite_number(
+                    diagnostic[column], f"calibration diagnostic {column}"
+                )
+                if actual != expected:
+                    raise ValueError(
+                        f"calibration diagnostic {column} is inconsistent with published bounds"
+                    )
+
+            if point is NOT_CALCULATED or delta is NOT_CALCULATED:
+                if point is not NOT_CALCULATED or delta is not NOT_CALCULATED:
+                    raise ValueError("calibration NOT_CALCULATED point and delta must match")
+                if rule.kind != "log_ratio":
+                    raise ValueError("only ratio attributes may be NOT_CALCULATED")
+                for column in (
+                    "baseline_points",
+                    "attribute_response",
+                    "raw_delta",
+                    "point_delta",
+                ):
+                    if not _numeric_nan(diagnostic[column]):
+                        raise ValueError(
+                            "calibration NOT_CALCULATED numeric diagnostics must be NaN"
+                        )
+                if not _exact_bool(diagnostic["clipped"], False):
+                    raise ValueError("calibration NOT_CALCULATED clipped must be exactly False")
+                if not _exact_bool(diagnostic["not_calculated"], True):
+                    raise ValueError(
+                        "calibration NOT_CALCULATED flag must be exactly True"
+                    )
+                continue
+
+            numeric_point = _finite_number(point, "calibration point")
+            numeric_delta = _finite_number(delta, "calibration delta")
+            baseline = _finite_number(
+                diagnostic["baseline_points"], "calibration diagnostic baseline_points"
+            )
+            response = _finite_number(
+                diagnostic["attribute_response"],
+                "calibration diagnostic attribute_response",
+            )
+            raw_delta = _finite_number(
+                diagnostic["raw_delta"], "calibration diagnostic raw_delta"
+            )
+            point_delta = _finite_number(
+                diagnostic["point_delta"], "calibration diagnostic point_delta"
+            )
+            if not lower <= baseline <= upper:
+                raise ValueError("calibration diagnostic baseline is outside published bounds")
+            expected_raw_delta = expected_lambda * float(np.tanh(response / 2.0))
+            candidate = baseline + expected_raw_delta
+            expected_point = min(max(candidate, lower), upper)
+            expected_delta = expected_point - baseline
+            if not all(
+                np.isclose(actual, expected, atol=1e-12, rtol=0.0)
+                for actual, expected in (
+                    (raw_delta, expected_raw_delta),
+                    (point_delta, expected_delta),
+                    (numeric_point, expected_point),
+                    (numeric_delta, expected_delta),
+                )
+            ):
+                raise ValueError("calibration points, deltas, and diagnostics are inconsistent")
+            if not _exact_bool(diagnostic["clipped"], expected_point != candidate):
+                raise ValueError("calibration clipped diagnostic is not canonical")
+            if not _exact_bool(diagnostic["not_calculated"], False):
+                raise ValueError("calibration not_calculated diagnostic must be exactly False")
+            if attribute not in result.reviewed_targets and response != 0.0:
+                raise ValueError(
+                    "nonzero calibration response outside reviewed target set is prohibited: "
+                    f"{attribute}"
+                )
+
+    expected_fingerprint = _calibration_fingerprint(
+        points=points,
+        deltas=deltas,
+        diagnostics=diagnostics,
+        normalization_fingerprint=result.normalization_fingerprint,
+        mapping_version=result.mapping_version,
+        reviewed_targets=result.reviewed_targets,
+        response_fingerprint=result.response_fingerprint,
+        calibration_mode=result.calibration_mode,
+        calibration_fraction=fraction,
+    )
+    if (
+        not _is_sha256(result.calibration_fingerprint)
+        or result.calibration_fingerprint != expected_fingerprint
+    ):
+        raise ValueError("calibration fingerprint does not match complete result contents")
+    return result
+
+
 def calibrate_attribute_points(
     baseline_points: pd.DataFrame,
     attribute_responses: AttributeResponseResult,
@@ -495,6 +765,7 @@ def calibrate_attribute_points(
 
     if set(baseline_points.columns) != set(responses.columns):
         raise ValueError("baseline_points must contain the exact response attributes")
+    baseline_points = baseline_points.loc[:, _ACTIVE_ATTRIBUTES]
     baseline_foods = set(baseline_points.index)
     response_foods = set(responses.index.get_level_values("food_id"))
     if baseline_foods != response_foods:
@@ -576,5 +847,27 @@ def calibrate_attribute_points(
             diagnostic_index,
             names=["individual_id", "food_id", "attribute"],
         ),
+    ).loc[:, _CALIBRATION_DIAGNOSTIC_COLUMNS]
+    calibration_fingerprint = _calibration_fingerprint(
+        points=points,
+        deltas=deltas,
+        diagnostics=diagnostics,
+        normalization_fingerprint=attribute_responses.normalization_fingerprint,
+        mapping_version=attribute_responses.mapping_version,
+        reviewed_targets=attribute_responses.reviewed_targets,
+        response_fingerprint=attribute_responses.response_fingerprint,
+        calibration_mode=mode,
+        calibration_fraction=fraction_cap,
     )
-    return AttributeCalibrationResult(points=points, deltas=deltas, diagnostics=diagnostics)
+    return AttributeCalibrationResult(
+        points=points,
+        deltas=deltas,
+        diagnostics=diagnostics,
+        normalization_fingerprint=attribute_responses.normalization_fingerprint,
+        mapping_version=attribute_responses.mapping_version,
+        reviewed_targets=attribute_responses.reviewed_targets,
+        response_fingerprint=attribute_responses.response_fingerprint,
+        calibration_mode=mode,
+        calibration_fraction=fraction_cap,
+        calibration_fingerprint=calibration_fingerprint,
+    )

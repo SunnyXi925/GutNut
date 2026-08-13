@@ -14,8 +14,8 @@ import pandas as pd
 from gmnps.scoring.attribute_calibration import (
     ATTRIBUTE_POINT_FRACTION_MODES,
     AttributeCalibrationResult,
+    validate_calibration_result,
 )
-from gmnps.scoring.fcs2_attribute_mapping import PRIMARY_ATTRIBUTE_MAPPINGS
 from gmnps.scoring.fcs2_attribute_rules import (
     FCS2_RULES,
     FCS_MAX,
@@ -36,9 +36,6 @@ FINAL_DEVIATION_CAP_MODES: Mapping[str, float] = MappingProxyType(
 RECOMPOSITION_METHOD_VERSION = "native_domain_fixed_residual_v1"
 
 _ACTIVE_ATTRIBUTES = tuple(name for name, rule in FCS2_RULES.items() if rule.active)
-_PERSONALIZED_ATTRIBUTES = frozenset(
-    row.attribute for row in PRIMARY_ATTRIBUTE_MAPPINGS if row.role == "effect"
-)
 _RULE_ORDER = {name: position for position, name in enumerate(FCS2_RULES)}
 _DOMAIN_ATTRIBUTES: dict[str, tuple[str, ...]] = {}
 for _attribute in _ACTIVE_ATTRIBUTES:
@@ -504,6 +501,12 @@ class PersonalizedDomainRecomposition:
     membership_rows: tuple[tuple[object, ...], ...]
     attribute_rows: tuple[tuple[object, ...], ...]
     baseline_fingerprint: str
+    normalization_fingerprint: str
+    mapping_version: str
+    reviewed_targets: tuple[str, ...]
+    response_fingerprint: str
+    calibration_mode: str
+    calibration_fraction: float
     calibration_fingerprint: str
     fingerprint: str
 
@@ -542,12 +545,18 @@ def _recomposition_payload(value: PersonalizedDomainRecomposition) -> dict[str, 
     return {
         "attribute_rows": value.attribute_rows,
         "baseline_fingerprint": value.baseline_fingerprint,
+        "calibration_fraction": value.calibration_fraction,
         "calibration_fingerprint": value.calibration_fingerprint,
+        "calibration_mode": value.calibration_mode,
         "domain_contribution_values": value.domain_contribution_values,
         "domain_labels": value.domain_labels,
         "individual_food_pairs": value.individual_food_pairs,
+        "mapping_version": value.mapping_version,
         "membership_rows": value.membership_rows,
         "method_version": RECOMPOSITION_METHOD_VERSION,
+        "normalization_fingerprint": value.normalization_fingerprint,
+        "response_fingerprint": value.response_fingerprint,
+        "reviewed_targets": value.reviewed_targets,
     }
 
 
@@ -579,8 +588,27 @@ def _validate_domain_recomposition(value: PersonalizedDomainRecomposition) -> No
         raise ValueError("domain contribution columns are inconsistent")
     if any(not isfinite(float(item)) for row in value.domain_contribution_values for item in row):
         raise ValueError("domain contributions must be finite")
-    if not _is_sha256(value.baseline_fingerprint) or not _is_sha256(value.calibration_fingerprint):
+    if not all(
+        _is_sha256(fingerprint)
+        for fingerprint in (
+            value.baseline_fingerprint,
+            value.normalization_fingerprint,
+            value.response_fingerprint,
+            value.calibration_fingerprint,
+        )
+    ):
         raise ValueError("recomposition provenance fingerprints are invalid")
+    if not isinstance(value.mapping_version, str) or not value.mapping_version:
+        raise ValueError("recomposition mapping version is invalid")
+    _require_string_labels(value.reviewed_targets, "recomposition reviewed targets")
+    if (
+        not isinstance(value.calibration_mode, str)
+        or value.calibration_mode not in ATTRIBUTE_POINT_FRACTION_MODES
+    ):
+        raise ValueError("recomposition calibration mode is invalid")
+    expected_fraction = float(ATTRIBUTE_POINT_FRACTION_MODES[value.calibration_mode])
+    if _finite_number(value.calibration_fraction, "calibration fraction") != expected_fraction:
+        raise ValueError("recomposition calibration fraction does not match its mode")
     expected = _fingerprint(_recomposition_payload(value))
     if not _is_sha256(value.fingerprint) or value.fingerprint != expected:
         raise ValueError("domain recomposition fingerprint does not match its contents")
@@ -607,22 +635,11 @@ def _membership(
 def _validate_calibration(
     baseline: BaselineDecomposition,
     calibration: AttributeCalibrationResult,
-) -> tuple[tuple[tuple[str, str], ...], str]:
-    if not isinstance(calibration, AttributeCalibrationResult):
-        raise TypeError("calibration must be an AttributeCalibrationResult from Task 3")
-    points, deltas, diagnostics = calibration
-    if not isinstance(points, pd.DataFrame) or not isinstance(deltas, pd.DataFrame):
-        raise ValueError("calibration points and deltas must be DataFrames")
-    if not isinstance(diagnostics, pd.DataFrame):
-        raise ValueError("calibration diagnostics must be a DataFrame")
-    if not isinstance(points.index, pd.MultiIndex) or points.index.nlevels != 2:
-        raise ValueError("calibration points require an individual_id, food_id index")
-    if tuple(points.index.names) != ("individual_id", "food_id"):
-        raise ValueError("calibration point index provenance labels are invalid")
-    if not points.index.is_unique or not points.index.equals(deltas.index):
-        raise ValueError("calibration points and deltas require identical unique indices")
-    if tuple(points.columns) != _ACTIVE_ATTRIBUTES or not points.columns.equals(deltas.columns):
-        raise ValueError("calibration requires the exact active attribute labels")
+) -> tuple[tuple[str, str], ...]:
+    validate_calibration_result(calibration)
+    points = calibration.points
+    deltas = calibration.deltas
+    diagnostics = calibration.diagnostics
     pairs = tuple(points.index)
     for individual_id, food_id in pairs:
         _require_string_labels((individual_id,), "calibration individual IDs")
@@ -630,109 +647,42 @@ def _validate_calibration(
     if set(points.index.get_level_values("food_id")) != set(baseline.food_ids):
         raise ValueError("calibration and decomposition food IDs do not align")
     individuals = tuple(dict.fromkeys(points.index.get_level_values("individual_id")))
-    expected_pairs = {(individual, food) for individual in individuals for food in baseline.food_ids}
+    expected_pairs = {
+        (individual, food) for individual in individuals for food in baseline.food_ids
+    }
     if set(pairs) != expected_pairs:
         raise ValueError("calibration must contain every individual-food pair exactly once")
-    if not isinstance(diagnostics.index, pd.MultiIndex) or tuple(diagnostics.index.names) != (
-        "individual_id",
-        "food_id",
-        "attribute",
-    ):
-        raise ValueError("calibration diagnostic provenance labels are invalid")
-    expected_diagnostic_index = pd.MultiIndex.from_tuples(
-        [(*pair, attribute) for pair in pairs for attribute in _ACTIVE_ATTRIBUTES],
-        names=["individual_id", "food_id", "attribute"],
-    )
-    if not diagnostics.index.equals(expected_diagnostic_index):
-        raise ValueError("calibration diagnostics do not align with points")
-    required_diagnostics = {
-        "baseline_points",
-        "attribute_response",
-        "raw_delta",
-        "point_delta",
-        "lower_bound",
-        "upper_bound",
-        "lambda_points",
-        "fraction_cap",
-        "mode",
-        "clipped",
-        "not_calculated",
-    }
-    if set(diagnostics.columns) != required_diagnostics:
-        raise ValueError("calibration diagnostics have an unexpected schema")
-
     selected_baseline = baseline.baseline_points
-    payload_rows: list[tuple[object, ...]] = []
     for individual_id, food_id in pairs:
         for attribute in _ACTIVE_ATTRIBUTES:
             point = points.loc[(individual_id, food_id), attribute]
             delta = deltas.loc[(individual_id, food_id), attribute]
             diagnostic = diagnostics.loc[(individual_id, food_id, attribute)]
-            rule = FCS2_RULES[attribute]
-            lower = min(float(rule.low_points), float(rule.high_points))
-            upper = max(float(rule.low_points), float(rule.high_points))
-            mode = diagnostic["mode"]
-            if not isinstance(mode, str) or mode not in ATTRIBUTE_POINT_FRACTION_MODES:
-                raise ValueError("calibration mode provenance is not locked")
-            fraction = float(ATTRIBUTE_POINT_FRACTION_MODES[mode])
-            expected_lambda = fraction * (upper - lower)
-            if not (
-                np.isclose(float(diagnostic["lower_bound"]), lower, atol=1e-12, rtol=0.0)
-                and np.isclose(float(diagnostic["upper_bound"]), upper, atol=1e-12, rtol=0.0)
-                and np.isclose(float(diagnostic["fraction_cap"]), fraction, atol=1e-12, rtol=0.0)
-                and np.isclose(float(diagnostic["lambda_points"]), expected_lambda, atol=1e-12, rtol=0.0)
-            ):
-                raise ValueError("calibration bound provenance is inconsistent")
-            if bool(diagnostic["not_calculated"]):
-                if point is not NOT_CALCULATED or delta is not NOT_CALCULATED:
-                    raise ValueError("calibration NOT_CALCULATED values are inconsistent")
-                if attribute in baseline.attribute_labels and selected_baseline.loc[food_id, attribute] is not NOT_CALCULATED:
+            if point is NOT_CALCULATED:
+                if (
+                    attribute in baseline.attribute_labels
+                    and selected_baseline.loc[food_id, attribute] is not NOT_CALCULATED
+                ):
                     raise ValueError("calibration baseline provenance is inconsistent")
-                payload_rows.append((individual_id, food_id, attribute, NOT_CALCULATED, NOT_CALCULATED, mode))
                 continue
-            numeric_point = _point_value(point, attribute, "calibration points")
             numeric_delta = _finite_number(delta, "calibration point delta")
             numeric_baseline = _finite_number(
                 diagnostic["baseline_points"], "calibration diagnostic baseline"
             )
-            response = _finite_number(
-                diagnostic["attribute_response"], "calibration attribute response"
-            )
-            raw_delta = expected_lambda * float(np.tanh(response / 2.0))
-            expected_point = min(max(numeric_baseline + raw_delta, lower), upper)
-            expected_delta = expected_point - numeric_baseline
-            consistent = (
-                np.isclose(float(diagnostic["raw_delta"]), raw_delta, atol=1e-12, rtol=0.0)
-                and np.isclose(float(diagnostic["point_delta"]), expected_delta, atol=1e-12, rtol=0.0)
-                and np.isclose(numeric_point, expected_point, atol=1e-12, rtol=0.0)
-                and np.isclose(numeric_delta, expected_delta, atol=1e-12, rtol=0.0)
-                and bool(diagnostic["clipped"]) == (expected_point != numeric_baseline + raw_delta)
-            )
-            if not consistent:
-                raise ValueError("calibration values are inconsistent; possible tampering")
-            domain = rule.domain
-            if (
-                attribute not in _PERSONALIZED_ATTRIBUTES
-                and not np.isclose(numeric_delta, 0.0, atol=1e-12, rtol=0.0)
-            ):
-                raise ValueError(
-                    f"nonpersonalized attribute {attribute} must stay at its baseline"
-                )
             if attribute in baseline.attribute_labels:
                 baseline_point = selected_baseline.loc[food_id, attribute]
                 if baseline_point is NOT_CALCULATED or not np.isclose(
                     numeric_baseline, float(baseline_point), atol=1e-12, rtol=0.0
                 ):
-                    raise ValueError("calibration and decomposition baseline provenance do not align")
+                    raise ValueError(
+                        "calibration and decomposition baseline provenance do not align"
+                    )
             elif not np.isclose(numeric_delta, 0.0, atol=1e-12, rtol=0.0):
                 raise ValueError(
                     "calibration targets a residualized domain "
-                    f"{domain}: attribute {attribute}"
+                    f"{FCS2_RULES[attribute].domain}: attribute {attribute}"
                 )
-            payload_rows.append(
-                (individual_id, food_id, attribute, numeric_point, numeric_delta, numeric_baseline, response, mode)
-            )
-    return pairs, _fingerprint({"rows": tuple(payload_rows), "type": "AttributeCalibrationResult"})
+    return pairs
 
 
 def recompute_personalized_domains(
@@ -742,7 +692,7 @@ def recompute_personalized_domains(
     """Recompute all selected domains, including dynamic top-k membership."""
 
     _validate_baseline_decomposition(baseline)
-    pairs, calibration_fingerprint = _validate_calibration(baseline, calibration)
+    pairs = _validate_calibration(baseline, calibration)
     baseline_points = baseline.baseline_points
     point_frame = calibration.points
     contribution_rows: list[tuple[float, ...]] = []
@@ -815,7 +765,13 @@ def recompute_personalized_domains(
         "membership_rows": tuple(membership_rows),
         "attribute_rows": tuple(attribute_rows),
         "baseline_fingerprint": baseline.fingerprint,
-        "calibration_fingerprint": calibration_fingerprint,
+        "normalization_fingerprint": calibration.normalization_fingerprint,
+        "mapping_version": calibration.mapping_version,
+        "reviewed_targets": calibration.reviewed_targets,
+        "response_fingerprint": calibration.response_fingerprint,
+        "calibration_mode": calibration.calibration_mode,
+        "calibration_fraction": calibration.calibration_fraction,
+        "calibration_fingerprint": calibration.calibration_fingerprint,
     }
     for name, value in fields.items():
         object.__setattr__(result, name, value)
