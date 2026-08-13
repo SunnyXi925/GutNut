@@ -21,8 +21,9 @@ file-level SHA-256 values; outcome-bearing Parquet/CSV contents were not opened.
 
 The complete machine-readable inventories are:
 
-- `predict_zoe_source_manifest.csv`: source, owner, cohort, unit, size,
-  modality, endpoint declaration, one access route, checksum status, one
+- `predict_zoe_source_manifest.csv`: source, owner, cohort, unit, legacy
+  `sample_size`, explicit `n_value`, `n_unit`, `participant_n`, modality,
+  endpoint declaration, one access route, access status, checksum status, one
   analytical role and explicit exclusion reason.
 - `predict1_real_vs_synthetic_audit.csv`: field-level local evidence boundary.
 - `eligible_for_main_validation.csv`: direct-validation eligibility gate.
@@ -57,7 +58,7 @@ schema is unverified.
 | --- | --- | --- |
 | Nature article and supplement | Official HTML anchors and Springer Nature media download | Accessible. Uploaded and official XLSX bytes were identical; SHA-256 `3b6034d6212f0676bbc60b6eb0f3713cd5266799cbaf37e035900afe3892e581`. |
 | `PRJEB39223` | ENA study and count APIs | Accessible. Title identifies PREDICT 1; ENA returned 2,196 sample/run records. This is not interpreted as 2,196 participants because the article reports 1,098 PREDICT 1 participants. |
-| `EH5458` | Official ExperimentHub metadata snapshot and dispatch metadata | Accessible. Current metadata names `2021-03-31.AsnicarF_2021.relative_abundance`; its dispatch path is official fetch ID `5501`. Sample size is not declared in the record and remains unknown here. |
+| `EH5458` | Official ExperimentHub metadata and fetch endpoint | Accessible. Current metadata names `2021-03-31.AsnicarF_2021.relative_abundance`; its dispatch path is official fetch ID `5501`. Sample size is not declared in the record and remains unknown here. No unreproducible local snapshot date is asserted. |
 | `PRJEB75460` | ENA study and count APIs | Accessible. PREDICT 2; 975 ENA sample/run records. |
 | `PRJEB75462` | ENA study and count APIs | Accessible. PREDICT 3 US21; 11,797 ENA sample/run records. |
 | `PRJEB75463` | ENA study and count APIs | Accessible. PREDICT 3 US22A; 8,469 ENA sample/run records. |
@@ -66,10 +67,12 @@ schema is unverified.
 | `10.5281/zenodo.17236382` | Nature statement and Zenodo API | Metadata accessible. Concept DOI resolves to `10.5281/zenodo.17236383`, which exposes an approximately 2.5-GB encrypted archive plus MD5 files. Although Zenodo metadata says `open` and CC BY 4.0, the payload is encrypted and Nature requires ZOE approval; analytical access is therefore controlled. |
 | `10.5281/zenodo.17236261` | Zenodo API | Accessible. Concept DOI resolves to software record `10.5281/zenodo.17236262`. The visible files are `inverse_var_weight-master.zip` and `MetaPhlAn-4.beta.1.zip`; no external-cohort data file is visible in current metadata. |
 | `SegataLab/inverse_var_weight` v1.0.0 | GitHub release HTML and Git smart-protocol tag metadata | Release page accessible; tag resolves to `ab1a974bf1abd66175d190b55183d2957224b39f`. The unauthenticated GitHub REST request returned HTTP 403, so release HTML and `git ls-remote` were used instead. No licence file was confirmed from the fixed tag. |
-| ZOE ranking page | Public ZOE page and Nature Supplementary Table S5 | Accessible. The page labels the resource “ZOE Microbiome Ranking 2024” and applies a non-commercial academic-use condition; the fixed article version is Supplementary Table S5. |
+| `nature_supplementary_table_s5_rankings` | Official Springer Nature workbook, article DOI and Table S5 identifier | Accessible and immutable for this article. The local Table S5 derivative is bound to SHA-256 `51bfe4bb68f9071c7ed1dd07ab8729878ffa0d8907526402db1ff19c35b010e3` and uses `within_paper_or_supplement`. |
+| `zoe_live_microbiome_rankings_2024` | Public ZOE ranking page | Accessible but mutable. The page labels the resource “ZOE Microbiome Ranking 2024” and applies a non-commercial academic-use condition. It is a separate `reused_public_source` record and does not reuse the Table S5 local hash or version. |
 
-ENA counts above are repository sample/run counts, not inferred participant
-counts. The four PREDICT 2/3 ENA counts total 33,594, whereas the article reports
+For every ENA record, `n_value` is the repository count, `n_unit` is
+`ENA sample/run record`, and `participant_n` is `unknown`. These are not inferred
+participant counts. The four PREDICT 2/3 ENA counts total 33,594, whereas the article reports
 33,596 participants across those cohorts. The two quantities have different
 declared units and cannot be reconciled without an authorized participant-to-
 sample mapping; no correction or imputation was made.
@@ -127,12 +130,18 @@ not independently infer those classifications from data values.
 Accordingly, the three local metabolic endpoints are allowed only for a
 `synthetic_stress_test`. They cannot be described as observed PREDICT outcomes,
 retrospective external validation, construct validity or clinical validity.
+Because these empirical synthetic artifacts already exist, their access route
+is `within_paper_or_supplement`, not `not_applicable`. Their present access
+status is `local_pending_submission_package`; the source-data or supplementary
+package identifier is pending and they are not represented as already public.
+The current `PROVENANCE.md` does not prove a meal/food key or an audited
+participant-to-microbiome key map, so both eligibility fields remain `unknown`.
 
 ## FAIR audit
 
 | Principle | Finding | Required action |
 | --- | --- | --- |
-| Findable | ENA accessions, ExperimentHub accession, article DOI and Zenodo concept/version DOIs are persistent. Local synthetic artifacts have only local paths and checksums. | Deposit any synthetic benchmark intended for publication with a versioned DOI, README and explicit synthetic-data label. |
+| Findable | ENA accessions, ExperimentHub accession, article DOI and Zenodo concept/version DOIs are persistent. The synthetic package identifier is pending and status is `local_pending_submission_package`. | Authors must, before submission, deposit or attach the synthetic benchmark as an exact Source Data/Supplementary package, assign the final identifier, and include a README, checksums and explicit synthetic-data labels. |
 | Accessible | Public sequencing/profiles and the supplement resolve. The clinical archive is discoverable but encrypted and requires ZOE review. | Make the controlled status explicit in Zenodo metadata; retain public metadata even when payload access is restricted. |
 | Interoperable | ENA sequencing records and compressed TSV profiles use community-oriented formats. The XLSX is human-readable but aggregates heterogeneous analyses. | Supply data dictionaries, units, identifier relationships and participant-sample-meal linkage definitions for any authorized validation extract. |
 | Reusable | The public profile record declares CC BY 4.0; ZOE rankings state a non-commercial academic-use condition; the controlled archive requires an agreement. The fixed GitHub release licence was not confirmed. | Clarify software licence, controlled-data rights, allowed reuse and version-specific citations. Do not apply an open licence to participant data without authority. |
@@ -164,6 +173,14 @@ retrospective external validation, construct validity or clinical validity.
    `ab1a974bf1abd66175d190b55183d2957224b39f`, but a software licence was not
    confirmed from that release. Zenodo's CC BY field is not a substitute for an
    explicit software licence.
+8. **Synthetic package deposition is incomplete.** The three local metabolic
+   endpoints and other audited synthetic fields are assigned the honest future
+   route `within_paper_or_supplement`, with access status
+   `local_pending_submission_package` and identifier pending. Before submission,
+   create the exact Source Data/Supplementary package, add README/data dictionary,
+   provenance, units, synthetic labels and checksums, then replace every pending
+   identifier. Until that action is complete, the files must not be described as
+   publicly available or already included with the paper.
 
 Until these fields are resolved, a GMNPS Data Availability draft must state
 that public PREDICT microbiome resources support predictor reconstruction and

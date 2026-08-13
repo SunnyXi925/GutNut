@@ -14,6 +14,9 @@ from pathlib import Path
 import re
 from typing import Mapping, Sequence
 
+import pandas as pd
+
+from gmnps.scoring.attribute_calibration import fit_beta_normalization
 from gmnps.scoring.attribute_gmnps import (
     FCS2_FNDDS_REGISTRY_DIGEST_ALGORITHM,
     FCS2_FNDDS_REGISTRY_SCHEMA_VERSION,
@@ -23,8 +26,6 @@ from gmnps.scoring.attribute_gmnps import (
 
 
 _CANONICAL_BETA_SCHEMA_VERSION = "gmnps-canonical-beta-v1"
-_NORMALIZATION_METHOD_VERSION = "median_mad_iqr_sd_v1"
-_LOCKED_BETA_TEMPERATURE = 2.0
 _PRODUCTION_ARTIFACT_KEYS = (
     "official_fcs",
     "food_metadata",
@@ -43,8 +44,16 @@ _NORMALIZATION_FIELDS = {
     "temperature",
     "state_fingerprint",
 }
-_ALLOWED_SCALE_METHODS = frozenset(
-    {"mad", "iqr", "standard_deviation", "unit"}
+_LOCKED_IMPLEMENTATION_PATHS = frozenset(
+    {
+        "code/src/gmnps/scoring/fcs2_attribute_rules.py",
+        "code/src/gmnps/scoring/fcs2_attribute_mapping.py",
+        "code/src/gmnps/scoring/attribute_calibration.py",
+        "code/src/gmnps/scoring/attribute_recomposition.py",
+        "code/src/gmnps/scoring/attribute_gmnps.py",
+        "code/src/configs/attribute_gmnps.yaml",
+        "code/src/scripts/run_attribute_gmnps.py",
+    }
 )
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 _TRUSTED_METHOD_LOCK_SCHEMA_PATH = (
@@ -90,6 +99,7 @@ class MethodLockArtifactPaths:
 class _CanonicalBeta:
     participant_ids: tuple[str, ...]
     nutrient_order: tuple[str, ...]
+    values: tuple[tuple[float, ...], ...]
     canonical_sha256: str
 
 
@@ -185,6 +195,7 @@ def _load_canonical_beta(path: Path, label: str) -> _CanonicalBeta:
     return _CanonicalBeta(
         participant_ids=tuple(identifiers),
         nutrient_order=tuple(nutrients),
+        values=tuple(tuple(float(value) for value in row) for row in values),
         canonical_sha256=canonical_json_sha256(payload),
     )
 
@@ -197,47 +208,47 @@ def _load_normalization_state(
     _, payload = _read_json(path, "normalization-state artifact")
     if not isinstance(payload, dict) or set(payload) != _NORMALIZATION_FIELDS:
         raise MethodLockError("normalization-state artifact schema is invalid")
-    nutrients = payload["nutrient_order"]
-    medians = payload["median_values"]
-    scales = payload["scale_values"]
-    methods = payload["scale_method_values"]
-    if not all(isinstance(value, list) for value in (nutrients, medians, scales, methods)):
-        raise MethodLockError("normalization-state vectors must be JSON arrays")
-    if tuple(nutrients) != development_beta.nutrient_order:
-        raise MethodLockError("normalization-state nutrient order does not match development beta")
-    if not (len(nutrients) == len(medians) == len(scales) == len(methods)):
-        raise MethodLockError("normalization-state vectors have inconsistent lengths")
-    if any(not _is_finite_number(value) for value in medians):
-        raise MethodLockError("normalization-state medians must be finite")
-    if any(not _is_finite_number(value) or float(value) <= 0 for value in scales):
-        raise MethodLockError("normalization-state scales must be finite and positive")
-    if any(value not in _ALLOWED_SCALE_METHODS for value in methods):
-        raise MethodLockError("normalization-state scale method is unsupported")
-    if payload["method_version"] != _NORMALIZATION_METHOD_VERSION:
-        raise MethodLockError("normalization-state method version is not locked")
-    if payload["temperature"] != _LOCKED_BETA_TEMPERATURE:
-        raise MethodLockError("normalization-state temperature is not locked")
-    fit_n = payload["fit_n"]
-    if isinstance(fit_n, bool) or not isinstance(fit_n, int) or fit_n <= 0:
-        raise MethodLockError("normalization-state fit_n must be a positive integer")
-    if fit_n != len(development_beta.participant_ids):
-        raise MethodLockError("normalization-state fit_n does not match development beta")
-    expected_fit_hash = canonical_ids_sha256(development_beta.participant_ids)
-    if payload["fit_id_sha256"] != expected_fit_hash:
-        raise MethodLockError("normalization-state fit-ID hash does not match development beta")
-    state_without_fingerprint = {
-        "fit_id_sha256": payload["fit_id_sha256"],
-        "fit_n": fit_n,
-        "median_values": [float(value) for value in medians],
-        "method_version": payload["method_version"],
-        "nutrient_order": list(nutrients),
-        "scale_method_values": list(methods),
-        "scale_values": [float(value) for value in scales],
-        "temperature": float(payload["temperature"]),
+    development_frame = pd.DataFrame(
+        development_beta.values,
+        index=list(development_beta.participant_ids),
+        columns=list(development_beta.nutrient_order),
+        dtype=float,
+    )
+    try:
+        fitted = fit_beta_normalization(development_frame)
+    except (TypeError, ValueError) as error:
+        raise MethodLockError(
+            "normalization state could not be fitted from canonical development beta"
+        ) from error
+    expected = {
+        "nutrient_order": list(fitted.nutrient_order),
+        "median_values": list(fitted.median_values),
+        "scale_values": list(fitted.scale_values),
+        "scale_method_values": list(fitted.scale_method_values),
+        "fit_n": fitted.fit_n,
+        "fit_id_sha256": fitted.fit_id_sha256,
+        "method_version": fitted.method_version,
+        "temperature": fitted.temperature,
+        "state_fingerprint": fitted.state_fingerprint,
     }
-    if payload["state_fingerprint"] != canonical_json_sha256(state_without_fingerprint):
-        raise MethodLockError("normalization-state fingerprint does not match its contents")
-    return payload
+    labels = {
+        "nutrient_order": "nutrient order",
+        "median_values": "median values",
+        "scale_values": "scale values",
+        "scale_method_values": "scale source values",
+        "fit_n": "fit_n",
+        "fit_id_sha256": "fit-ID hash",
+        "method_version": "method version",
+        "temperature": "temperature",
+        "state_fingerprint": "fingerprint",
+    }
+    for field in _NORMALIZATION_FIELDS:
+        if payload[field] != expected[field]:
+            raise MethodLockError(
+                f"normalization-state {labels[field]} was not derived from "
+                "canonical development beta"
+            )
+    return expected
 
 
 def _load_schema(path: Path) -> tuple[bytes, dict[str, object]]:
@@ -329,6 +340,60 @@ def _schema_const(schema: Mapping[str, object], field: str) -> object:
     return definition["const"]
 
 
+def _verify_locked_implementation_sources(
+    schema: Mapping[str, object],
+) -> dict[str, str]:
+    declared = _schema_const(schema, "implementation_source_sha256")
+    if not isinstance(declared, dict):
+        raise MethodLockError("implementation hash lock must be an object")
+    supplied_paths = set(declared)
+    missing = sorted(_LOCKED_IMPLEMENTATION_PATHS - supplied_paths)
+    extra = sorted(supplied_paths - _LOCKED_IMPLEMENTATION_PATHS)
+    if missing or extra:
+        details = []
+        if missing:
+            details.append(f"missing={missing}")
+        if extra:
+            details.append(f"extra={extra}")
+        raise MethodLockError(
+            "implementation source path set mismatch: " + ", ".join(details)
+        )
+    try:
+        repository_root = _REPOSITORY_ROOT.resolve(strict=True)
+    except OSError as error:
+        raise MethodLockError("implementation repository root is missing") from error
+
+    verified: dict[str, str] = {}
+    for relative_path, expected_digest in declared.items():
+        if (
+            not isinstance(relative_path, str)
+            or not relative_path
+            or not isinstance(expected_digest, str)
+            or re.fullmatch(r"[0-9a-f]{64}", expected_digest) is None
+        ):
+            raise MethodLockError("implementation source hash declaration is invalid")
+        relative = Path(relative_path)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise MethodLockError("implementation source path escapes the repository root")
+        candidate = _REPOSITORY_ROOT / relative
+        try:
+            resolved = candidate.resolve(strict=True)
+            resolved.relative_to(repository_root)
+        except (OSError, ValueError) as error:
+            raise MethodLockError(
+                f"implementation source {relative_path} is missing or unreadable"
+            ) from error
+        actual_digest = sha256(
+            _read_bytes(resolved, f"implementation source {relative_path}")
+        ).hexdigest()
+        if actual_digest != expected_digest:
+            raise MethodLockError(
+                f"implementation source hash mismatch for {relative_path}"
+            )
+        verified[relative_path] = actual_digest
+    return verified
+
+
 def _require_installed_gate(path: Path) -> bytes:
     installed = Path(__file__).resolve()
     try:
@@ -389,6 +454,7 @@ def _expected_manifest(
         raise MethodLockError("beta_fit_cohort_id must be a nonempty string")
 
     schema_bytes, schema = _load_schema(paths.method_lock_schema)
+    implementation_source_sha256 = _verify_locked_implementation_sources(schema)
     config_bytes = _read_bytes(
         paths.person_meal_validation_config,
         "person-meal validation config",
@@ -480,10 +546,7 @@ def _expected_manifest(
         "scoring_beta_sha256": scoring_beta.canonical_sha256,
         "person_meal_validation_config_sha256": sha256(config_bytes).hexdigest(),
         "mapping_version": _schema_const(schema, "mapping_version"),
-        "implementation_source_sha256": _schema_const(
-            schema,
-            "implementation_source_sha256",
-        ),
+        "implementation_source_sha256": implementation_source_sha256,
         "method_lock_gate_implementation_sha256": sha256(gate_bytes).hexdigest(),
         "fixed_parameters": _schema_const(schema, "fixed_parameters"),
         "validation_embargo": _schema_const(schema, "validation_embargo"),

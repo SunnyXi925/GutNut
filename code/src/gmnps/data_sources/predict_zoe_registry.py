@@ -23,6 +23,15 @@ ACCESS_ROUTES = frozenset(
     }
 )
 
+ACCESS_STATUSES = frozenset(
+    {
+        "public",
+        "controlled_not_granted",
+        "local_copy_available",
+        "local_pending_submission_package",
+    }
+)
+
 ANALYTICAL_ROLES = frozenset(
     {
         "predictor_reconstruction",
@@ -57,9 +66,13 @@ PROVENANCE_FIELDS = (
     "cohort",
     "unit_of_observation",
     "sample_size",
+    "n_value",
+    "n_unit",
+    "participant_n",
     "data_modality",
     "declared_response_endpoint",
     "access_route",
+    "access_status",
     "local_path",
     "sha256",
     "real_synthetic_status",
@@ -83,9 +96,13 @@ class PredictZoeSource:
     cohort: str
     unit_of_observation: str
     sample_size: str
+    n_value: str
+    n_unit: str
+    participant_n: str
     data_modality: str
     declared_response_endpoint: str
     access_route: str
+    access_status: str
     local_path: str
     sha256: str
     real_synthetic_status: str
@@ -123,11 +140,15 @@ PREDICT_ZOE_SOURCE_REGISTRY = (
         cohort="ZOE PREDICT and non-PREDICT analyses",
         unit_of_observation="published aggregate table row",
         sample_size="unknown",
+        n_value="unknown",
+        n_unit="published aggregate table row",
+        participant_n="unknown",
         data_modality="aggregate supplementary tables and species rankings",
         declared_response_endpoint=(
             "aggregate clinical-marker prediction, association, and intervention summaries"
         ),
         access_route="within_paper_or_supplement",
+        access_status="public",
         local_path="/Users/fengxi.25/Downloads/41586_2025_9854_MOESM3_ESM.xlsx",
         sha256="3b6034d6212f0676bbc60b6eb0f3713cd5266799cbaf37e035900afe3892e581",
         real_synthetic_status="aggregate_public",
@@ -150,9 +171,13 @@ PREDICT_ZOE_SOURCE_REGISTRY = (
         cohort="PREDICT 1",
         unit_of_observation="ENA metagenomic sample/run",
         sample_size="2196",
+        n_value="2196",
+        n_unit="ENA sample/run record",
+        participant_n="unknown",
         data_modality="shotgun metagenomic sequencing",
         declared_response_endpoint="none in the ENA sequencing resource",
         access_route="reused_public_source",
+        access_status="public",
         local_path=_NOT_DOWNLOADED,
         sha256=_NO_REMOTE_SHA,
         real_synthetic_status="real_public",
@@ -175,9 +200,13 @@ PREDICT_ZOE_SOURCE_REGISTRY = (
         cohort="PREDICT 1",
         unit_of_observation="participant microbiome profile",
         sample_size="unknown",
+        n_value="unknown",
+        n_unit="participant microbiome profile",
+        participant_n="unknown",
         data_modality="curated species relative-abundance profiles",
         declared_response_endpoint="none in the ExperimentHub profile resource",
         access_route="reused_public_source",
+        access_status="public",
         local_path=(
             "data/project_data/predict_multi/L2_phenotype/predict1_real/"
             "AsnicarF_2021_relative_abundance.rda"
@@ -189,7 +218,7 @@ PREDICT_ZOE_SOURCE_REGISTRY = (
             "Real microbiome predictors, but no observed meal-level response endpoint."
         ),
         evidence_basis=(
-            "ExperimentHub metadata snapshot dated 2026-07-30 identifies EH5458 and dispatch path 5501."
+            "Official ExperimentHub metadata and fetch endpoint verified EH5458 and dispatch path 5501 on the audit date."
         ),
     ),
     PredictZoeSource(
@@ -203,9 +232,13 @@ PREDICT_ZOE_SOURCE_REGISTRY = (
         cohort="PREDICT 2",
         unit_of_observation="ENA metagenomic sample/run",
         sample_size="975",
+        n_value="975",
+        n_unit="ENA sample/run record",
+        participant_n="unknown",
         data_modality="shotgun metagenomic sequencing",
         declared_response_endpoint="none in the ENA sequencing resource",
         access_route="reused_public_source",
+        access_status="public",
         local_path=_NOT_DOWNLOADED,
         sha256=_NO_REMOTE_SHA,
         real_synthetic_status="real_public",
@@ -224,9 +257,13 @@ PREDICT_ZOE_SOURCE_REGISTRY = (
         cohort="PREDICT 3 US21",
         unit_of_observation="ENA metagenomic sample/run",
         sample_size="11797",
+        n_value="11797",
+        n_unit="ENA sample/run record",
+        participant_n="unknown",
         data_modality="shotgun metagenomic sequencing",
         declared_response_endpoint="none in the ENA sequencing resource",
         access_route="reused_public_source",
+        access_status="public",
         local_path=_NOT_DOWNLOADED,
         sha256=_NO_REMOTE_SHA,
         real_synthetic_status="real_public",
@@ -245,9 +282,13 @@ PREDICT_ZOE_SOURCE_REGISTRY = (
         cohort="PREDICT 3 US22A",
         unit_of_observation="ENA metagenomic sample/run",
         sample_size="8469",
+        n_value="8469",
+        n_unit="ENA sample/run record",
+        participant_n="unknown",
         data_modality="shotgun metagenomic sequencing",
         declared_response_endpoint="none in the ENA sequencing resource",
         access_route="reused_public_source",
+        access_status="public",
         local_path=_NOT_DOWNLOADED,
         sha256=_NO_REMOTE_SHA,
         real_synthetic_status="real_public",
@@ -266,9 +307,13 @@ PREDICT_ZOE_SOURCE_REGISTRY = (
         cohort="PREDICT 3 UK22A",
         unit_of_observation="ENA metagenomic sample/run",
         sample_size="12353",
+        n_value="12353",
+        n_unit="ENA sample/run record",
+        participant_n="unknown",
         data_modality="shotgun metagenomic sequencing",
         declared_response_endpoint="none in the ENA sequencing resource",
         access_route="reused_public_source",
+        access_status="public",
         local_path=_NOT_DOWNLOADED,
         sha256=_NO_REMOTE_SHA,
         real_synthetic_status="real_public",
@@ -287,9 +332,13 @@ PREDICT_ZOE_SOURCE_REGISTRY = (
         cohort="PREDICT 1, PREDICT 2, and PREDICT 3 cohorts",
         unit_of_observation="participant microbiome profile and public demographic metadata",
         sample_size="unknown",
+        n_value="unknown",
+        n_unit="participant microbiome profile",
+        participant_n="unknown",
         data_modality="compressed metadata and MetaPhlAn taxonomic profiles",
         declared_response_endpoint="none in the public Zenodo record",
         access_route="reused_public_source",
+        access_status="public",
         local_path=_NOT_DOWNLOADED,
         sha256=_NO_REMOTE_SHA,
         real_synthetic_status="real_public",
@@ -302,19 +351,27 @@ PREDICT_ZOE_SOURCE_REGISTRY = (
         ),
     ),
     PredictZoeSource(
-        resource_id="zoe_microbiome_rankings",
-        source_name="ZOE Microbiome Health and Diet Rankings",
-        stable_source="https://zoe.com/our-science/microbiome-ranking",
-        source_identifier="ZOE-MB-rankings",
-        version_identifier="Nature-2025-supplementary-table-S5",
+        resource_id="nature_supplementary_table_s5_rankings",
+        source_name="Nature Supplementary Table S5 microbiome rankings",
+        stable_source=(
+            "https://media.springernature.com/original/springer-static/esm/"
+            "art%3A10.1038%2Fs41586-025-09854-7/MediaObjects/"
+            "41586_2025_9854_MOESM3_ESM.xlsx"
+        ),
+        source_identifier="10.1038/s41586-025-09854-7:MOESM3:S5",
+        version_identifier="41586_2025_9854_MOESM3_ESM.xlsx:Table-S5",
         accessed_on=_ACCESSED,
-        owner="ZOE Ltd. and study authors",
+        owner="Asnicar et al.; hosted by Springer Nature",
         cohort="cross-cohort PREDICT ranking",
-        unit_of_observation="species-level genome bin ranking",
+        unit_of_observation="published species-level genome bin rank",
         sample_size="unknown",
+        n_value="unknown",
+        n_unit="published species-level genome bin rank",
+        participant_n="unknown",
         data_modality="microbiome species rank",
         declared_response_endpoint="health-associated and diet-associated species ranks",
-        access_route="reused_public_source",
+        access_route="within_paper_or_supplement",
+        access_status="public",
         local_path="data/project_data/verification/zoe2025/zoe_health_rank_S5.csv",
         sha256="51bfe4bb68f9071c7ed1dd07ab8729878ffa0d8907526402db1ff19c35b010e3",
         real_synthetic_status="aggregate_public",
@@ -322,7 +379,36 @@ PREDICT_ZOE_SOURCE_REGISTRY = (
         exclusion_reason=(
             "Aggregate species ranks cannot validate person-food metabolic responses."
         ),
-        evidence_basis=f"{_NATURE_DATA}; official supplementary Table S5.",
+        evidence_basis=f"{_NATURE_DATA}; immutable official Supplementary Table S5.",
+    ),
+    PredictZoeSource(
+        resource_id="zoe_live_microbiome_rankings_2024",
+        source_name="Live ZOE Microbiome Ranking 2024 page",
+        stable_source="https://zoe.com/our-science/microbiome-ranking",
+        source_identifier="ZOE-MB-rankings-live-2024",
+        version_identifier="live-page-accessed-2026-08-13",
+        accessed_on=_ACCESSED,
+        owner="ZOE Ltd.",
+        cohort="cross-cohort ranking displayed by ZOE",
+        unit_of_observation="displayed species-level genome bin rank",
+        sample_size="unknown",
+        n_value="unknown",
+        n_unit="displayed species-level genome bin rank",
+        participant_n="unknown",
+        data_modality="mutable microbiome species ranking page",
+        declared_response_endpoint="health-associated and diet-associated species ranks",
+        access_route="reused_public_source",
+        access_status="public",
+        local_path=_NOT_DOWNLOADED,
+        sha256=_NO_REMOTE_SHA,
+        real_synthetic_status="aggregate_public",
+        allowed_analytical_role="biological_consistency",
+        exclusion_reason=(
+            "The mutable aggregate page cannot validate person-food metabolic responses."
+        ),
+        evidence_basis=(
+            "Live ZOE page accessed on the audit date; it is not the immutable Nature Table S5 artifact."
+        ),
     ),
     PredictZoeSource(
         resource_id="predict_controlled_clinical_zenodo",
@@ -335,11 +421,15 @@ PREDICT_ZOE_SOURCE_REGISTRY = (
         cohort="ZOE PREDICT studies",
         unit_of_observation="controlled participant clinical record",
         sample_size="unknown",
+        n_value="unknown",
+        n_unit="controlled participant clinical record",
+        participant_n="unknown",
         data_modality="encrypted participant clinical and host-parameter archive",
         declared_response_endpoint=(
             "ordered host parameters; exact glucose, triglyceride, C-peptide, meal, unit, and linkage fields unconfirmed"
         ),
         access_route="controlled_access_repository",
+        access_status="controlled_not_granted",
         local_path=_NOT_DOWNLOADED,
         sha256=_NO_REMOTE_SHA,
         real_synthetic_status="controlled_real",
@@ -362,9 +452,13 @@ PREDICT_ZOE_SOURCE_REGISTRY = (
         cohort="non-PREDICT public cohorts and associated software",
         unit_of_observation="software archive in the currently visible Zenodo version",
         sample_size="unknown",
+        n_value="not_applicable",
+        n_unit="not_applicable",
+        participant_n="not_applicable",
         data_modality="inverse_var_weight and MetaPhlAn source archives",
         declared_response_endpoint="not applicable to the visible software files",
         access_route="public_repository",
+        access_status="public",
         local_path=_NOT_DOWNLOADED,
         sha256=_NO_REMOTE_SHA,
         real_synthetic_status="software_public",
@@ -389,9 +483,13 @@ PREDICT_ZOE_SOURCE_REGISTRY = (
         cohort="not applicable",
         unit_of_observation="software release",
         sample_size="unknown",
+        n_value="not_applicable",
+        n_unit="not_applicable",
+        participant_n="not_applicable",
         data_modality="Python source code",
         declared_response_endpoint="not applicable",
         access_route="public_repository",
+        access_status="public",
         local_path=_NOT_DOWNLOADED,
         sha256=_NO_REMOTE_SHA,
         real_synthetic_status="software_public",
@@ -414,9 +512,13 @@ PREDICT_ZOE_SOURCE_REGISTRY = (
         cohort="PREDICT 1",
         unit_of_observation="participant/sample metadata record",
         sample_size="unknown",
+        n_value="unknown",
+        n_unit="participant/sample metadata record",
+        participant_n="unknown",
         data_modality="demographic and sample-linkage metadata",
         declared_response_endpoint="none",
         access_route="reused_public_source",
+        access_status="local_copy_available",
         local_path=(
             "data/project_data/predict_multi/L2_phenotype/predict1_real/subjects_real.parquet"
         ),
@@ -429,19 +531,21 @@ PREDICT_ZOE_SOURCE_REGISTRY = (
     PredictZoeSource(
         resource_id="local_predict1_synthetic_glucose",
         source_name="Local statistically anchored glucose response",
-        stable_source=(
-            "data/project_data/predict_multi/L2_phenotype/predict1_real/PROVENANCE.md"
-        ),
-        source_identifier="local:meals_glucose.parquet#glucose_iAUC_2h",
-        version_identifier="sha256-bound-local-artifact",
+        stable_source="pending:GMNPS-Supplementary-or-Source-Data-package",
+        source_identifier="identifier_pending_submission_package:glucose_iAUC_2h",
+        version_identifier="sha256-bound-local-artifact-pending-deposition",
         accessed_on=_ACCESSED,
         owner="GMNPS local project",
         cohort="PREDICT 1-like simulation",
         unit_of_observation="synthetic participant-meal record",
         sample_size="unknown",
+        n_value="unknown",
+        n_unit="synthetic participant-meal record",
+        participant_n="unknown",
         data_modality="statistically anchored synthetic response",
         declared_response_endpoint="glucose_iAUC_2h",
-        access_route="not_applicable",
+        access_route="within_paper_or_supplement",
+        access_status="local_pending_submission_package",
         local_path=(
             "data/project_data/predict_multi/L2_phenotype/predict1_real/meals_glucose.parquet"
         ),
@@ -456,19 +560,21 @@ PREDICT_ZOE_SOURCE_REGISTRY = (
     PredictZoeSource(
         resource_id="local_predict1_synthetic_triglyceride",
         source_name="Local statistically anchored triglyceride response",
-        stable_source=(
-            "data/project_data/predict_multi/L2_phenotype/predict1_real/PROVENANCE.md"
-        ),
-        source_identifier="local:meals_tg_cp.parquet#tg_6h_rise",
-        version_identifier="sha256-bound-local-artifact",
+        stable_source="pending:GMNPS-Supplementary-or-Source-Data-package",
+        source_identifier="identifier_pending_submission_package:tg_6h_rise",
+        version_identifier="sha256-bound-local-artifact-pending-deposition",
         accessed_on=_ACCESSED,
         owner="GMNPS local project",
         cohort="PREDICT 1-like simulation",
         unit_of_observation="synthetic participant-meal record",
         sample_size="unknown",
+        n_value="unknown",
+        n_unit="synthetic participant-meal record",
+        participant_n="unknown",
         data_modality="statistically anchored synthetic response",
         declared_response_endpoint="tg_6h_rise",
-        access_route="not_applicable",
+        access_route="within_paper_or_supplement",
+        access_status="local_pending_submission_package",
         local_path=(
             "data/project_data/predict_multi/L2_phenotype/predict1_real/meals_tg_cp.parquet"
         ),
@@ -483,19 +589,21 @@ PREDICT_ZOE_SOURCE_REGISTRY = (
     PredictZoeSource(
         resource_id="local_predict1_synthetic_c_peptide",
         source_name="Local statistically anchored C-peptide response",
-        stable_source=(
-            "data/project_data/predict_multi/L2_phenotype/predict1_real/PROVENANCE.md"
-        ),
-        source_identifier="local:meals_tg_cp.parquet#c_peptide_iAUC_2h",
-        version_identifier="sha256-bound-local-artifact",
+        stable_source="pending:GMNPS-Supplementary-or-Source-Data-package",
+        source_identifier="identifier_pending_submission_package:c_peptide_iAUC_2h",
+        version_identifier="sha256-bound-local-artifact-pending-deposition",
         accessed_on=_ACCESSED,
         owner="GMNPS local project",
         cohort="PREDICT 1-like simulation",
         unit_of_observation="synthetic participant-meal record",
         sample_size="unknown",
+        n_value="unknown",
+        n_unit="synthetic participant-meal record",
+        participant_n="unknown",
         data_modality="statistically anchored synthetic response",
         declared_response_endpoint="c_peptide_iAUC_2h",
-        access_route="not_applicable",
+        access_route="within_paper_or_supplement",
+        access_status="local_pending_submission_package",
         local_path=(
             "data/project_data/predict_multi/L2_phenotype/predict1_real/meals_tg_cp.parquet"
         ),
@@ -528,6 +636,8 @@ def validate_predict_zoe_registry(records: Iterable[PredictZoeSource]) -> None:
             raise ValueError(f"registry record {record.resource_id!r} has missing provenance")
         if record.access_route not in ACCESS_ROUTES:
             raise ValueError(f"registry record {record.resource_id!r} has invalid access route")
+        if record.access_status not in ACCESS_STATUSES:
+            raise ValueError(f"registry record {record.resource_id!r} has invalid access status")
         if record.allowed_analytical_role not in ANALYTICAL_ROLES:
             raise ValueError(
                 f"registry record {record.resource_id!r} has invalid allowed analytical role"
@@ -538,6 +648,28 @@ def validate_predict_zoe_registry(records: Iterable[PredictZoeSource]) -> None:
             )
         if record.sample_size != "unknown" and not record.sample_size.isdigit():
             raise ValueError(f"registry record {record.resource_id!r} has invalid sample size")
+        for field_name in ("n_value", "participant_n"):
+            value = getattr(record, field_name)
+            if value not in {"unknown", "not_applicable"} and not value.isdigit():
+                raise ValueError(
+                    f"registry record {record.resource_id!r} has invalid {field_name}"
+                )
+        if record.source_identifier.startswith("PRJEB") and not (
+            record.n_value == record.sample_size
+            and record.n_unit == "ENA sample/run record"
+            and record.participant_n == "unknown"
+        ):
+            raise ValueError(
+                f"registry record {record.resource_id!r} misstates ENA count units"
+            )
+        if record.real_synthetic_status == "synthetic_local" and not (
+            record.access_route == "within_paper_or_supplement"
+            and record.access_status == "local_pending_submission_package"
+            and "identifier_pending" in record.source_identifier
+        ):
+            raise ValueError(
+                f"registry record {record.resource_id!r} has invalid synthetic access plan"
+            )
         if record.real_synthetic_status in {
             "synthetic_local",
             "aggregate_public",
@@ -568,6 +700,7 @@ def get_predict_zoe_source(resource_id: str) -> PredictZoeSource:
 
 __all__ = [
     "ACCESS_ROUTES",
+    "ACCESS_STATUSES",
     "ANALYTICAL_ROLES",
     "PREDICT_ZOE_SOURCE_REGISTRY",
     "PROVENANCE_FIELDS",

@@ -8,6 +8,7 @@ import pytest
 
 from gmnps.data_sources.predict_zoe_registry import (
     ACCESS_ROUTES,
+    ACCESS_STATUSES,
     ANALYTICAL_ROLES,
     PREDICT_ZOE_SOURCE_REGISTRY,
     PROVENANCE_FIELDS,
@@ -41,6 +42,7 @@ def test_registry_is_complete_unique_and_uses_one_route_and_role_per_resource():
         assert set(PROVENANCE_FIELDS) <= set(payload)
         assert all(str(payload[field]).strip() for field in PROVENANCE_FIELDS)
         assert row.access_route in ACCESS_ROUTES
+        assert row.access_status in ACCESS_STATUSES
         assert row.allowed_analytical_role in ANALYTICAL_ROLES
         assert ";" not in row.access_route
         assert ";" not in row.allowed_analytical_role
@@ -91,6 +93,47 @@ def test_source_manifest_matches_registry_and_requires_explicit_unknowns():
         assert row["access_route"] in ACCESS_ROUTES
         assert row["allowed_analytical_role"] in ANALYTICAL_ROLES
         assert row["sample_size"] == "unknown" or row["sample_size"].isdigit()
+        assert row["n_value"].strip()
+        assert row["n_unit"].strip()
+        assert row["participant_n"].strip()
+        assert row["access_status"].strip()
+
+
+def test_ena_counts_are_explicitly_sample_run_counts_not_participant_counts():
+    ena_rows = [
+        row
+        for row in PREDICT_ZOE_SOURCE_REGISTRY
+        if row.source_identifier.startswith("PRJEB")
+    ]
+    assert ena_rows
+    for row in ena_rows:
+        assert row.n_value == row.sample_size
+        assert row.n_unit == "ENA sample/run record"
+        assert row.participant_n == "unknown"
+
+
+def test_experimenthub_evidence_has_no_unreproducible_snapshot_date():
+    row = get_predict_zoe_source("predict1_experimenthub_profiles")
+    assert "snapshot dated" not in row.evidence_basis
+    assert "2026-07-30" not in row.evidence_basis
+
+
+def test_live_zoe_ranking_and_immutable_supplementary_s5_are_separate_resources():
+    supplement = get_predict_zoe_source("nature_supplementary_table_s5_rankings")
+    live = get_predict_zoe_source("zoe_live_microbiome_rankings_2024")
+
+    assert "media.springernature.com" in supplement.stable_source
+    assert supplement.source_identifier.endswith(":S5")
+    assert supplement.access_route == "within_paper_or_supplement"
+    assert supplement.local_path.endswith("zoe_health_rank_S5.csv")
+    assert SHA256.fullmatch(supplement.sha256)
+
+    assert live.stable_source == "https://zoe.com/our-science/microbiome-ranking"
+    assert live.access_route == "reused_public_source"
+    assert live.local_path == "not_downloaded"
+    assert live.sha256.startswith("not_computed_")
+    assert "supplementary" not in live.version_identifier.lower()
+    assert live.sha256 != supplement.sha256
 
 
 def test_synthetic_aggregate_and_controlled_resources_are_never_direct_validation():
@@ -105,6 +148,22 @@ def test_synthetic_aggregate_and_controlled_resources_are_never_direct_validatio
         assert by_endpoint[endpoint]["real_synthetic_status"] == "synthetic_local"
         assert by_endpoint[endpoint]["allowed_analytical_role"] == "synthetic_stress_test"
         assert "PROVENANCE.md" in by_endpoint[endpoint]["evidence_basis"]
+        assert by_endpoint[endpoint]["access_route"] == "within_paper_or_supplement"
+        assert (
+            by_endpoint[endpoint]["access_status"]
+            == "local_pending_submission_package"
+        )
+
+    local_synthetic = [
+        row
+        for row in PREDICT_ZOE_SOURCE_REGISTRY
+        if row.real_synthetic_status == "synthetic_local"
+    ]
+    assert local_synthetic
+    for row in local_synthetic:
+        assert row.access_route == "within_paper_or_supplement"
+        assert row.access_status == "local_pending_submission_package"
+        assert "pending" in row.source_identifier
 
 
 def test_every_audit_row_has_exactly_one_known_access_route_and_role():
@@ -112,8 +171,10 @@ def test_every_audit_row_has_exactly_one_known_access_route_and_role():
         for row in _read_csv(path):
             assert row["access_route"] in ACCESS_ROUTES
             assert row["allowed_analytical_role"] in ANALYTICAL_ROLES
+            assert row["access_status"] in ACCESS_STATUSES
             assert ";" not in row["access_route"]
             assert ";" not in row["allowed_analytical_role"]
+            assert row["access_status"].strip()
 
 
 def test_no_current_resource_is_marked_eligible_for_main_validation():
@@ -123,6 +184,34 @@ def test_no_current_resource_is_marked_eligible_for_main_validation():
     for row in rows:
         assert row["exclusion_reason"].strip()
         assert row["allowed_analytical_role"] != "direct_validation"
+
+
+def test_unproven_participant_and_meal_linkages_remain_unknown():
+    rows = _read_csv(ELIGIBILITY_AUDIT)
+    by_id = {row["resource_id"]: row for row in rows}
+    unproven_microbiome_linkage = {
+        "predict1_ena_raw_metagenomes",
+        "predict1_experimenthub_profiles",
+        "predict2_ena_raw_metagenomes",
+        "predict3_us21_ena_raw_metagenomes",
+        "predict3_us22a_ena_raw_metagenomes",
+        "predict3_uk22a_ena_raw_metagenomes",
+        "predict_zoe_public_profiles_zenodo",
+        "predict_controlled_clinical_zenodo",
+        "local_predict1_real_subject_metadata",
+        "local_predict1_synthetic_glucose",
+        "local_predict1_synthetic_triglyceride",
+        "local_predict1_synthetic_c_peptide",
+    }
+    for resource_id in unproven_microbiome_linkage:
+        assert by_id[resource_id]["has_linkable_microbiome"] == "unknown"
+
+    for resource_id in (
+        "local_predict1_synthetic_glucose",
+        "local_predict1_synthetic_triglyceride",
+        "local_predict1_synthetic_c_peptide",
+    ):
+        assert by_id[resource_id]["has_meal_or_food_key"] == "unknown"
 
 
 def test_data_availability_audit_records_source_hierarchy_fair_scope_and_access_date():
@@ -135,8 +224,16 @@ def test_data_availability_audit_records_source_hierarchy_fair_scope_and_access_
         "participant-level outcome",
         "3b6034d6212f0676bbc60b6eb0f3713cd5266799cbaf37e035900afe3892e581",
         "10.5281/zenodo.17236383",
+        "local_pending_submission_package",
+        "identifier pending",
+        "before submission",
+        "ENA sample/run record",
+        "participant_n",
     ):
         assert required in text
+
+    assert "nature_supplementary_table_s5_rankings" in text
+    assert "zoe_live_microbiome_rankings_2024" in text
 
 
 def test_registry_rejects_duplicate_ids_missing_provenance_and_invalid_roles():

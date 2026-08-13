@@ -5,8 +5,10 @@ from hashlib import sha256
 import json
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
+from gmnps.scoring.attribute_calibration import fit_beta_normalization
 from gmnps.validation.method_lock_gate import (
     MethodLockArtifactPaths,
     MethodLockError,
@@ -29,13 +31,39 @@ ARTIFACT_KEYS = (
     "food_exposures",
     "effective_attribute_weights",
 )
+IMPLEMENTATION_HASHES = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))[
+    "properties"
+]["implementation_source_sha256"]["const"]
 
 
 def _write_json(path: Path, payload: object) -> None:
     path.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def _normalization_payload(fit_ids: list[str], nutrient_order: list[str]) -> dict[str, object]:
+def _normalization_payload(
+    fit_ids: list[str],
+    nutrient_order: list[str],
+    values: list[list[float]],
+) -> dict[str, object]:
+    state = fit_beta_normalization(
+        pd.DataFrame(values, index=fit_ids, columns=nutrient_order)
+    )
+    return {
+        "nutrient_order": list(state.nutrient_order),
+        "median_values": list(state.median_values),
+        "scale_values": list(state.scale_values),
+        "scale_method_values": list(state.scale_method_values),
+        "fit_n": state.fit_n,
+        "fit_id_sha256": state.fit_id_sha256,
+        "method_version": state.method_version,
+        "temperature": state.temperature,
+        "state_fingerprint": state.state_fingerprint,
+    }
+
+
+def _self_consistent_but_underived_state(
+    fit_ids: list[str], nutrient_order: list[str]
+) -> dict[str, object]:
     payload = {
         "nutrient_order": nutrient_order,
         "median_values": [0.0 for _ in nutrient_order],
@@ -92,7 +120,14 @@ def _fixture(
         },
     )
     normalization_state = tmp_path / "normalization_state.json"
-    _write_json(normalization_state, _normalization_payload(fit_ids, nutrients))
+    _write_json(
+        normalization_state,
+        _normalization_payload(
+            fit_ids,
+            nutrients,
+            [[0.0, 0.0], [1.0, 1.0]],
+        ),
+    )
 
     entry = {
         "bundle_id": "verified-test-bundle-v1",
@@ -148,6 +183,13 @@ def _fixture(
     )
     monkeypatch.setattr(gate_module, "_TRUSTED_METHOD_LOCK_SCHEMA_PATH", schema)
     monkeypatch.setattr(gate_module, "_TRUSTED_RELEASE_REGISTRY_PATH", registry_path)
+    implementation_root = tmp_path / "repository_root"
+    for relative_path in IMPLEMENTATION_HASHES:
+        source = ROOT / relative_path
+        destination = implementation_root / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(source.read_bytes())
+    monkeypatch.setattr(gate_module, "_REPOSITORY_ROOT", implementation_root)
     return paths, entry
 
 
@@ -208,6 +250,85 @@ def test_generator_binds_external_schema_config_registry_gate_and_approved_entry
     }
     assert manifest["validation_embargo"] is True
     validate_method_lock_manifest(manifest, paths)
+
+
+def test_generator_rejects_self_consistent_state_not_fitted_from_development_beta(
+    tmp_path,
+    monkeypatch,
+):
+    paths, _ = _fixture(tmp_path, monkeypatch=monkeypatch)
+    _write_json(
+        paths.normalization_state,
+        _self_consistent_but_underived_state(
+            ["development-2", "development-1"],
+            ["fiber", "potassium"],
+        ),
+    )
+
+    with pytest.raises(MethodLockError, match="normalization.*(median|scale|derived)"):
+        generate_method_lock_manifest(paths, beta_fit_cohort_id="development-v1")
+
+
+def test_normalization_fit_receives_development_beta_only(tmp_path, monkeypatch):
+    paths, _ = _fixture(tmp_path, monkeypatch=monkeypatch)
+    observed_indexes = []
+    real_fit = fit_beta_normalization
+
+    def recording_fit(frame):
+        observed_indexes.append(frame.index.tolist())
+        return real_fit(frame)
+
+    monkeypatch.setattr(gate_module, "fit_beta_normalization", recording_fit)
+    generate_method_lock_manifest(paths, beta_fit_cohort_id="development-v1")
+
+    assert observed_indexes == [["development-2", "development-1"]]
+    assert not any(identifier.startswith("held-out") for identifier in observed_indexes[0])
+
+
+def test_schema_implementation_lock_includes_runner():
+    assert "code/src/scripts/run_attribute_gmnps.py" in IMPLEMENTATION_HASHES
+
+
+@pytest.mark.parametrize("relative_path", tuple(IMPLEMENTATION_HASHES))
+def test_generator_rehashes_every_locked_implementation_file(
+    tmp_path,
+    monkeypatch,
+    relative_path,
+):
+    paths, _ = _fixture(tmp_path, monkeypatch=monkeypatch)
+    implementation_path = gate_module._REPOSITORY_ROOT / relative_path
+    implementation_path.write_bytes(implementation_path.read_bytes() + b"tamper\n")
+
+    with pytest.raises(MethodLockError, match="implementation.*(hash|mismatch)"):
+        generate_method_lock_manifest(paths, beta_fit_cohort_id="development-v1")
+
+
+def test_generator_rejects_missing_locked_implementation_file(tmp_path, monkeypatch):
+    paths, _ = _fixture(tmp_path, monkeypatch=monkeypatch)
+    relative_path = next(iter(IMPLEMENTATION_HASHES))
+    (gate_module._REPOSITORY_ROOT / relative_path).unlink()
+
+    with pytest.raises(MethodLockError, match="implementation.*(missing|unreadable)"):
+        generate_method_lock_manifest(paths, beta_fit_cohort_id="development-v1")
+
+
+@pytest.mark.parametrize("mutation", ["missing_schema_entry", "extra_schema_entry"])
+def test_generator_rejects_missing_or_extra_schema_implementation_entry(
+    tmp_path,
+    monkeypatch,
+    mutation,
+):
+    paths, _ = _fixture(tmp_path, monkeypatch=monkeypatch)
+    schema = json.loads(paths.method_lock_schema.read_text(encoding="utf-8"))
+    locked = schema["properties"]["implementation_source_sha256"]["const"]
+    if mutation == "missing_schema_entry":
+        locked.pop(next(iter(locked)))
+    else:
+        locked["code/src/scripts/unexpected_runner.py"] = "0" * 64
+    _write_json(paths.method_lock_schema, schema)
+
+    with pytest.raises(MethodLockError, match="implementation.*(missing|extra|set)"):
+        generate_method_lock_manifest(paths, beta_fit_cohort_id="development-v1")
 
 
 def test_generator_fails_closed_on_overlap_or_missing_approved_entry(
