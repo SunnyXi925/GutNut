@@ -1,0 +1,40 @@
+code/src/scripts/run_attribute_gmnps.py
+  s_4d75bbbcc79dac::t_d0ca0955c4e7aa 1-446
+code/src/gmnps/scoring/attribute_gmnps.py
+  s_4d75bbbcc79dac::t_d0ca0955c4e7aa 350-351
+  s_4d75bbbcc79dac::t_024174d4cc3f4a 1-49,53-166,168-194,209-239,241-349,352-530,537-576,578-600,602-734,741,746-772,776-851
+  s_4d75bbbcc79dac::t_e1227155e542df 167,195-208,240
+  s_4d75bbbcc79dac::t_2123d6ba06cea4 531-536,773-775
+  s_4d75bbbcc79dac::t_eed64f5dec9d0c 577,601,735-740,742-745
+  s_4d75bbbcc79dac::t_e3716e05d5f299 50-52
+code/src/tests/test_attribute_gmnps.py
+  s_4d75bbbcc79dac::t_a50c8ecdc6dd9b 119-134
+  s_4d75bbbcc79dac::t_e9a35be68f2ab6 1-118,135-297
+code/src/gmnps/scoring/__init__.py
+  s_4d75bbbcc79dac::t_e1227155e542df 58-79
+code/src/tests/test_run_attribute_gmnps.py
+  s_4d75bbbcc79dac::t_2123d6ba06cea4 32
+  s_4d75bbbcc79dac::t_4c7f62f996066d 5,51,100,131
+  s_4d75bbbcc79dac::t_e9a35be68f2ab6 1-4,6-31,33-50,52-99,101-130,132-208
+code/src/configs/attribute_gmnps.yaml
+  s_4d75bbbcc79dac::t_d0ca0955c4e7aa 1-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "ef072299b1923e112780b33d0d23dfc5f369c298",
+  "prompts": {},
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 1850,
+      "total_deletions": 23,
+      "accepted_lines": 1850
+    }
+  }
+}
