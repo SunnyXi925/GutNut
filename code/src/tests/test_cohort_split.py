@@ -20,11 +20,7 @@ def _testing_only_participant_meals() -> pd.DataFrame:
         participant_id = f"testing-p{participant_number:02d}"
         pair_number = (participant_number - 1) // 2
         family_id = f"testing-family-{pair_number:02d}"
-        twin_id = (
-            f"testing-twin-{pair_number:02d}"
-            if participant_number <= 4
-            else None
-        )
+        twin_id = f"testing-twin-{pair_number:02d}"
         cohort_id = f"testing-cohort-{pair_number % 4}"
         for meal_number in range(4):
             rows.append(
