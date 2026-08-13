@@ -1,0 +1,40 @@
+code/src/gmnps/validation/biological_consistency.py
+  s_4d75bbbcc79dac::t_0485a681c83c13 109,410,420-427,430-437
+  s_4d75bbbcc79dac::t_cb82f3c60c45cf 454-478,483-528
+  s_4d75bbbcc79dac::t_d7b67ace8b614e 479-482
+  s_4d75bbbcc79dac::t_f9d28e5cc34411 872,885,896,903,908,916,935-942,954-960,966-967,972
+  s_4d75bbbcc79dac::t_4f141c5da5473c 911,919-934,947-953,961-962
+  s_4d75bbbcc79dac::t_6a9a7801bbc11c 1016-1024
+  s_4d75bbbcc79dac::t_af80aa0926156d 1064-1066,1081,1083,1159-1171,1182,1204-1206,1208-1211
+code/src/tests/test_biological_consistency.py
+  s_4d75bbbcc79dac::t_709e9c8845e799 27-28,31
+  s_4d75bbbcc79dac::t_74205981574194 529-555,557-595,613-620,634-635,660,662-663,684,688,737
+  s_4d75bbbcc79dac::t_337be97434a88b 374-449
+  s_4d75bbbcc79dac::t_61bca65992751e 311-317,319-321,327,334,342-348,355,357-362,367-368
+  s_4d75bbbcc79dac::t_76f75c2449a1b2 637-647,650-652,658,661
+  s_4d75bbbcc79dac::t_b79b6b90c473ed 771-822
+  s_4d75bbbcc79dac::t_9edc0898f8356e 636
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "feb115e301b9eb1543bab04c1ae040b54fd4cad0",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  },
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 1,
+      "accepted_lines": 1
+    }
+  }
+}
