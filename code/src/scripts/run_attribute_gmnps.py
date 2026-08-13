@@ -492,7 +492,7 @@ def run_attribute_gmnps_chunked(
         [result.domain_attribution for result in results], ignore_index=True
     ).sort_values(["individual_id", "food_id", "domain"], kind="mergesort").reset_index(drop=True)
     if "calibration_fingerprint" in attribute:
-        aggregate_calibration_fingerprint = _fingerprint(
+        aggregate_attribute_attribution_fingerprint = _fingerprint(
             {
                 "scope": "aggregate_attribute_attribution",
                 "model_fingerprint": model.fingerprint,
@@ -502,9 +502,18 @@ def run_attribute_gmnps_chunked(
                 ),
             }
         )
-        attribute["calibration_fingerprint"] = aggregate_calibration_fingerprint
+        attribute = attribute.rename(
+            columns={
+                "calibration_fingerprint": (
+                    "aggregate_attribute_attribution_fingerprint"
+                )
+            }
+        )
+        attribute["aggregate_attribute_attribution_fingerprint"] = (
+            aggregate_attribute_attribution_fingerprint
+        )
     if "recomposition_fingerprint" in domain:
-        aggregate_recomposition_fingerprint = _fingerprint(
+        aggregate_domain_attribution_fingerprint = _fingerprint(
             {
                 "scope": "aggregate_domain_attribution",
                 "model_fingerprint": model.fingerprint,
@@ -514,7 +523,16 @@ def run_attribute_gmnps_chunked(
                 ),
             }
         )
-        domain["recomposition_fingerprint"] = aggregate_recomposition_fingerprint
+        domain = domain.rename(
+            columns={
+                "recomposition_fingerprint": (
+                    "aggregate_domain_attribution_fingerprint"
+                )
+            }
+        )
+        domain["aggregate_domain_attribution_fingerprint"] = (
+            aggregate_domain_attribution_fingerprint
+        )
     food_summary = summarize_attribute_gmnps_foods(individual)
     manifest = _aggregate_manifest(
         model,

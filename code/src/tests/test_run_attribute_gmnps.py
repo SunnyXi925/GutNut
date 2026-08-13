@@ -312,6 +312,18 @@ def test_all_tables_and_aggregate_manifest_are_chunk_size_invariant(tmp_path):
         "domain_attribution",
     }
     assert len(fingerprints["final_fingerprint"]) == 64
+    attribute = pd.read_csv(outputs[0] / "attribute_attribution.csv")
+    domain = pd.read_csv(outputs[0] / "domain_attribution.csv")
+    assert "calibration_fingerprint" not in attribute
+    assert "recomposition_fingerprint" not in domain
+    assert "aggregate_attribute_attribution_fingerprint" in attribute
+    assert "aggregate_domain_attribution_fingerprint" in domain
+    assert attribute["aggregate_attribute_attribution_fingerprint"].str.fullmatch(
+        r"[0-9a-f]{64}"
+    ).all()
+    assert domain["aggregate_domain_attribution_fingerprint"].str.fullmatch(
+        r"[0-9a-f]{64}"
+    ).all()
 
 
 def test_inputs_are_parsed_from_one_immutable_byte_snapshot(tmp_path, monkeypatch):
