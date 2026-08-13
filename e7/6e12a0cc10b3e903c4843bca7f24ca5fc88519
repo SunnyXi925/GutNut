@@ -1,0 +1,36 @@
+docs/methods/method_lock_manifest.schema.json
+  s_4d75bbbcc79dac::t_208f5fcf50d314 19,98-99
+  s_4d75bbbcc79dac::t_b336c875ed67e4 100-102
+code/src/tests/test_attribute_method_lock.py
+  s_4d75bbbcc79dac::t_44b258021629e4 398
+  s_4d75bbbcc79dac::t_448805cb81b762 107,151-154,274,367-397
+docs/methods/attribute_level_gmnps_spec.md
+  s_4d75bbbcc79dac::t_83ad332ae8a329 253-259,337-338,340-343
+docs/superpowers/plans/2026-08-13-predict-zoe-data-validation.md
+  s_4d75bbbcc79dac::t_83ad332ae8a329 63,66-68,76,80
+code/src/tests/test_attribute_recomposition.py
+  s_4d75bbbcc79dac::t_448805cb81b762 9,462
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "e76e12a0cc10b3e903c4843bca7f24ca5fc88519",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  },
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 3,
+      "accepted_lines": 3
+    }
+  }
+}
