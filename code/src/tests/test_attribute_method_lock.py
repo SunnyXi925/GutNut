@@ -104,6 +104,7 @@ def test_lock_manifest_schema_requires_complete_frozen_provenance():
         "development_beta_sha256",
         "normalization_state_fingerprint",
         "scoring_beta_sha256",
+        "person_meal_validation_config_sha256",
         "mapping_version",
         "implementation_source_sha256",
         "fixed_parameters",
@@ -147,6 +148,10 @@ def test_lock_manifest_schema_requires_complete_frozen_provenance():
     assert "frozen fit state" in properties["development_beta_sha256"]["description"].lower()
     assert "frozen fit state" in properties["normalization_state_fingerprint"]["description"].lower()
     assert "run instance" in properties["scoring_beta_sha256"]["description"].lower()
+    config_hash = properties["person_meal_validation_config_sha256"]
+    assert config_hash["pattern"] == "^[0-9a-f]{64}$"
+    assert "run instance" in config_hash["description"].lower()
+    assert "person_meal_validation.yaml" in config_hash["description"]
 
 
 def test_schema_has_no_outcome_dependent_acceptance_criteria():
@@ -266,6 +271,7 @@ def test_method_spec_covers_locked_science_and_migration_boundary():
         "LOCKED_BETA_TEMPERATURE",
         "LOCKED_ATTRIBUTE_RESPONSE_TEMPERATURE",
         "independent runtime constant",
+        "person_meal_validation_config_sha256",
     }
     normalized_text = " ".join(text.lower().split())
     assert all(
@@ -358,3 +364,35 @@ def test_phase_2_plan_has_an_acyclic_pre_label_method_lock_dag():
     assert task_2.index("person_meal_validation.yaml") < task_2.index(stages[2])
     assert "create: `code/src/configs/person_meal_validation.yaml`" not in task_3
     assert "consume the frozen `person_meal_validation.yaml`" in task_3
+
+
+def test_phase_2_plan_revalidates_config_hash_and_rejects_tampering_at_both_entries():
+    plan = PHASE_2_PLAN_PATH.read_text(encoding="utf-8")
+    task_2 = _phase_2_task(plan, 2, 3)
+    task_3 = _phase_2_task(plan, 3, 4)
+    stages = (
+        "stage 2b: freeze scoring inputs and analysis config",
+        "stage 2c: generate and validate the real method-lock instance",
+        "stage 2d: unlock outcome loader after gate success",
+    )
+    stage_2b = task_2.split(stages[0], 1)[1].split(stages[1], 1)[0]
+    stage_2c = task_2.split(stages[1], 1)[1].split(stages[2], 1)[0]
+    stage_2d = task_2.split(stages[2], 1)[1]
+    field = "person_meal_validation_config_sha256"
+
+    assert field in stage_2b and "canonical bytes" in stage_2b
+    assert field in stage_2c and "write" in stage_2c and "manifest" in stage_2c
+    assert field in stage_2d and "recompute" in stage_2d
+    assert "compare" in stage_2d and "verified manifest" in stage_2d
+    assert field in task_3 and "recompute" in task_3
+    assert "compare" in task_3 and "verified manifest" in task_3
+
+    tamper_contract = {
+        "missing config",
+        "config file modification",
+        "hash mismatch",
+        "fail closed",
+        "must not load outcomes",
+    }
+    assert all(phrase in task_2 for phrase in tamper_contract)
+    assert all(phrase in task_3 for phrase in tamper_contract)

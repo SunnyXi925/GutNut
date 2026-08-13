@@ -250,10 +250,13 @@ never appended to or used to refit that state.
 The method-lock manifest records the beta cohort ID, fit count, calibration fit
 IDs hash, `development_beta_sha256`, and `normalization_state_fingerprint` as
 the frozen fit state. Each scoring run separately records
-`scoring_beta_sha256` as run-instance provenance. Its `validation_embargo` flag
-must be `true`: validation data, labels, responses, and derived summaries cannot
-be used to choose mappings, parameters, sensitivity modes, or revisions to this
-method lock. Validation is reserved for a later phase after this lock is signed.
+`scoring_beta_sha256` and `person_meal_validation_config_sha256` as run-instance
+provenance. The latter is computed from the canonical bytes of the frozen
+`person_meal_validation.yaml`; the schema defines its SHA-256 shape but does not
+invent a value. Its `validation_embargo` flag must be `true`: validation data,
+labels, responses, and derived summaries cannot be used to choose mappings,
+parameters, sensitivity modes, or revisions to this method lock. Validation is
+reserved for a later phase after this lock is signed.
 
 ## FNDDS release and source boundary
 
@@ -331,6 +334,10 @@ freezes held-out scoring beta, the food bundle, and endpoint/analysis config.
 It then generates and validates `method_lock_manifest.json` from those actual
 inputs and the frozen normalization state. Before any validation endpoint or
 label is read, the validator must recompute every applicable hash and
-fingerprint, validate the instance against
+fingerprint, including `person_meal_validation_config_sha256` from the config
+file's canonical bytes, validate the instance against
 `method_lock_manifest.schema.json`, and confirm the embargo. Any missing field
-or mismatch must fail closed and stop the validation run.
+or mismatch must fail closed and stop the validation run without loading
+outcomes. The Task 3 entry point independently recomputes the config hash and
+compares it with the already verified manifest before benchmark code can load
+outcomes, so post-gate config modification is rejected at both entries.

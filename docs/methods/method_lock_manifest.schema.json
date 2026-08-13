@@ -16,6 +16,7 @@
     "development_beta_sha256",
     "normalization_state_fingerprint",
     "scoring_beta_sha256",
+    "person_meal_validation_config_sha256",
     "mapping_version",
     "implementation_source_sha256",
     "fixed_parameters",
@@ -91,6 +92,11 @@
     },
     "scoring_beta_sha256": {
       "description": "SHA-256 of the canonical held-out scoring beta matrix supplied by this run instance.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "person_meal_validation_config_sha256": {
+      "description": "SHA-256 of the canonical bytes of frozen person_meal_validation.yaml supplied by this run instance.",
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
     },

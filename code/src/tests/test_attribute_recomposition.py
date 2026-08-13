@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 from gmnps.scoring.attribute_calibration import (
+    LOCKED_ATTRIBUTE_RESPONSE_TEMPERATURE,
     AttributeCalibrationResult,
     attribute_response,
     calibrate_attribute_points,
@@ -458,7 +459,7 @@ def test_nonpersonalized_attributes_in_selected_domains_must_stay_at_baseline():
     diagnostics = calibration.diagnostics.copy()
     key = ("person_1", "food_1", "zinc")
     response = 1.0
-    raw_delta = 2.0 * np.tanh(response / 2.0)
+    raw_delta = 2.0 * np.tanh(response / LOCKED_ATTRIBUTE_RESPONSE_TEMPERATURE)
     points.loc[("person_1", "food_1"), "zinc"] += raw_delta
     deltas.loc[("person_1", "food_1"), "zinc"] = raw_delta
     diagnostics.loc[key, "attribute_response"] = response
