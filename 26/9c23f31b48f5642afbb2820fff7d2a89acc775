@@ -1,0 +1,54 @@
+manuscript/nature_food_submission/sections.tex
+  s_4d75bbbcc79dac::t_533db081876104 65
+  s_4d75bbbcc79dac::t_786e11e52eb9f3 27,29,180,184,204
+  s_4d75bbbcc79dac::t_3460a123d2d462 81-83,110
+  s_4d75bbbcc79dac::t_18ac0395e5329f 3-25,28,30-33,37-41,43-46,52-64,66-80,87-108,111-115,117-128,132-133,135-156,158,160-161,163,166-170,172-173,175-178,181-182,185-203,205-213,217-222,226-233
+  s_4d75bbbcc79dac::t_ffc2d8e34b63a2 26,134
+  s_44ab89c3c3b5d7::t_c51513b08257ec 157,159,162,164,171,174,179,183
+  s_4d75bbbcc79dac::t_8b9274ac89b968 42,47-51,165
+  s_4d75bbbcc79dac::t_141e5524e691db 116
+  s_4d75bbbcc79dac::t_12318564bcd72a 109
+manuscript/nature_food_submission/supplementary_methods.tex
+  s_4d75bbbcc79dac::t_f8640a7931b10d 1-4,6-9,11-145,147,152-153,156-175,180-187,191-197,199-202,205-207,211-215,217-218,220-224,226-247
+  s_4d75bbbcc79dac::t_3460a123d2d462 177-179
+  s_4d75bbbcc79dac::t_8b9274ac89b968 151,188-190,203-204
+  s_4d75bbbcc79dac::t_6b7a35ecbceade 10,146,154-155,198,208-210,216,219,225
+  s_4d75bbbcc79dac::t_ffc2d8e34b63a2 5,148-150,176
+manuscript/nature_food_submission/sn-article.tex
+  s_4d75bbbcc79dac::t_f8526f6ba4da6b 21
+  s_4d75bbbcc79dac::t_cd11de9fcb8bf1 15,17-19,23,31-33
+manuscript/nature_food_submission/supplementary_results.tex
+  s_4d75bbbcc79dac::t_3460a123d2d462 73-75
+  s_4d75bbbcc79dac::t_d16738e19c6628 1-16,19-34,36-37,41-72,76-92
+  s_4d75bbbcc79dac::t_6cb30793e62530 17-18,38-40
+  s_4d75bbbcc79dac::t_ffc2d8e34b63a2 35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "269c23f31b48f5642afbb2820fff7d2a89acc775",
+  "prompts": {},
+  "sessions": {
+    "s_44ab89c3c3b5d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fca67-f393-7372-9a61-f5faa1d9137d",
+        "model": "gpt-5.5"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 514,
+      "accepted_lines": 514
+    },
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 578,
+      "total_deletions": 800,
+      "accepted_lines": 496
+    }
+  }
+}
