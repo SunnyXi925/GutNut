@@ -53,7 +53,10 @@ _CITATION = re.compile(
 )
 _PROJECT_LANGUAGE = re.compile(
     r"\b(?:GMNPS|we|our|this\s+study|present\s+study|current\s+analysis|"
-    r"this\s+(?:work|paper|article)|here\s+we|"
+    r"this\s+(?:work|paper|article|manuscript)|here\s+we|"
+    r"the\s+proposed\s+(?:framework|method|approach|system|model|algorithm)|"
+    r"the\s+(?:framework|method|approach|system|model|algorithm)\s+"
+    r"(?:introduced|presented|reported|developed|proposed)\s+here|"
     r"(?:introduced|presented|reported|developed|proposed)\s+here)\b",
     flags=re.IGNORECASE,
 )

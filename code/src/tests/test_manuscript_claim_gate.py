@@ -458,22 +458,35 @@ def test_published_context_route_can_bypass_one_phase2_violation(tmp_path):
 
 def test_published_route_sanitizes_only_the_authorized_physical_line(tmp_path):
     candidate, matrix, audit = _route_fixture(tmp_path)
-    project_claim = "A separate framework supports clinical dietary response prediction."
+    authorized_claim = (
+        "Microbiome-informed framework supports individualized dietary response "
+        "prediction \\cite{Smith2025}."
+    )
+    project_claim = "A separate framework supports individualized dietary response prediction."
+    authorized_path = tmp_path / "authorized-only.tex"
+    authorized_path.write_text(authorized_claim + "\n", encoding="utf-8")
+    project_path = tmp_path / "project-only.tex"
+    project_path.write_text(project_claim + "\n", encoding="utf-8")
+    authorized_violations = check_claim_inputs([authorized_path])
+    project_violations = check_claim_inputs([project_path])
+    assert len(authorized_violations) == 1
+    assert len(project_violations) == 1
+    assert authorized_violations[0].pattern
+    assert authorized_violations[0].pattern == project_violations[0].pattern
+
     candidate.write_text(
         project_claim
         + "\n% CLAIM_ID: INT-01\n"
-        + "Microbiome-informed framework supports individualized dietary response "
-        "prediction \\cite{Smith2025}.\n",
+        + authorized_claim
+        + "\n",
         encoding="utf-8",
     )
-    expected_path = tmp_path / "project-only.tex"
-    expected_path.write_text(project_claim + "\n", encoding="utf-8")
-    expected_patterns = [item.pattern for item in check_claim_inputs([expected_path])]
     observed = check_manuscript_claim_inputs(
         [candidate], matrix_path=matrix, reference_audit_path=audit
     )
-    assert [item.pattern for item in observed] == expected_patterns
-    assert all(item.path == candidate for item in observed)
+    assert len(observed) == 1
+    assert observed[0].path == candidate
+    assert observed[0].pattern == project_violations[0].pattern
 
 
 def test_last_introduction_marker_does_not_consume_following_results(tmp_path):
@@ -552,6 +565,36 @@ def test_published_context_route_rejects_inexact_claims(tmp_path, candidate_text
         "This paper describes a framework supporting individualized dietary response prediction.",
         "This article describes a framework supporting individualized dietary response prediction.",
         "The framework proposed here supports individualized dietary response prediction.",
+        "This manuscript describes a framework supporting individualized dietary response prediction.",
+        *[
+            f"The proposed {noun} supports individualized dietary response prediction."
+            for noun in (
+                "framework",
+                "method",
+                "approach",
+                "system",
+                "model",
+                "algorithm",
+            )
+        ],
+        *[
+            f"The {noun} {action} here supports individualized dietary response prediction."
+            for noun in (
+                "framework",
+                "method",
+                "approach",
+                "system",
+                "model",
+                "algorithm",
+            )
+            for action in (
+                "proposed",
+                "developed",
+                "introduced",
+                "presented",
+                "reported",
+            )
+        ],
     ],
 )
 def test_published_context_route_rejects_project_deixis(tmp_path, deictic_wording):
