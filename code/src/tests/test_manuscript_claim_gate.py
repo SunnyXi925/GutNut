@@ -14,6 +14,10 @@ from gmnps.validation.manuscript_claim_gate import check_manuscript_claim_inputs
 ROOT = Path(__file__).resolve().parents[3]
 MATRIX = ROOT / "manuscript/nature_food_submission/claim_evidence_matrix.csv"
 OUTLINE = ROOT / "manuscript/nature_food_submission/narrative_outline.md"
+REFERENCE_AUDIT = ROOT / "manuscript/nature_food_submission/reference_audit.csv"
+REFERENCES = ROOT / "manuscript/nature_food_submission/references.bib"
+SUBMISSION_DIR = ROOT / "manuscript/nature_food_submission"
+ABSTRACT_ROOT = SUBMISSION_DIR / "sn-article.tex"
 EXPERT_ITEM_AUDIT = (
     ROOT / "manuscript/nature_food_submission/expert_review_item_audit.csv"
 )
@@ -47,6 +51,7 @@ REQUIRED_COLUMNS = {
 
 LEGAL_COMBINATIONS = {
     ("published_context", "literature_context", "conditional"),
+    ("published_context", "literature_context", "supported"),
     ("locked_method_definition", "method_definition_or_invariant", "supported"),
     ("computational_feasibility", "audited_data_unavailability", "supported"),
     (
@@ -260,7 +265,7 @@ def test_assertion_key_rules_reject_negative_fixtures(broken_rule):
         _assert_assertion_key_rules(rows)
 
 
-def test_claim_scopes_and_literature_citation_state_are_explicit():
+def test_claim_scopes_and_task3_literature_routes_are_explicit():
     rows = _rows()
     assert {row["claim_scope"] for row in rows} <= {
         "published_field_context",
@@ -270,8 +275,154 @@ def test_claim_scopes_and_literature_citation_state_are_explicit():
     literature = [row for row in rows if row["evidence_tier"] == "published_context"]
     assert literature
     assert all(row["claim_scope"] == "published_field_context" for row in literature)
-    assert all(row["status"] == "conditional" for row in literature)
-    assert all(row["citation_keys"] == "PENDING_TASK3" for row in literature)
+    assert all(row["status"] == "supported" for row in literature)
+    assert all(row["citation_keys"] != "PENDING_TASK3" for row in literature)
+    assert {
+        row["claim_id"]: row["citation_keys"] for row in literature
+    } == {
+        "ABS-01": "labonte2018nutrientprofiles",
+        "ABS-02": "zeevi2015personalized",
+        "INT-01": "labonte2018nutrientprofiles",
+        "INT-02": "scarborough2007developing",
+        "INT-03": "zeevi2015personalized",
+        "INT-06": "zeevi2015personalized",
+    }
+
+    project_rows = {row["claim_id"]: row for row in rows if row["claim_id"] in {"INT-04", "INT-05"}}
+    assert set(project_rows) == {"INT-04", "INT-05"}
+    for row in project_rows.values():
+        assert row["claim_scope"] == "gmnps_project"
+        assert row["citation_keys"] == "not_applicable"
+        assert row["evidence_tier"] == "locked_method_definition"
+        assert row["evidence_role"] == "method_definition_or_invariant"
+        assert row["evidence_family"] == "locked_attribute_level_method"
+        assert row["status"] == "supported"
+
+
+def test_task3_reference_audit_has_exact_columns_and_rows():
+    with REFERENCE_AUDIT.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        assert reader.fieldnames == [
+            "claim_id",
+            "citation_key",
+            "support_role",
+            "verification_status",
+            "stable_identifier",
+            "retraction_status",
+        ]
+        rows = list(reader)
+
+    assert rows == [
+        {
+            "claim_id": "INT-01",
+            "citation_key": "labonte2018nutrientprofiles",
+            "support_role": "direct_claim_support",
+            "verification_status": "verified",
+            "stable_identifier": "doi:10.1093/advances/nmy045",
+            "retraction_status": "clear",
+        },
+        {
+            "claim_id": "INT-02",
+            "citation_key": "scarborough2007developing",
+            "support_role": "direct_claim_support",
+            "verification_status": "verified",
+            "stable_identifier": "doi:10.1017/S1368980007223870",
+            "retraction_status": "clear",
+        },
+        {
+            "claim_id": "INT-03",
+            "citation_key": "zeevi2015personalized",
+            "support_role": "direct_claim_support",
+            "verification_status": "verified",
+            "stable_identifier": "doi:10.1016/j.cell.2015.11.001",
+            "retraction_status": "clear",
+        },
+        {
+            "claim_id": "INT-06",
+            "citation_key": "zeevi2015personalized",
+            "support_role": "direct_claim_support",
+            "verification_status": "verified",
+            "stable_identifier": "doi:10.1016/j.cell.2015.11.001",
+            "retraction_status": "clear",
+        },
+    ]
+
+
+def test_task3_abstract_has_six_uncited_sentences_and_locked_context():
+    text = ABSTRACT_ROOT.read_text(encoding="utf-8")
+    match = re.search(r"\\abstract\{([^{}]+)\}", text)
+    assert match is not None
+    abstract = match.group(1)
+    assert len(re.findall(r"[^.!?]+[.!?]", abstract)) == 6
+    assert "\\cite" not in abstract
+    assert abstract.startswith(
+        "Nutrient-profile models rate the nutritional quality of individual foods "
+        "for defined public-health applications. Postprandial glycaemic responses "
+        "to the same foods can differ substantially between individuals."
+    )
+
+
+def test_task3_main_manuscript_routes_pass_exact_claim_gate():
+    main_tex = [ABSTRACT_ROOT, SUBMISSION_DIR / "sections.tex"]
+    assert check_manuscript_claim_inputs(main_tex) == ()
+
+
+def test_full_visible_tex_gate_retains_preexisting_supplementary_denials():
+    visible_tex = sorted(SUBMISSION_DIR.glob("*.tex"))
+    observed = check_manuscript_claim_inputs(visible_tex)
+    assert [(item.path.name, item.pattern) for item in observed] == [
+        ("supplementary_methods.tex", r"\bGMNPS\b"),
+        (
+            "supplementary_methods.tex",
+            r"\b(?:model|framework|approach|method|system|platform|algorithm|implementation)\b",
+        ),
+        (
+            "supplementary_methods.tex",
+            r"\b(?:scores?|findings|results|analysis)\b",
+        ),
+    ]
+
+
+def test_task3_bibliography_records_corrections_and_removes_misrouted_keys():
+    text = REFERENCES.read_text(encoding="utf-8")
+    for key in (
+        "labonte2018nutrientprofiles",
+        "scarborough2007developing",
+        "asnicar2026gut",
+        "gkouskou2020digitaltwins",
+    ):
+        assert f"@article{{{key}," in text
+    assert "vanCalster2019calibration" not in text
+    assert "mozaffarian2021foodcompass" not in text
+    assert "adams2020digitaltwins" not in text
+    assert "asnicar2025gut" not in text
+    assert "10.1038/s41591-020-1130-y" in text
+    assert "10.1136/bmj.q902" in text
+    assert "version of record in Nature 650 (2026)" in text
+
+
+def test_task3_visible_citations_resolve_and_do_not_misroute_personalization():
+    bibliography = REFERENCES.read_text(encoding="utf-8")
+    defined_keys = set(re.findall(r"(?m)^@\\w+\\{\\s*([^,\\s]+)", bibliography))
+    cited_keys: set[str] = set()
+    for path in sorted(SUBMISSION_DIR.glob("*.tex")):
+        for group in re.findall(
+            r"\\\\cite[a-zA-Z*]*\\{([^}]+)\\}", path.read_text(encoding="utf-8")
+        ):
+            cited_keys.update(key.strip() for key in group.split(","))
+
+    assert cited_keys <= defined_keys
+    visible_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(SUBMISSION_DIR.glob("*.tex"))
+    )
+    assert "vanCalster2019calibration" not in visible_text
+    assert "mozaffarian2021foodcompass" not in visible_text
+
+
+def test_task3_has_no_pending_reference_placeholders():
+    for path in (MATRIX, OUTLINE, ABSTRACT_ROOT, SUBMISSION_DIR / "sections.tex"):
+        assert "PENDING_TASK3" not in path.read_text(encoding="utf-8"), path
 
 
 def test_int08_is_one_current_evidence_tier_assertion():

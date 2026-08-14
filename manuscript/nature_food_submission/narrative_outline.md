@@ -36,14 +36,18 @@ not imply biological superiority of the expert-revised mask.
 ### ABS-S1: field context
 
 Claim ID: `ABS-01`. State the population-level role of nutrient profiling
-without attaching a project-derived effect estimate. The literature citation
-remains `PENDING_TASK3`.
+without attaching a project-derived effect estimate. Use the exact sentence
+"Nutrient-profile models rate the nutritional quality of individual foods for
+defined public-health applications." The matrix records Labont\'e et al. 2018
+as direct support; the abstract itself contains no citation.
 
 ### ABS-S2: design gap
 
-Claim ID: `ABS-02`. Define the need for an individual calibration layer around
-a shared prior. Do not claim that this project observed real person-food
-heterogeneity. The literature citation remains `PENDING_TASK3`.
+Claim ID: `ABS-02`. State the directly established gap: "Postprandial
+glycaemic responses to the same foods can differ substantially between
+individuals." The matrix records Zeevi et al. 2015 as direct support; the
+abstract itself contains no citation and does not attribute heterogeneity to
+GMNPS.
 
 ### ABS-S3: approach
 
@@ -72,25 +76,28 @@ not established. Omit guidance, clinical, causal, and real-response language.
 
 ### INT-P1: public-health role and scope
 
-Claim IDs: `INT-01`, `INT-02`. Open with nutrient profiling as a
-population-level food-quality tool, then motivate stable and auditable
-assessment. Both field-context citations remain `PENDING_TASK3` and cannot use
-the manuscript literature exception until Task 3 verifies them.
+Claim IDs: `INT-01`, `INT-02`. Open with food-level nutritional-quality
+assessment for defined public-health applications, supported directly by
+Labont\'e et al. 2018. Then describe systematic, explicit and transparent rules
+for purpose-specific food comparison, supported directly by Scarborough et al.
+2007. Do not claim empirical stability across settings.
 
 ### INT-P2: unresolved calibration problem
 
-Claim IDs: `INT-03`, `INT-04`. Contrast a shared population prior with
-individual calibration, and frame calibration around rather than as replacement
-of the shared nutrient-profile reference. Both citations remain
-`PENDING_TASK3`; no observed person-food heterogeneity or preservation result is
-available.
+Claim IDs: `INT-03`, `INT-04`. State inter-individual heterogeneity in
+postprandial glycaemic responses with direct support from Zeevi et al. 2015.
+Then define the GMNPS design choice: retain a shared food-level reference and
+represent personal information as a separate bounded calibration. The latter
+claim is a project method definition with no literature citation and no
+observed preservation claim.
 
 ### INT-P3: method concept and microbiome test case
 
-Claim IDs: `INT-05`, `INT-06`. Introduce bounded native-attribute calibration
-as a literature-framed design concept and the gut microbiome as a candidate
-feature source. These citations remain `PENDING_TASK3`. Do not present the
-microbiome as a causal mechanism or complete basis for dietary decisions.
+Claim IDs: `INT-05`, `INT-06`. Define bounded native-attribute changes before
+domain recomposition as a GMNPS method statement with no literature citation.
+Use Zeevi et al. 2015 only to support gut microbiome features as candidate
+inputs to personalized dietary-response models. Do not present the microbiome
+as a causal mechanism or complete basis for dietary decisions.
 
 ### INT-P4: study objective and evidence ladder
 

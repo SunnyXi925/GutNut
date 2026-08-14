@@ -1,29 +1,27 @@
 \section*{Introduction}
 
 % CLAIM_ID: INT-01
-Nutrient profiling provides population-level food-quality assessments \cite{mozaffarian2021foodcompass,barrett2024foodcompass2}.
+Nutrient-profile models rate the nutritional quality of individual foods for defined public-health applications \cite{labonte2018nutrientprofiles}.
 % CLAIM_ID: INT-02
-Stable and auditable nutrient-profile assessments facilitate comparison across settings \cite{mozaffarian2021foodcompass,barrett2024foodcompass2}.
-These properties make a shared reference useful for research, labelling and
-policy, but a static assessment does not by itself encode variation between
-people.
+Systematic nutrient-profile models use explicit, transparent rules to compare foods for defined purposes \cite{scarborough2007developing}.
+Together, these properties define the shared food-level reference used here.
 
 % CLAIM_ID: INT-03
-Individual adaptation can be framed as calibration around a shared population prior \cite{vanCalster2019calibration,zeevi2015personalized,berry2020postprandial}.
+Postprandial glycaemic responses to the same foods can differ substantially between individuals \cite{zeevi2015personalized}.
 % CLAIM_ID: INT-04
-Personalized calibration can be designed around rather than as a replacement for a shared nutrient-profile reference \cite{vanCalster2019calibration}.
+A shared food-level reference is retained, and personal information is represented as a separate bounded calibration.
 This distinction separates a common food-quality reference from the additional
 information needed to study individual variation and makes the permitted
 movement explicit.
 
 % CLAIM_ID: INT-05
-Personalized calibration can operate through bounded changes to native attributes before domain recomposition \cite{mozaffarian2021foodcompass,barrett2024foodcompass2}.
+Bounded changes are applied to native attributes before domain recomposition.
 % CLAIM_ID: INT-06
-Gut microbiome features have been studied as candidate inputs for personalized dietary-response models \cite{zeevi2015personalized,berry2020postprandial,asnicar2021microbiome}.
+Gut microbiome features have been studied as candidate inputs for personalized dietary-response models \cite{zeevi2015personalized}.
 The microbiome is used here as a feature source rather than a causal mechanism
 or a sufficient basis for dietary decisions.
 
-Food Compass 2.0 supplied the broad population prior for this work.
+Food Compass 2.0, the broad nutrient profiling baseline, was used here.
 % CLAIM_ID: INT-07
 The GMNPS method uses bounded attribute-level calibration with locked inputs.
 % CLAIM_ID: INT-08
@@ -114,26 +112,26 @@ The present evidence package is not ready for an empirical Article. Eligible
 observed participant-by-meal outcomes, a trusted production food run and
 registry-bound supporting analyses are absent, so the main quantitative
 evidence needed for response validity, population behaviour and generalization
-cannot be assembled. GMNPS does not establish external validity. No analysis
-evaluated clinical utility or dietary recommendations.
+cannot be assembled. GMNPS does not establish external validity. Clinical
+utility was not evaluated. Dietary recommendations were not evaluated.
 
 A future empirical programme should preserve the frozen method while adding a
 trusted production food bundle, eligible observed outcomes and held-out analyses
 whose splits, inference units, intervals, multiplicity control, leakage checks
 and provenance are fixed before outcome inspection. Multimodal inputs and
 longitudinal sampling could then test whether calibration remains stable as host,
-dietary and microbiome states change \cite{david2014diet,asnicar2025gut}.
+dietary and microbiome states change \cite{david2014diet,asnicar2026gut}.
 Clinical deployment would additionally require prospective safety assessment,
 decision-curve analysis and reporting appropriate to high-risk prediction tools
 \cite{collins2015tripod,wolff2019probast,collins2024tripodAi}. Digital gut twins
 remain a future experimental construct for counterfactual testing, not a label
-for the completed synthetic positive-control \cite{adams2020digitaltwins}.
+for the completed synthetic positive-control \cite{gkouskou2020digitaltwins}.
 
 \section*{Methods}
 
 \subsection*{Study design and evidence boundary}
 
-This work specified a computational calibration procedure and audited the evidence available to evaluate it. Food Compass 2.0 supplied the shared population prior \cite{barrett2024foodcompass2}. The locked
+This work specified a computational calibration procedure and audited the evidence available to evaluate it. Food Compass 2.0 supplied the shared food-level baseline \cite{barrett2024foodcompass2}. The locked
 method version was fixed before validation access and separated development-only
 normalization from later scoring inputs. No eligible observed participant-by-
 meal outcome table or authorized production food bundle entered the present
