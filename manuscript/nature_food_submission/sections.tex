@@ -1,347 +1,233 @@
 \section*{Introduction}
 
-Nutrient profiling systems translate food composition into common food-quality
-scales for dietary guidance, labelling and policy comparison
-\cite{mozaffarian2021foodcompass,barrett2024foodcompass2}. Their value comes
-from a shared premise: the same food should have the same public-health meaning
-when it is compared across products, food groups and populations. That premise
-has become harder to reconcile with precision nutrition. Deep phenotyping and
-challenge-meal studies show that glycaemic, lipaemic and other metabolic
-responses vary substantially between people who consume the same foods
-\cite{zeevi2015personalized,berry2020postprandial,bermingham2024personalized}.
-A nutrient profile designed for precision use therefore has to adapt to the
-person without losing the population-level ranking that makes the score
-interpretable.
+% CLAIM_ID: INT-01
+Nutrient profiling provides population-level food-quality assessments \cite{mozaffarian2021foodcompass,barrett2024foodcompass2}.
+% CLAIM_ID: INT-02
+Stable and auditable nutrient-profile assessments facilitate comparison across settings \cite{mozaffarian2021foodcompass,barrett2024foodcompass2}.
+These properties make a shared reference useful for research, labelling and
+policy, but a static assessment does not by itself encode variation between
+people.
 
-Current strategies tend to solve only one side of this problem. Static nutrient
-profiles preserve a stable food ranking, but assign every person the same score.
-Fully individualized recommendation models can represent response
-heterogeneity, but their population food-quality prior may become implicit,
-weakly constrained or difficult to audit. This distinction matters because a
-system that freely re-ranks foods may cease to function as nutrient profiling.
-The unresolved design challenge is to let personalization change the score
-without letting it replace the food-quality prior.
+% CLAIM_ID: INT-03
+Individual adaptation can be framed as calibration around a shared population prior \cite{vanCalster2019calibration,zeevi2015personalized,berry2020postprandial}.
+% CLAIM_ID: INT-04
+Personalized calibration can be designed around rather than as a replacement for a shared nutrient-profile reference \cite{vanCalster2019calibration}.
+This distinction separates a common food-quality reference from the additional
+information needed to study individual variation and makes the permitted
+movement explicit.
 
-We define this design as personalized calibration. A food retains an explicit
-population nutrient-profile score, and an individual receives a bounded
-person-food deviation around that anchor. The deviation is centred at the food
-level, capped before scoring and returned to the same 1 to 100 scale. This
-architecture makes the validation problem visible. At the population mean, the
-calibrated score should preserve nutritional consensus. At the individual
-level, it should expose structured heterogeneity that a static profile cannot
-express.
+% CLAIM_ID: INT-05
+Personalized calibration can operate through bounded changes to native attributes before domain recomposition \cite{mozaffarian2021foodcompass,barrett2024foodcompass2}.
+% CLAIM_ID: INT-06
+Gut microbiome features have been studied as candidate inputs for personalized dietary-response models \cite{zeevi2015personalized,berry2020postprandial,asnicar2021microbiome}.
+The microbiome is used here as a feature source rather than a causal mechanism
+or a sufficient basis for dietary decisions.
 
-The gut microbiome provides a biologically grounded test case for personalized
-calibration, rather than a complete basis for clinical dietary decisions. Diet
-rapidly affects microbiome composition \cite{david2014diet}, habitual diet is
-associated with microbial community structure
-\cite{wu2011enterotypes,zhernakova2016populationMetagenomics,
-falony2016populationVariation,rothschild2018environment}, and
-microbiota-targeted dietary interventions can modify immune and metabolic
-readouts \cite{wastyk2021microbiotaDiets}. Microbial metabolism also links
-dietary substrates with short-chain fatty acids, bile acids and trimethylamine
-N-oxide-related pathways \cite{koh2016scfa,makki2018fiber,
-wang2011phosphatidylcholine,koeth2013carnitine,wahlstrom2016bileacids}.
-Population-scale PREDICT and ZOE studies further connect microbiome features
-with habitual diet, cardiometabolic traits and postprandial responses
-\cite{asnicar2021microbiome,asnicar2025gut,fackelmann2025diet,
-segev2026dietmicrobiome}. Together, these data support the microbiome as a
-plausible calibration layer, while leaving clinical efficacy to future
-validation.
-
-Here we introduce GMNPS as a microbiome-informed example of personalized
-calibration for nutrient profiling. We use Food Compass 2.0 only as the
-selected baseline prior because it provides broad current food-attribute
-coverage \cite{barrett2024foodcompass2}. The study asks whether a bounded
-calibration layer can preserve population nutrition consensus, reveal
-model-attributed person-food heterogeneity, pass expert boundary review and
-behave as expected in external plausibility and known-ground-truth simulation
-analyses. The central claim is bounded: personalized calibration can make
-nutrient profiling more suitable for precision nutrition, and a gut microbiome
-layer offers a feasible demonstration, but prospective or deeply phenotyped
-retrospective studies are still required before clinical use.
+Food Compass 2.0 supplied the broad population prior for this work.
+% CLAIM_ID: INT-07
+The GMNPS method uses bounded attribute-level calibration with locked inputs.
+% CLAIM_ID: INT-08
+The current evidence tier is computational feasibility. The prespecified
+evidence chain separates method establishment, evidence authorization, data
+availability, a correctly specified synthetic positive-control and the
+boundary on empirical interpretation.
 
 \section*{Results}
 
-\subsection*{Bounded calibration anchored personalized scores to a population prior}
+\subsection*{Bounded native-attribute calibration established the scoring object}
 
-GMNPS converted personalization into a bounded calibration step around an
-explicit population food-quality prior (Fig.~\ref{fig:framework}). For each
-individual-food pair, microbiome-informed nutrient-response features generated
-a raw deviation. This deviation was robustly standardized, mapped through a
-bounded transform and added to the retained prior. The primary deviation cap
-was 12 points on the 1 to 100 scale, so the final score remained a calibrated
-nutrient profile rather than an unconstrained recommendation score.
+The GMNPS method computes bounded attribute-level scores from locked inputs.
+For each person, normalized nutrient calibration inputs are combined with
+food-specific exposures and reviewed nutrient-to-attribute allocation weights.
+The resulting response changes native attribute points before the selected Food Compass domains are dynamically recomposed. Calibration therefore occurs before domain recomposition rather than after completion of the 1-to-100 value.
 
-The calibrated deviation was reported through two expert-revised channels that
-separated plant-matrix and lipid-related food attributes. The plant-matrix
-channel captured fibre, selected carotenoids, vitamin C, folate, magnesium,
-potassium, phylloquinone and vitamin E. The lipid-related channel captured
-fat, saturated fat, cholesterol, retinol, selected saturated fatty acids,
-choline and vitamin B12. The channel labels were used to attribute modelled
-variance; they were not treated as causal mechanism readouts from intervention
-experiments.
+The primary attribute movement is capped at 20\% of each attribute's published
+point range. Recomposition retains food-specific baseline contributions outside
+the selected domains and then limits the final deviation from the Food Compass
+2.0 anchor to \(\pm 12\) points. Population and per-food centring are absent.
+At exactly zero normalized response, every calibrated attribute and the final
+value equal their corresponding baselines to the locked numerical tolerance.
+This identity and the two caps are designed computational invariants rather than
+observations of population preservation.
 
-\begin{figure}[t]
-\centering
-\includegraphics[width=\textwidth]{figure_1_framework.pdf}
-\caption{\textbf{Personalized calibration as an anchored nutrient-profiling
-architecture.} a, Conceptual schematic showing microbiome-informed deviations
-bounded around a retained population food-quality prior. b, Raw individual
-responses were transformed into capped score deviations. c, Expert-revised
-channel masks separated plant-matrix and lipid-related reporting features from
-variables excluded from primary microbiome-channel attribution. d,
-Source-data-derived representative foods show individual score envelopes around
-their retained baseline anchors. Source data are provided with the manuscript.}
-\label{fig:framework}
-\end{figure}
+\subsection*{A fail-closed audit fixed the evidence tier at computational feasibility}
 
-\subsection*{Personalized calibration preserved population nutrition consensus}
+The evidence gate implements a computational, fail-closed design. It authorizes
+only computational feasibility, a correctly specified synthetic positive-
+control, audited data unavailability and the fail-closed design itself. The
+current decision did not pass because the required real validation artifacts
+were absent. This decision records evidence eligibility and authorization; it
+does not measure predictive performance.
 
-Personalized calibration preserved the population food ranking across the
-aligned food universe (Fig.~\ref{fig:preservation}). The primary run combined
-baseline scores, nutrient vectors and microbiome-derived weights for 9,234
-foods and 15,492 microbiome profiles. The population-mean GMNPS score was
-almost identical to the baseline prior across foods (Spearman
-\(\rho=0.999839\)), exceeding the pre-specified preservation criterion of
-\(\rho \geq 0.90\).
+\subsection*{Observed outcomes and production execution were unavailable}
 
-Broad food-category assignments changed rarely after calibration at the
-population mean. Only 63 of 9,234 foods crossed broad category boundaries
-(0.68\%). All movements occurred between adjacent categories; no food moved
-directly between the lowest and highest broad categories. Food-group means were
-also nearly superimposable between the baseline prior and the calibrated
-population mean. Bootstrap resampling showed that preservation was stable to
-the composition of the scored food universe. These analyses do not establish
-clinical validity. They establish that the calibrated score retained the
-population-level behaviour expected of a nutrient profile.
+Eligible observed participant-by-meal outcomes are unavailable in the audited
+data. Access to the controlled archive had not been granted, and the audited materials
+did not establish an eligible endpoint table, verified meal key, or verified
+participant-to-microbiome linkage. Public microbiome predictors and aggregate
+food ranks were not treated as substitutes for participant-by-meal outcomes.
 
-\begin{figure}[t]
-\centering
-\includegraphics[width=\textwidth]{figure_2_preservation.pdf}
-\caption{\textbf{Population nutrition consensus was preserved after
-calibration.} a, Baseline prior versus population-mean GMNPS across 9,234
-foods. b, Broad category transitions at the population mean, highlighting rare
-adjacent shifts and no direct extreme-category reversals. c, Food-group mean
-scores for the baseline prior and calibrated population mean. d, Bootstrap
-preservation estimates across resampled food universes. Source data are
-provided with the manuscript.}
-\label{fig:preservation}
-\end{figure}
+Production execution has not been performed for the 9,234-food universe. The
+trusted Food Compass and FNDDS artifact chain required by the locked procedure
+was incomplete, and no authorized production person-food panel was generated.
+Consequently, no population rank preservation, category transition, food-group
+heterogeneity, direct-response, GMrepo, ZOE rank or knowledge-path statistic is
+reported in the main text.
 
-\subsection*{Anchored scores revealed structured person-food heterogeneity}
+\subsection*{Available expert feedback informed nutrient-channel revisions}
 
-Anchored calibration introduced bounded individual variation that a static
-nutrient profile cannot express (Fig.~\ref{fig:heterogeneity}). Static baseline
-scores have no individual variance by design. GMNPS preserved the food-level
-anchor while allowing individual profiles to vary within the cap. A heat map of
-high-variance profiles and representative foods showed that deviations were not
-constant across people or foods, indicating that calibration added
-person-specific structure rather than a uniform offset.
-
-Channel attribution varied across food groups in patterns consistent with the
-substrate logic of the calibration layer. Vegetables and legumes or nuts more
-often showed plant-matrix dominance, whereas fruit, grains, dairy, fats and
-oils, meat and egg products, seafood, and savoury or sweet foods showed
-larger lipid-related contributions in the current scoring run. These patterns
-should be read as model-attributed heterogeneity. They do not by themselves
-show that the microbiome caused the predicted response for a specific person
-and food.
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\textwidth]{figure_3_heterogeneity.pdf}
-\caption{\textbf{Anchored calibration exposed bounded and interpretable
-person-food heterogeneity.} a, Food-level landscape of plant-matrix and
-lipid-related channel variance. b, Individual-food deviation heat map for 48
-high-variance profiles and representative foods selected from the source-data
-table. c, Group-level fraction of model-attributed channel variance. d,
-High-heterogeneity foods show source-data-derived individual score intervals
-around retained baseline anchors. Source data are provided with the
-manuscript.}
-\label{fig:heterogeneity}
-\end{figure}
-
-\subsection*{Expert review sharpened the microbiome-channel boundary}
-
-Structured expert review refined the biological boundary before the primary
-scoring run was interpreted. Six experts with complementary backgrounds in
-clinical nutrition, food analysis, food bioactives, food biomarkers, population
-nutrition and probiotics completed two review rounds. The first round supported
-the food-group and output logic. The second round supported the revised
-nutrient-channel boundary after targeted changes. The review also identified
-clinical translation potential while noting that clinical application would
-require additional constraints for disease stage, medication use, safety and
-implementation.
-
-The review changed the primary nutrient-channel mask in ways that improved
-specificity without tuning model performance. Carbohydrate was downgraded to a
-sensitivity or proxy variable because it was too broad to represent
-microbiota-accessible substrate on its own. Zinc and copper were removed from
-the plant-matrix channel. Vitamin A RAE was removed from the lipid-related
-channel, while retinol was retained as the more specific marker. The original
-mask was therefore treated as a sensitivity analysis rather than the primary
-boundary.
-
-\subsection*{External and simulated benchmarks defined where calibration was plausible}
-
-External microbiome-health comparisons supported a cardiometabolic
-plausibility boundary rather than general disease prediction
-(Fig.~\ref{fig:validation}). In GMrepo comparisons against healthy controls
-\cite{dai2022gmrepo}, the microbiome-derived health-state component showed
-modest discrimination for type 2 diabetes (area under the receiver operating
-characteristic curve 0.6332; 95\% CI, 0.6115 to 0.6528; \(n=771\) disease
-samples) and coronary artery disease (0.6686; 95\% CI, 0.5823 to 0.7516;
-\(n=47\) disease samples). Signals were weak or negative for colorectal cancer
-and inflammatory bowel disease comparisons. This analysis was used only to
-bound plausibility; it did not validate individual food scores.
-
-In known-ground-truth simulations, anchoring preserved the population prior
-while retaining individualized residual structure. Across 12 repeated seeds,
-the baseline-only model preserved the population ranking but had no defined
-personalized residual because its prediction did not vary by individual.
-Anchored GMNPS preserved the prior (mean \(\rho=0.9998\), s.d. 0.0001) and
-recovered individualized residual structure (mean \(\rho=0.3771\), s.d.
-0.0284). Random and shuffled microbiome controls retained the prior but lost
-the residual signal (mean residual \(\rho=0.0137\) and 0.0102). The unanchored
-microbiome score recovered some residual structure but weakened preservation of
-the population prior. Varying the deviation cap from 8 to 15 points did not
-materially change this trade-off. These results support the design claim that
-bounded anchoring lets a personalized layer add individual signal without
-collapsing the population food-quality prior.
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\textwidth]{figure_4_validation.pdf}
-\caption{\textbf{External plausibility and known-ground-truth benchmarks
-defined the validation boundary.} a, Digital-gut-twin trade-off between
-population-prior preservation and personalized residual recovery. b,
-Full-response recovery across repeated benchmark seeds. c, Architecture
-ablations and negative controls; the baseline-only residual is not defined
-because the baseline score has no individual variation. d, GMrepo
-microbiome-health AUROC estimates for selected disease comparisons against
-healthy controls. e, Sensitivity to deviation caps of 8, 12 and 15 points.
-Source data are provided with the manuscript.}
-\label{fig:validation}
-\end{figure}
+Available expert feedback informed nutrient-channel revisions and supports
+content review only. The available comments informed treatment of carbohydrate,
+zinc, copper and vitamin A as retinol activity equivalents. This content review
+does not establish outcome validity or superiority of the revised channel
+assignment.
 
 \section*{Discussion}
 
-This study reframes precision nutrition as a calibration problem for nutrient
-profiling. The main contribution is not a clinical recommendation model, but an
-auditable architecture in which a population food-quality prior remains
-explicit and personalization enters as a bounded individual-food deviation.
-This distinction preserves the public-health role of nutrient profiling while
-creating a controlled space for person-specific biology.
+The defensible contribution is a reproducible formulation of bounded
+personalized calibration at the native-attribute level. By applying calibration
+before domain recomposition, the formulation retains published attribute
+ranges, ratio applicability, dynamic top-\(k\) selection and a food-specific
+fixed residual. The 20\% native-attribute cap, \(\pm 12\)-point final cap,
+absence of score centring and exact zero-response identity are safety properties
+of the design. They are not evidence that population rankings, health outcomes
+or individual responses are preserved in real data.
 
-The evidence supports this architecture at three levels. The population mean
-preserved the baseline food ranking across more than nine thousand foods, so
-GMNPS retained the behaviour expected of a nutrient profile. Individual scores
-revealed bounded person-food heterogeneity, and channel attribution made that
-heterogeneity interpretable without presenting it as causal proof. The
-digital-gut-twin benchmark then showed why anchoring matters: an unanchored
-microbiome score could capture individualized signal but weakened the
-population prior, whereas anchored GMNPS balanced both objectives.
+Earlier precision-nutrition studies combined dietary, host and microbiome
+information to characterize inter-individual responses
+\cite{zeevi2015personalized,berry2020postprandial,asnicar2021microbiome}.
+The present contribution addresses a different problem: how an individual
+calibration layer can remain legible inside a shared nutrient-profile reference.
+The correctly specified synthetic positive-control shows that the locked code
+recovers a mapping programmed into its own data-generating process and loses
+that recovery after random or Sattolo-deranged assignment. Because generator
+and implementation share the mapping, this evidence diagnoses implementation
+fidelity but not biological misspecification or real-world response prediction.
 
-The microbiome layer should be interpreted as a proof of concept. Human studies
-support the gut microbiome as a link between diet quality, microbial metabolism
-and host metabolic traits \cite{sanz2025gutmicrobiome,asnicar2021microbiome,
-manor2020healthMarkers,asnicar2025gut,segev2026dietmicrobiome}. The present
-analysis uses that biology to define an interpretable calibration layer, but it
-does not show that GMNPS predicts clinical outcomes for a given person. This
-boundary is important because microbiome-diet associations are shaped by
-habitual diet, medication, disease state, geography and measurement pipelines.
-It also reflects broader concerns that nutrient-profiling systems and
-prediction models require transparent validation before being used in decision
-settings \cite{ortenzi2023foodCompassLimitations,vanCalster2019calibration,
-collins2015tripod,wolff2019probast,collins2024tripodAi}.
+Available expert feedback further constrains interpretation. It supports
+content review of four nutrient-channel decisions, but it does not establish
+outcome validity, external validity, readiness for clinical use or superiority of an
+expert-revised mask.
 
-More broadly, personalized calibration offers a modular path for
-precision-ready nutrient profiling. The baseline prior could be replaced by
-another validated nutrient profile, and the calibration layer could incorporate
-microbiome, metabolomic, continuous-glucose, genetic or clinical signals if
-each layer is evaluated under the same preservation, interpretability and
-validation criteria. Future studies should test whether calibrated deviations
-predict measured postprandial or longer-term responses in cohorts with matched
-foods, microbiomes and host outcomes before the framework is used for clinical
-decision-making.
+The present evidence package is not ready for an empirical Article. Eligible
+observed participant-by-meal outcomes, a trusted production food run and
+registry-bound supporting analyses are absent, so the main quantitative
+evidence needed for response validity, population behaviour and generalization
+cannot be assembled. GMNPS does not establish external validity. No evidence supports clinical advice. No evidence supports dietary advice.
+
+A future empirical programme should preserve the frozen method while adding a
+trusted production food bundle, eligible observed outcomes and held-out analyses
+whose splits, inference units, intervals, multiplicity control, leakage checks
+and provenance are fixed before outcome inspection. Multimodal inputs and
+longitudinal sampling could then test whether calibration remains stable as host,
+dietary and microbiome states change \cite{david2014diet,asnicar2025gut}.
+Clinical deployment would additionally require prospective safety assessment,
+decision-curve analysis and reporting appropriate to high-risk prediction tools
+\cite{collins2015tripod,wolff2019probast,collins2024tripodAi}. Digital gut twins
+remain a future experimental construct for counterfactual testing, not a label
+for the completed synthetic positive-control \cite{adams2020digitaltwins}.
 
 \section*{Methods}
 
-\subsection*{Study design}
+\subsection*{Study design and evidence boundary}
 
-This was a computational framework and validation study. No new human
-participants were recruited and no clinical intervention was conducted. The
-analysis combined a baseline nutrient-profiling prior, aligned food nutrient
-vectors, microbiome-derived individual weights, expert-reviewed channel masks,
-external microbiome-health plausibility analysis and digital-gut-twin
-simulation.
+This work specified a computational calibration procedure and audited the evidence available to evaluate it. Food Compass 2.0 supplied the shared population prior \cite{barrett2024foodcompass2}. The locked
+method version was fixed before validation access and separated development-only
+normalization from later scoring inputs. No eligible observed participant-by-
+meal outcome table or authorized production food bundle entered the present
+work. Full algorithms, provenance requirements, missingness rules and planned
+empirical estimands are reported in Supplementary Methods.
 
-\subsection*{Baseline prior and scored food universe}
+\subsection*{Scoring object and native attribute rules}
 
-Food Compass 2.0 was used as the selected baseline prior because it provides
-broad food-attribute coverage on a 1 to 100 scale
-\cite{barrett2024foodcompass2}. It was used as an anchoring prior rather than
-as the focus of the contribution. The primary scoring run included 9,234
-aligned foods with baseline scores, food metadata and nutrient vectors. Nutrient
-files were aligned to the Food and Nutrient Database for Dietary Studies context
-used by the baseline prior.
+Food composition exposures are expressed per 100 kcal unless a published rule
+uses percentage energy, a ratio, a binary indicator or NOVA class. Each
+calculated Food Compass attribute is scored on its published native point range.
+Ratio attributes are removed from the domain denominator when their published
+applicability gate fails; unavailable attributes are not zero-filled. Selected
+domains are aggregated from calculated attribute points using their effective
+weights, including dynamic top-five selection for vitamins and minerals and
+top-three selection for specific lipids.
 
-\subsection*{Personalized calibration score}
+\subsection*{Microbiome-derived calibration interface}
 
-Each individual was represented by a microbiome-derived nutrient weight vector,
-and each food was represented by a standardized nutrient vector. Individual-food
-responses were computed as the product of these vectors, robustly standardized,
-mapped through a bounded hyperbolic tangent transform and centred at the food
-level. The centred deviation was capped at 12 points for the primary analysis
-and added to the baseline prior; final scores were clipped to the 1 to 100
-range. Sensitivity analyses used caps of 8 and 15 points. In this article,
-microbiome-derived weights were treated as calibration features rather than
-causal effect estimates.
+Let \(b_{in}\) denote the raw calibration input for person \(i\) and nutrient
+\(n\). Development-only medians and robust scales are frozen by nutrient, and
+later scoring inputs are transformed as
+\[
+z_{in}=\tanh\!\left(\frac{b_{in}-m_n}{2s_n}\right).
+\]
+For food \(j\), normalized exposure \(e_{jna}\) and reviewed allocation
+\(w_{na}\) map nutrient inputs to native attribute \(a\):
+\[
+r_{ija}=\sum_n z_{in}e_{jna}w_{na}.
+\]
+Allocation weights for one nutrient sum to one. The input is a computational calibration feature. Causal effects were not assessed.
 
-\subsection*{Expert-reviewed channel masks}
+\subsection*{Bounded attribute calibration and recomposition}
 
-The expert-revised primary mask defined two reporting channels. The
-plant-matrix channel included fibre, selected carotenoids, vitamin C, food
-folate, magnesium, potassium, phylloquinone and vitamin E. The lipid-related
-channel included total fat, saturated fat, cholesterol, retinol, selected
-saturated fatty acids, choline and vitamin B12. Carbohydrate was retained only
-for sensitivity or proxy use, and zinc, copper and vitamin A RAE were excluded
-from primary microbiome-channel attribution. Six experts reviewed the channel
-boundary and output logic in two rounds before the primary analysis was
-interpreted. The review was used for content validity and interpretability, not
-for performance tuning.
+For published point range \([l_a,h_a]\), baseline point \(p_{ja}\) and primary
+fraction \(c=0.20\), the calibrated native point is
+\[
+p_{ija}=\operatorname{clip}\!\left[
+p_{ja}+c(h_a-l_a)\tanh\!\left(\frac{r_{ija}}{2}\right),l_a,h_a\right].
+\]
+The selected domains are then recomputed from personalized native points. A
+food-specific fixed residual retains the official-anchor contribution outside
+those recomputed domains. If \(F_j\) is the Food Compass 2.0 anchor and
+\(F^{\mathrm{native}}_{ij}\) the recomposed score, the final value is
+\[
+S_{ij}=\operatorname{clip}_{[1,100]}\!\left[
+F_j+\operatorname{clip}_{[-12,12]}
+\left(F^{\mathrm{native}}_{ij}-F_j\right)\right].
+\]
+Population and per-food centring are absent. A zero normalized response
+returns the anchor exactly.
 
-\subsection*{Evaluation and benchmarking}
+\subsection*{Nutrient-channel content review}
 
-Population preservation was evaluated by Spearman correlation between the
-baseline prior and the population-mean GMNPS score, with a pre-specified
-criterion of \(\rho \geq 0.90\). Broad category shifts were counted at the
-population mean. Heterogeneity was summarized by food-level variance,
-individual-food intervals and channel-attributed variance. External
-plausibility was assessed with GMrepo disease comparisons against healthy
-controls \cite{dai2022gmrepo}. The digital-gut-twin benchmark generated
-synthetic individual microbial capacities, food substrate exposures and known
-host responses, following virtual-twin concepts in precision nutrition
-\cite{adams2020digitaltwins}. It compared baseline-only scoring, unanchored
-microbiome scoring, anchored GMNPS, random microbiome weights, shuffled
-microbiome profiles and architecture ablations across repeated seeds.
+The reviewed mapping assigns nutrient inputs to native Food Compass attributes
+and records primary, applicability-only, explanatory, sensitivity-proxy and
+excluded roles. Available external feedback informed revisions concerning
+carbohydrate, zinc, copper and vitamin A as retinol activity equivalents. The
+feedback was used only for content review; no outcome was available for tuning
+the mapping.
+
+\subsection*{Correctly specified synthetic positive-control}
+
+The positive-control generator fixed the Food Compass baseline component,
+person-level capacities, attribute exposures, programmed native-attribute
+effects and independent noise before scoring. Five independent simulation seeds
+were used, each containing 24 synthetic people and 12 synthetic foods. The
+formal run used only the primary 20\% native-attribute cap and \(\pm 12\)-point
+final cap. Random assignment and deterministic Sattolo derangement were controls
+within the same evidence family. Detailed outputs appear only in the Supplementary Information.
+
+\subsection*{Evidence gate}
+
+The evidence gate requires path-bound artifacts, a valid run-level method lock,
+disjoint development and test subjects, eligible observed outcomes and the
+prespecified subject-held-out comparisons before any direct-response claim can
+be authorized. Synthetic, aggregate, predictor-only and unexecuted supporting
+resources cannot upgrade the tier. In the absence of the required artifacts,
+the gate returns computational feasibility and an explicit blocker list.
 
 \section*{Data availability}
 
-Food Compass 2.0 scores are available from the original Food Compass 2.0
-article and supplement \cite{barrett2024foodcompass2}. FNDDS files are
-available from USDA FoodData Central and USDA Food Surveys Research Group
-resources. Public PREDICT/ZOE microbiome resources are available through the
-repositories reported in the 2025 ZOE data availability statement
-\cite{asnicar2025gut}. Restricted individual-level clinical, dietary and
-intervention variables require approved access from the data holders. Figure
-source data are generated by the analysis scripts and included with the
-manuscript package.
+The correctly specified synthetic positive-control artifacts described here are
+included in the project source-data bundle. Eligible observed participant-by-
+meal outcomes and an authorized production food bundle were unavailable to this
+study.
+% AUTHOR_INPUT_NEEDED: Add the final public repository or Supplementary Source
+% Data identifier and controlled-access statement after author verification.
 
 \section*{Code availability}
 
-GMNPS scoring, source-data generation, synthetic benchmarking and figure
-generation scripts are maintained in the project repository. Large generated
-matrices and rendered outputs are reproducible from the committed scripts and
-are excluded from Git by default because of file size.
+The locked implementation, evidence-gate code and audit scripts are maintained
+in the project repository.
+% AUTHOR_INPUT_NEEDED: Add the public code URL, archived release identifier and
+% licence statement after author verification.
+
+\clearpage
+\input{supplementary_methods}
+\input{supplementary_results}

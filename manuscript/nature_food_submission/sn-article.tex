@@ -12,35 +12,15 @@
 
 \begin{document}
 
-\title[Personalized calibration for precision nutrition]{Personalized calibration transforms nutrient profiling systems for precision nutrition}
+\title[Bounded calibration for nutrient profiling]{Bounded attribute-level calibration for microbiome-informed nutrient profiling}
 
-% Author metadata require final confirmation before journal submission.
-\author*[1]{\fnm{Fengxi} \sur{Xi}}\email{corresponding.author@example.com}
-\author[1]{\fnm{GMNPS} \sur{Study Group}}
+% AUTHOR_INPUT_NEEDED: Confirm the complete author list, order, affiliations,
+% correspondence details, ORCID identifiers and consortium naming before
+% submission. No metadata from the pre-edit dirty draft are asserted here.
 
-\affil*[1]{\orgdiv{Department to be confirmed}, \orgname{Institution to be confirmed}, \orgaddress{\city{City to be confirmed}, \country{Country to be confirmed}}}
+\abstract{Nutrient profiling encodes food composition as population-level food-quality assessments. Individual adaptation requires a separate calibration layer around a shared population prior. The Gut Microbiome-informed Nutrient Profiling System (GMNPS) uses bounded attribute-level calibration with locked inputs. Eligible observed participant-by-meal outcomes are unavailable in the audited data, limiting the current evidence tier to computational feasibility. The locked implementation recovered the programmed mapping in a correctly specified synthetic positive-control. External validity is not established because the evidence is limited to implementation feasibility under correct specification.}
 
-\abstract{Nutrient profiling systems provide shared food-level guidance for
-population nutrition, but static scores cannot represent the person-food
-heterogeneity that motivates precision nutrition. We introduce GMNPS as a
-microbiome-informed demonstration of personalized calibration, in which a
-bounded individual-food deviation is added to a retained population
-food-quality prior. Across 9,234 foods and 15,492 microbiome profiles, the
-population-mean calibrated score preserved the baseline ranking (Spearman
-\(\rho=0.999839\)) and shifted only 0.68\% of foods across broad category
-boundaries. The same architecture exposed bounded, model-attributed
-heterogeneity with interpretable plant-matrix and lipid-related channel
-attribution. Six experts reviewed the channel boundary in two rounds, supporting
-the revised mask while identifying clinical translation as a future rather than
-current use case. External microbiome-health analyses supported a
-cardiometabolic plausibility boundary, and repeated digital-gut-twin benchmarks
-showed that anchoring recovered individualized residual structure under known
-assumptions while preserving the population prior. These findings support
-personalized calibration as a feasible route for precision-ready nutrient
-profiling, with prospective or deeply phenotyped retrospective validation still
-required before clinical use.}
-
-\keywords{nutrient profiling; precision nutrition; gut microbiome; personalized calibration; digital gut twin}
+\keywords{nutrient profiling; personalized calibration; gut microbiome; computational feasibility; synthetic positive-control}
 
 \maketitle
 
@@ -48,29 +28,9 @@ required before clinical use.}
 
 \backmatter
 
-\bmhead{Acknowledgements}
-The authors thank the six domain experts who reviewed the microbiome-channel
-boundary definitions and individual-output interpretability used in the GMNPS
-framework. Funding information should be confirmed before submission.
-
-\bmhead{Author contributions}
-F.X. conceived the study direction. The GMNPS Study Group designed the scoring
-framework, implemented the computational benchmark, interpreted the results and
-drafted the manuscript. The final author-contribution statement should be
-updated after confirming the full author list.
-
-\bmhead{Competing interests}
-The authors declare no competing interests. This statement should be re-checked
-before submission.
-
-\bmhead{Ethics declarations}
-The current manuscript reports a computational framework, public-data analysis
-and synthetic benchmarking. No new human participant recruitment or clinical
-intervention was conducted.
-
-\bmhead{Additional information}
-Correspondence and requests for materials should be addressed to the
-corresponding author after final author metadata are confirmed.
+% AUTHOR_INPUT_NEEDED: Confirm acknowledgements, funding, author contributions,
+% competing interests, ethics wording and materials correspondence. These
+% declarations are intentionally not rendered until confirmed by the authors.
 
 \bibliography{references}
 
