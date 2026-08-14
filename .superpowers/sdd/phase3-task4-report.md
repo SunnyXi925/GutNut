@@ -57,8 +57,11 @@ positive-control. Planned empirical Figs. 2-4 remain blocked.
 - Nature figure static preflight: 12 passed, 2 non-blocking warnings (no TIFF;
   final width is specified dynamically rather than as a static source token).
 - `git diff --check`: passed.
-- Full repository suite: 978 passed with one existing NumPy/SciPy compatibility
-  warning.
+- Full working-tree repository suite at implementation time: 978 passed with
+  one existing NumPy/SciPy compatibility warning. This count includes preserved
+  ignored Phase 2 audit files; an exported tracked-only snapshot lacks one such
+  matrix-referenced audit file and therefore requires the submission allowlist,
+  rather than a tracked-only checkout, for the same claim-gate result.
 
 ## Evidence boundary
 
@@ -68,3 +71,18 @@ population preservation, participant-by-meal response validity, biological
 consistency and external generalization remain unavailable until the
 registry-bound artifacts listed in `figure_manifest.csv` exist and pass their
 evidence gates.
+
+## Independent review closure
+
+Independent review identified that the Food Compass baseline residual has a
+constant prediction and therefore has no estimable Spearman correlation. The
+publication layer now reports this comparator as `not estimable`, plots no
+point or interval and records zero valid rank estimates. The five frozen source
+files were not altered or rerun. Review also led to an explicit microbiome-to-
+calibration interface, author-specified allocation wording, a self-contained
+copy of all five frozen source files and consistent percentile-range language.
+
+The final focused manuscript, reference and figure suite passed 201 tests. The
+full working-tree suite passed 978 tests with one disclosed NumPy/SciPy
+compatibility warning. Both the main manuscript and Supplementary Information
+compiled without undefined citations, undefined references or overfull boxes.

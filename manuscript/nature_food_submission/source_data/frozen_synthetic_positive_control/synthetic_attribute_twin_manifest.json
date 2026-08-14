@@ -1,0 +1,140 @@
+{
+  "cap_sensitivities": "10/30 percent attribute and +/-8/15 final caps are unit boundary tests only; they are not part of the frozen formal run",
+  "checks_code_fixed_in_same_release": true,
+  "clinical_or_external_validation": false,
+  "code_fixed_checks": {
+    "expert_mask_excludes_programmed_proxies": "expert-mask excluded-proxy contribution is zero and original-mask contribution is positive",
+    "locked_preserves_universal_rank": "mean universal-rank Spearman >= 0.90",
+    "programmed_mapping_recovery_vs_fcs": "locked programmed-mapping residual RMSE strictly below FCS baseline",
+    "random_assignment_loses_recovery": "locked residual RMSE strictly below random microbiome assignment",
+    "sattolo_assignment_loses_recovery": "locked residual RMSE strictly below Sattolo-deranged microbiome assignment"
+  },
+  "config": {
+    "bootstrap_replicates": 200,
+    "effect_scale": 1.0,
+    "n_foods": 12,
+    "n_individuals": 24,
+    "noise_sd": 0.35,
+    "proxy_beta_scale": 3.5,
+    "seeds": [
+      1701,
+      1702,
+      1703,
+      1704,
+      1705
+    ]
+  },
+  "config_sha256": "c0de89e132924c6e6ef349b87e039286850731caa91184d90c4c928140dea0e5",
+  "data_class": "synthetic",
+  "environment": {
+    "packages": {
+      "numpy": "2.4.6",
+      "pandas": "3.0.5",
+      "scikit-learn": "1.5.2",
+      "scipy": "1.13.1"
+    },
+    "python_implementation": "CPython",
+    "python_version": "3.11.15"
+  },
+  "evidence_role": "correctly_specified_synthetic_positive_control",
+  "files": {
+    "synthetic_attribute_twin_config.json": {
+      "file_sha256": "fd5a21d815406225f3fe5a6222cd39dafed7b98014dbc25190b61399fdb97c35",
+      "payload_sha256": "c5b9cba0e78696e0a3748bccc05ed3b691383923ff772db95e0757f33afc7e1b"
+    },
+    "synthetic_attribute_twin_replicate_metrics.csv": {
+      "file_sha256": "b0a0e379e8654ef1c370d614abe932a2a7cd0cedb4ad13ccf52ef6db0a7e70e6",
+      "payload_sha256": "41e6c5d1fbf424b8243c44e3a94b7002e5e8cd9803134b7c665db2b7bee13bee"
+    },
+    "synthetic_attribute_twin_success_checks.csv": {
+      "file_sha256": "091bea04c4baed04fa4f4898d8c980cac081e3bc7dfb58435b5799fdfac32719",
+      "payload_sha256": "86efca9d8a8efad94839fe16b0344d7f10cfa2441be16e047d13e7844158c927"
+    },
+    "synthetic_attribute_twin_summary.csv": {
+      "file_sha256": "b78ab05011a7c5f9bb150b22d50d72ff84797721c6a5c1d3bc8c37a3edbf9bdd",
+      "payload_sha256": "3a21d1e6f1e90e47e94d121fea3705813c867b31fc4ff539005404c18e8e4d74"
+    }
+  },
+  "formal_run_cap_modes": {
+    "attribute_point_fraction": "primary_20_percent",
+    "final_deviation": "primary_plus_or_minus_12"
+  },
+  "gate_implication": "none_direct_external_validity_remains_fail_closed",
+  "independently_preregistered": false,
+  "interpretation": "Locked implementation recovered the programmed mapping in a correctly specified synthetic positive-control and lost recovery after random or Sattolo-deranged assignment.",
+  "interpretation_limit": "Correctly specified synthetic positive-control only; not clinical, external, construct, or biological mask validation.",
+  "passed": true,
+  "payload_sha256": "d990586316982501fa18c80a90c3905a8dc7facf5a4525f373f186673d8047fd",
+  "replicates": 5,
+  "rng_streams": {
+    "1701": {
+      "attribute_exposures": 2784516309,
+      "bootstrap": 1177027658,
+      "capacities": 2099012856,
+      "excluded_proxies": 699994941,
+      "food_quality": 1734112382,
+      "noise": 487845661,
+      "random_microbiome": 1601259171,
+      "sattolo_derangement": 2422632848
+    },
+    "1702": {
+      "attribute_exposures": 1167744814,
+      "bootstrap": 4007396185,
+      "capacities": 1065604604,
+      "excluded_proxies": 1552487103,
+      "food_quality": 257563815,
+      "noise": 3867478660,
+      "random_microbiome": 3304775577,
+      "sattolo_derangement": 2761327743
+    },
+    "1703": {
+      "attribute_exposures": 3581638780,
+      "bootstrap": 3184478937,
+      "capacities": 2326536196,
+      "excluded_proxies": 1181846465,
+      "food_quality": 2141833900,
+      "noise": 2144377986,
+      "random_microbiome": 1981017444,
+      "sattolo_derangement": 3343829940
+    },
+    "1704": {
+      "attribute_exposures": 1391030619,
+      "bootstrap": 2733346454,
+      "capacities": 2569413413,
+      "excluded_proxies": 1982353235,
+      "food_quality": 529401970,
+      "noise": 1280126196,
+      "random_microbiome": 452681895,
+      "sattolo_derangement": 3578973059
+    },
+    "1705": {
+      "attribute_exposures": 4142870958,
+      "bootstrap": 573179082,
+      "capacities": 4042481521,
+      "excluded_proxies": 2203468332,
+      "food_quality": 5132009,
+      "noise": 2823027999,
+      "random_microbiome": 1980943227,
+      "sattolo_derangement": 1002313994
+    }
+  },
+  "schema_version": "attribute-synthetic-experiment-manifest-v2",
+  "seeds": [
+    1701,
+    1702,
+    1703,
+    1704,
+    1705
+  ],
+  "simulator_version": "attribute-synthetic-twin-v2",
+  "source_sha256": {
+    "attribute_calibration": "2dcc803e46f07f2a1c7ca11e31bced942df84bd66496afabd61ec8b86e8585c6",
+    "attribute_gmnps": "b1ac1465f69f968232d1e9b07854a96a29675dbd6516c60a359df7868d83a728",
+    "attribute_recomposition": "806306099b1d398fce1777c3b5714e1465fcc5949c4cf9a8f6fc2d1b1bf3119e",
+    "fcs2_attribute_mapping": "d885be53736d020c6797b8b8f6d470c185ca0b1e13bf7b07752b32ec0de200d1",
+    "fcs2_attribute_rules": "8758d245d2e4d7d23a71829893ddfcc7e4b12b120bf8cc2e1c20d4e1c6efba14",
+    "masks": "b8eadceed21887b17fe3862378ad79df097f463f7b1301611526623a3e839de9",
+    "simulator": "b7c7a3cd5e5b267ae484352219b57100e46cfc7b9a3e3a706ea67b1006ff2b2e"
+  },
+  "truth_definition_sha256": "2ebce1d83bc7502ee58b0ee0aef602a5b976df9afd9f135977071af63b8313fa"
+}

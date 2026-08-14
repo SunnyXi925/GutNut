@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
+import shutil
 import struct
 import sys
 from typing import Any
@@ -145,6 +146,7 @@ FIGURE_OUTPUT_MANIFEST_COLUMNS = [
     "generator_script_sha256",
 ]
 PANEL_TRAILING_COLUMNS = [
+    "metric_status",
     "mean_across_seeds",
     "replicate_interval_lower",
     "replicate_interval_upper",
@@ -325,7 +327,7 @@ def render_figure_1(output_dir: Path) -> None:
         panel_a.plot([0.16, 0.39], [y, y], color=PALETTE["hairline"], lw=0.6)
     panel_a.text(0.45, 0.55, r"$e_{jna}$", fontsize=9, ha="center", va="center", color=PALETTE["text"])
     panel_a.plot([0.51, 0.70], [0.55, 0.55], color=PALETTE["hairline"], lw=0.6)
-    panel_a.text(0.61, 0.65, r"reviewed allocation $w_{na}$", fontsize=6.8, ha="center", va="bottom")
+    panel_a.text(0.61, 0.65, r"author-specified allocation $w_{na}$", fontsize=6.5, ha="center", va="bottom")
     panel_a.text(0.84, 0.63, r"$r_{ij1}$", fontsize=8.5, ha="center", va="center", color=PALETTE["locked"])
     panel_a.text(0.84, 0.55, r"$\cdots$", fontsize=8.5, ha="center", va="center", color=PALETTE["locked"])
     panel_a.text(0.84, 0.47, r"$r_{ija}$", fontsize=8.5, ha="center", va="center", color=PALETTE["locked"])
@@ -483,6 +485,15 @@ def verify_frozen_bundle(repo_root: Path) -> dict[str, Any]:
         "summary": summary,
         "source_artifact_sha256": canonical_digest(list(actual.items())),
         "source_payload_sha256": canonical_digest(payload_items),
+        "source_file_sha256_by_name": actual,
+        "source_payload_sha256_by_name": {
+            "synthetic_attribute_twin_config.json": str(config["payload_sha256"]),
+            "synthetic_attribute_twin_manifest.json": str(manifest["payload_sha256"]),
+            **{
+                filename: str(metadata["payload_sha256"])
+                for filename, metadata in manifest["files"].items()
+            },
+        },
     }
 
 
@@ -522,6 +533,7 @@ def _panel_table(bundle: dict[str, Any], metric: str) -> pd.DataFrame:
                 "comparator_label": COMPARATOR_LABELS[comparator],
                 "seed": selected["seed_integer"].to_numpy(),
                 metric: selected[metric].to_numpy(),
+                "metric_status": "estimated",
                 "mean_across_seeds": summary_row["estimate"],
                 "replicate_interval_lower": summary_row["ci_lower"],
                 "replicate_interval_upper": summary_row["ci_upper"],
@@ -541,6 +553,19 @@ def _panel_table(bundle: dict[str, Any], metric: str) -> pd.DataFrame:
                 "per_seed_bootstrap_interval_upper": selected[bootstrap_upper].to_numpy(),
             }
         )
+        if metric == "residual_spearman" and comparator == "fcs_baseline":
+            # The frozen generator encoded constant-input Spearman as zero.
+            # For publication, preserve the frozen bytes and expose the
+            # mathematically correct status instead of plotting a false zero.
+            frame[metric] = float("nan")
+            frame["metric_status"] = "not_estimable_constant_residual"
+            frame["mean_across_seeds"] = float("nan")
+            frame["replicate_interval_lower"] = float("nan")
+            frame["replicate_interval_upper"] = float("nan")
+            frame["replicates_valid"] = 0
+            frame["bootstrap_replicates_valid"] = 0
+            frame["per_seed_bootstrap_interval_lower"] = float("nan")
+            frame["per_seed_bootstrap_interval_upper"] = float("nan")
         frames.append(frame)
     result = pd.concat(frames, ignore_index=True)
     expected_columns = [
@@ -570,6 +595,21 @@ def export_panel_tables(repo_root: Path, source_data_dir: Path) -> dict[str, Pat
     return outputs
 
 
+def copy_frozen_sources(repo_root: Path, source_data_dir: Path) -> dict[str, Path]:
+    bundle = verify_frozen_bundle(repo_root)
+    destination = source_data_dir / "frozen_synthetic_positive_control"
+    destination.mkdir(parents=True, exist_ok=True)
+    copied: dict[str, Path] = {}
+    for filename, expected_hash in FROZEN_HASHES.items():
+        source = bundle["frozen_dir"] / filename
+        target = destination / filename
+        shutil.copyfile(source, target)
+        if sha256_path(target) != expected_hash:
+            raise ValueError(f"Copied frozen source hash mismatch: {filename}")
+        copied[filename] = target
+    return copied
+
+
 def _plot_s1_panel(
     axis: plt.Axes,
     table: pd.DataFrame,
@@ -587,6 +627,19 @@ def _plot_s1_panel(
     for comparator, y in zip(COMPARATORS, y_positions):
         selected = table[table["comparator_key"] == comparator].sort_values("seed")
         style = COMPARATOR_STYLES[comparator]
+        status = str(selected["metric_status"].iloc[0])
+        if status != "estimated":
+            axis.text(
+                x_limits[0] + 0.03 * (x_limits[1] - x_limits[0]),
+                y,
+                "not estimable (constant residual)",
+                fontsize=7,
+                color=PALETTE["baseline"],
+                ha="left",
+                va="center",
+                fontstyle="italic",
+            )
+            continue
         x_values = selected[metric].to_numpy()
         facecolor = style["color"] if style["filled"] else "white"
         axis.scatter(
@@ -626,7 +679,7 @@ def _plot_s1_panel(
             horizontal_alignment = "center"
         axis.text(
             label_x,
-            y + 0.17,
+            y + 0.27,
             f"{mean:.3f} [{lower:.3f}, {upper:.3f}]",
             fontsize=7,
             color=PALETTE["text"],
@@ -693,7 +746,7 @@ def render_supplementary_figure_s1(output_dir: Path, panel_tables: dict[str, Pat
     figure.text(
         0.5,
         0.115,
-        "Small points: seeds 1701–1705; large point: mean; line: 95% empirical replicate interval",
+        "Small points: seeds 1701–1705; large point: mean; line: 2.5th–97.5th percentile range",
         ha="center",
         va="center",
         fontsize=7,
@@ -779,6 +832,7 @@ def write_source_data_manifest(
     repo_root: Path,
     submission_dir: Path,
     panel_tables: dict[str, Path],
+    frozen_copies: dict[str, Path],
 ) -> Path:
     bundle = verify_frozen_bundle(repo_root)
     script = repo_root / SCRIPT_RELATIVE
@@ -819,10 +873,54 @@ def write_source_data_manifest(
                 "analysis_unit": "independent simulation seed",
                 "inference_unit": "independent simulation seed",
                 "n_effective": "5",
-                "interval_type": "empirical replicate interval",
-                "interval_level": "95% (2.5th-97.5th percentiles across seeds)",
+                "interval_type": "across-seed percentile range",
+                "interval_level": "2.5th-97.5th percentiles across five seeds",
                 "replicates_requested": "5",
                 "replicates_valid": "5",
+                "seed_set": SEED_SET_TEXT,
+                "generator_script": str(SCRIPT_RELATIVE),
+                "generator_script_sha256": script_hash,
+                "generated_utc": BUILD_TIMESTAMP,
+                "exclusion_reason": "",
+            }
+        )
+    for filename in FROZEN_HASHES:
+        copied = frozen_copies[filename]
+        suffix = copied.suffix.lower()
+        if suffix == ".csv":
+            columns, source_rows = read_csv_rows(copied)
+            row_count = str(len(source_rows))
+            schema_hash = hashlib.sha256(("\n".join(columns) + "\n").encode("utf-8")).hexdigest()
+        else:
+            payload = json.loads(copied.read_text(encoding="utf-8"))
+            row_count = "1"
+            schema_hash = hashlib.sha256(
+                ("\n".join(sorted(payload)) + "\n").encode("utf-8")
+            ).hexdigest()
+        relative_path = f"source_data/frozen_synthetic_positive_control/{filename}"
+        rows.append(
+            {
+                "file_path": relative_path,
+                "figure_id": "FigS1",
+                "panel_id": "source",
+                "status": "authorized_supplementary_synthetic",
+                "claim_ids": "ABS-05|RES-06|RES-07|RES-08|DIS-02",
+                "evidence_tier": "computational_feasibility",
+                "evidence_role": EVIDENCE_ROLE,
+                "data_class": DATA_CLASS,
+                "source_artifact_path": str(FROZEN_RELATIVE / filename),
+                "source_artifact_sha256": bundle["source_file_sha256_by_name"][filename],
+                "source_payload_sha256": bundle["source_payload_sha256_by_name"][filename],
+                "generated_file_sha256": sha256_path(copied),
+                "row_count": row_count,
+                "column_schema_sha256": schema_hash,
+                "analysis_unit": "frozen source artifact",
+                "inference_unit": "not_applicable",
+                "n_effective": "not_applicable",
+                "interval_type": "not_applicable",
+                "interval_level": "not_applicable",
+                "replicates_requested": "not_applicable",
+                "replicates_valid": "not_applicable",
                 "seed_set": SEED_SET_TEXT,
                 "generator_script": str(SCRIPT_RELATIVE),
                 "generator_script_sha256": script_hash,
@@ -894,9 +992,10 @@ def build_submission_assets(
     figures_dir = submission_dir / "figures"
     source_data_dir = submission_dir / "source_data"
     panel_tables = export_panel_tables(repo_root, source_data_dir)
+    frozen_copies = copy_frozen_sources(repo_root, source_data_dir)
     render_figure_1(figures_dir)
     render_supplementary_figure_s1(figures_dir, panel_tables)
-    write_source_data_manifest(repo_root, submission_dir, panel_tables)
+    write_source_data_manifest(repo_root, submission_dir, panel_tables, frozen_copies)
     write_figure_output_manifest(repo_root, submission_dir)
 
 

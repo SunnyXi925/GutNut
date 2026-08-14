@@ -2,13 +2,13 @@
 
 ## Definition
 
-For individual `i` and nutrient `k`, `beta_i,k` is the finite-difference change in a fitted gut microbiome health index after applying a nutrient-linked microbiome perturbation:
+For individual `i` and nutrient `k`, `beta_i,k` is the central finite-difference change in a fitted gut microbiome health index along a nutrient-linked microbiome perturbation direction:
 
 ```text
-beta_i,k = (H(M_i + dose * P_k) - H(M_i)) / dose
+beta_i,k = (H(M_i + dose * P_k) - H(M_i - dose * P_k)) / (2 * dose)
 ```
 
-`M_i` is the individual's CLR-transformed genus vector. `H` is a GMWI2-style sparse gut microbiome health index trained to distinguish cMD healthy versus non-healthy samples. `P_k` is the nutrient-to-genus perturbation vector for nutrient `k`, derived from the L7 nutrient-genus bridge and constrained by the expert-reviewed MAC/LIPID channel design. Its direction combines bridge evidence, the fitted health-coefficient sign, and nutrient-level evidence direction (`+1` for MAC, `-1` for LIPID, and a configurable conservative direction for OTHER); the vector is normalized before its channel weight is applied.
+`M_i` is the individual's CLR-transformed genus vector. `H` is a GMWI2-style sparse gut microbiome health index trained to distinguish cMD healthy versus non-healthy samples. `P_k` is the nutrient-to-genus perturbation vector for nutrient `k`, derived from the L7 nutrient-genus bridge and constrained by the literature-defined, expert-reviewed MAC/LIPID channel content. Its direction combines bridge evidence, the fitted health-coefficient sign, and nutrient-level evidence direction (`+1` for MAC, `-1` for LIPID, and a configurable conservative direction for OTHER). Each direction has a locked L2 norm of 2.0 before its channel weight is applied. The locked dose is 0.25, and the finite-difference result is clipped to an absolute numerical limit of 25 only after differencing.
 
 ## Source Inspirations
 
@@ -34,4 +34,4 @@ PYTHONPATH=code/src .venv/bin/python code/src/scripts/build_beta_i_weights.py \
 
 ## Claim Boundary
 
-`beta_i,k` is a microbiome-derived calibration weight that estimates how a nutrient-linked microbiome perturbation changes a fitted microbiome health index. It is not a causal estimate of nutrient intake, not a clinical treatment effect, and not a validated postprandial response coefficient.
+`beta_i,k` is a microbiome-derived calibration input that records how a fitted microbiome health index changes along an author-specified nutrient-linked direction. It is not a causal estimate of nutrient intake, not a clinical treatment effect, and not a validated postprandial response coefficient.

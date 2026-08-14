@@ -215,7 +215,7 @@ z
     </g>
    </g>
    <g id="text_12">
-    <text style="font-size: 7px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #222222" x="184.769582" y="43.472607" transform="rotate(-0 184.769582 43.472607)">3.541 [3.062, 3.843]</text>
+    <text style="font-size: 7px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #222222" x="184.769582" y="40.964791" transform="rotate(-0 184.769582 40.964791)">3.541 [3.062, 3.843]</text>
    </g>
    <g id="PathCollection_2">
     <defs>
@@ -240,7 +240,7 @@ z
     </g>
    </g>
    <g id="text_13">
-    <text style="font-size: 7px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #222222" x="95.124506" y="68.55076" transform="rotate(-0 95.124506 68.55076)">0.352 [0.346, 0.365]</text>
+    <text style="font-size: 7px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #222222" x="95.124506" y="66.042945" transform="rotate(-0 95.124506 66.042945)">0.352 [0.346, 0.365]</text>
    </g>
    <g id="PathCollection_3">
     <defs>
@@ -259,7 +259,7 @@ z
     </g>
    </g>
    <g id="text_14">
-    <text style="font-size: 7px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #222222" x="163.660767" y="93.628914" transform="rotate(-0 163.660767 93.628914)">2.825 [2.518, 3.253]</text>
+    <text style="font-size: 7px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #222222" x="163.660767" y="91.121099" transform="rotate(-0 163.660767 91.121099)">2.825 [2.518, 3.253]</text>
    </g>
    <g id="PathCollection_4">
     <defs>
@@ -279,7 +279,7 @@ z
     </g>
    </g>
    <g id="text_15">
-    <text style="font-size: 7px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #222222" x="188.101166" y="118.707068" transform="rotate(-0 188.101166 118.707068)">3.654 [3.116, 4.458]</text>
+    <text style="font-size: 7px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #222222" x="188.101166" y="116.199253" transform="rotate(-0 188.101166 116.199253)">3.654 [3.116, 4.458]</text>
    </g>
    <g id="text_16">
     <text style="font-weight: 700; font-size: 8px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: start" x="80.352" y="26.6392" transform="rotate(-0 80.352 26.6392)">a  Programmed residual error</text>
@@ -441,21 +441,16 @@ L 470.346067 34.6392
     </g>
    </g>
    <g id="line2d_32">
-    <path d="M 380.062921 45.924369
-L 380.062921 45.924369
-" clip-path="url(#p3f7b7cbb53)" style="fill: none; stroke: #767676; stroke-width: 2.2"/>
-   </g>
-   <g id="line2d_33">
     <path d="M 468.969755 71.002523
 L 469.406718 71.002523
 " clip-path="url(#p3f7b7cbb53)" style="fill: none; stroke: #0072b2; stroke-width: 2.2"/>
    </g>
-   <g id="line2d_34">
+   <g id="line2d_33">
     <path d="M 387.893251 96.080677
 L 405.040437 96.080677
 " clip-path="url(#p3f7b7cbb53)" style="fill: none; stroke: #e69f00; stroke-width: 2.2"/>
    </g>
-   <g id="line2d_35">
+   <g id="line2d_34">
     <path d="M 356.600543 121.158831
 L 390.36596 121.158831
 " clip-path="url(#p3f7b7cbb53)" style="fill: none; stroke: #cc79a7; stroke-width: 2.2"/>
@@ -465,19 +460,10 @@ L 390.36596 121.158831
 L 502.848 132.444
 " style="fill: none; stroke: #222222; stroke-width: 0.6; stroke-linejoin: miter; stroke-linecap: square"/>
    </g>
-   <g id="PathCollection_9">
-    <g clip-path="url(#p3f7b7cbb53)">
-     <use xlink:href="#mcfb4aee07e" x="380.062921" y="48.933748" style="fill: #ffffff; fill-opacity: 0.72; stroke: #767676; stroke-opacity: 0.72; stroke-width: 0.7"/>
-     <use xlink:href="#mcfb4aee07e" x="380.062921" y="47.429058" style="fill: #ffffff; fill-opacity: 0.72; stroke: #767676; stroke-opacity: 0.72; stroke-width: 0.7"/>
-     <use xlink:href="#mcfb4aee07e" x="380.062921" y="45.924369" style="fill: #ffffff; fill-opacity: 0.72; stroke: #767676; stroke-opacity: 0.72; stroke-width: 0.7"/>
-     <use xlink:href="#mcfb4aee07e" x="380.062921" y="44.41968" style="fill: #ffffff; fill-opacity: 0.72; stroke: #767676; stroke-opacity: 0.72; stroke-width: 0.7"/>
-     <use xlink:href="#mcfb4aee07e" x="380.062921" y="42.914991" style="fill: #ffffff; fill-opacity: 0.72; stroke: #767676; stroke-opacity: 0.72; stroke-width: 0.7"/>
-    </g>
-   </g>
    <g id="text_25">
-    <text style="font-size: 7px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #222222" x="384.080521" y="43.472607" transform="rotate(-0 384.080521 43.472607)">0.000 [0.000, 0.000]</text>
+    <text style="font-style: italic; font-size: 7px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #767676" x="346.96512" y="47.735824" transform="rotate(-0 346.96512 47.735824)">not estimable (constant residual)</text>
    </g>
-   <g id="PathCollection_10">
+   <g id="PathCollection_9">
     <g clip-path="url(#p3f7b7cbb53)">
      <use xlink:href="#m99c636c46b" x="469.377941" y="74.011902" style="fill: #0072b2; fill-opacity: 0.72; stroke: #0072b2; stroke-opacity: 0.72; stroke-width: 0.7"/>
      <use xlink:href="#m99c636c46b" x="469.409915" y="72.507212" style="fill: #0072b2; fill-opacity: 0.72; stroke: #0072b2; stroke-opacity: 0.72; stroke-width: 0.7"/>
@@ -487,9 +473,9 @@ L 502.848 132.444
     </g>
    </g>
    <g id="text_26">
-    <text style="font-size: 7px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: end; fill: #222222" x="464.952155" y="68.55076" transform="rotate(-0 464.952155 68.55076)">0.988 [0.985, 0.990]</text>
+    <text style="font-size: 7px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: end; fill: #222222" x="464.952155" y="66.042945" transform="rotate(-0 464.952155 66.042945)">0.988 [0.985, 0.990]</text>
    </g>
-   <g id="PathCollection_11">
+   <g id="PathCollection_10">
     <g clip-path="url(#p3f7b7cbb53)">
      <use xlink:href="#mf3df137bd6" x="388.808036" y="99.090055" style="fill: #e69f00; fill-opacity: 0.72; stroke: #e69f00; stroke-opacity: 0.72; stroke-width: 0.7"/>
      <use xlink:href="#mf3df137bd6" x="387.791608" y="97.585366" style="fill: #e69f00; fill-opacity: 0.72; stroke: #e69f00; stroke-opacity: 0.72; stroke-width: 0.7"/>
@@ -499,9 +485,9 @@ L 502.848 132.444
     </g>
    </g>
    <g id="text_27">
-    <text style="font-size: 7px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #222222" x="394.250572" y="93.628914" transform="rotate(-0 394.250572 93.628914)">0.157 [0.087, 0.277]</text>
+    <text style="font-size: 7px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #222222" x="394.250572" y="91.121099" transform="rotate(-0 394.250572 91.121099)">0.157 [0.087, 0.277]</text>
    </g>
-   <g id="PathCollection_12">
+   <g id="PathCollection_11">
     <g clip-path="url(#p3f7b7cbb53)">
      <use xlink:href="#m7df7a877ea" x="391.580981" y="124.168209" style="fill: #cc79a7; fill-opacity: 0.72; stroke: #cc79a7; stroke-opacity: 0.72; stroke-width: 0.7"/>
      <use xlink:href="#m7df7a877ea" x="354.79407" y="122.66352" style="fill: #cc79a7; fill-opacity: 0.72; stroke: #cc79a7; stroke-opacity: 0.72; stroke-width: 0.7"/>
@@ -511,27 +497,22 @@ L 502.848 132.444
     </g>
    </g>
    <g id="text_28">
-    <text style="font-size: 7px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #222222" x="394.38356" y="118.707068" transform="rotate(-0 394.38356 118.707068)">-0.054 [-0.260, 0.114]</text>
+    <text style="font-size: 7px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #222222" x="394.38356" y="116.199253" transform="rotate(-0 394.38356 116.199253)">-0.054 [-0.260, 0.114]</text>
    </g>
    <g id="text_29">
     <text style="font-weight: 700; font-size: 8px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: start" x="342.144" y="26.6392" transform="rotate(-0 342.144 26.6392)">b  Programmed residual rank recovery</text>
    </g>
-   <g id="PathCollection_13">
-    <g clip-path="url(#p3f7b7cbb53)">
-     <use xlink:href="#m0c609bd287" x="380.062921" y="45.924369" style="fill: #ffffff; stroke: #767676; stroke-width: 1.2"/>
-    </g>
-   </g>
-   <g id="PathCollection_14">
+   <g id="PathCollection_12">
     <g clip-path="url(#p3f7b7cbb53)">
      <use xlink:href="#m53783167e9" x="469.226694" y="71.002523" style="fill: #0072b2; stroke: #0072b2; stroke-width: 1.2"/>
     </g>
    </g>
-   <g id="PathCollection_15">
+   <g id="PathCollection_13">
     <g clip-path="url(#p3f7b7cbb53)">
      <use xlink:href="#m9a5bf440cf" x="394.250572" y="96.080677" style="fill: #e69f00; stroke: #e69f00; stroke-width: 1.2"/>
     </g>
    </g>
-   <g id="PathCollection_16">
+   <g id="PathCollection_14">
     <g clip-path="url(#p3f7b7cbb53)">
      <use xlink:href="#mdb80d056c6" x="375.193152" y="121.158831" style="fill: #cc79a7; stroke: #cc79a7; stroke-width: 1.2"/>
     </g>
@@ -541,7 +522,7 @@ L 502.848 132.444
    <text style="font-weight: 700; font-size: 8px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #222222" x="259.2" y="12.258313" transform="rotate(-0 259.2 12.258313)">CORRECTLY SPECIFIED SYNTHETIC POSITIVE-CONTROL</text>
   </g>
   <g id="text_31">
-   <text style="font-size: 7px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #222222" x="259.2" y="182.139055" transform="rotate(-0 259.2 182.139055)">Small points: seeds 1701–1705; large point: mean; line: 95% empirical replicate interval</text>
+   <text style="font-size: 7px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #222222" x="259.2" y="182.139055" transform="rotate(-0 259.2 182.139055)">Small points: seeds 1701–1705; large point: mean; line: 2.5th–97.5th percentile range</text>
   </g>
   <g id="text_32">
    <text style="font-weight: 700; font-size: 7.5px; font-family: 'Arial', 'Helvetica', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #222222" x="259.2" y="197.550445" transform="rotate(-0 259.2 197.550445)">Method-only; not biological, clinical or external validation</text>

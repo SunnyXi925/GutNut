@@ -1,0 +1,28 @@
+{
+  "config": {
+    "bootstrap_replicates": 200,
+    "effect_scale": 1.0,
+    "n_foods": 12,
+    "n_individuals": 24,
+    "noise_sd": 0.35,
+    "proxy_beta_scale": 3.5,
+    "seeds": [
+      1701,
+      1702,
+      1703,
+      1704,
+      1705
+    ]
+  },
+  "config_sha256": "c0de89e132924c6e6ef349b87e039286850731caa91184d90c4c928140dea0e5",
+  "data_class": "synthetic",
+  "evidence_role": "correctly_specified_synthetic_positive_control",
+  "payload_sha256": "c5b9cba0e78696e0a3748bccc05ed3b691383923ff772db95e0757f33afc7e1b",
+  "seeds": [
+    1701,
+    1702,
+    1703,
+    1704,
+    1705
+  ]
+}

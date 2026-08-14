@@ -40,8 +40,10 @@ reruns the simulator.
 | `synthetic_attribute_twin_success_checks.csv` | `091bea04c4baed04fa4f4898d8c980cac081e3bc7dfb58435b5799fdfac32719` |
 | `synthetic_attribute_twin_summary.csv` | `b78ab05011a7c5f9bb150b22d50d72ff84797721c6a5c1d3bc8c37a3edbf9bdd` |
 
-The frozen files are under
-`results/phase2/source-data/correctly_specified_synthetic_positive_control/`.
+The original frozen files are under
+`results/phase2/source-data/correctly_specified_synthetic_positive_control/`,
+and byte-identical copies are included in this package under
+`source_data/frozen_synthetic_positive_control/`.
 `source_data_manifest.csv` records a canonical digest of all five file hashes,
 a canonical digest of their frozen payload hashes, each generated table hash,
 the ordered-column schema hash and the generator-script hash.
@@ -55,14 +57,21 @@ foods, giving 288 nested synthetic person-food pairs per seed. The 1,440 pairs
 across seeds are descriptive nested pairs, not independent inferential
 replicates.
 
-The large point is the across-seed mean. The horizontal line is the 95%
-empirical replicate interval, defined as the empirical 2.5th and 97.5th
-percentiles of the five seed-level estimates. It is not a confidence interval
-or a clinical uncertainty interval. The panel tables also retain the frozen
+The large point is the across-seed mean. The horizontal line is the 2.5th to
+97.5th percentile range of the five seed-level estimates. It is not a
+confidence interval or a clinical uncertainty interval. The panel tables also retain the frozen
 200-person-bootstrap interval for each comparator and seed. Frozen upstream
 column names ending in `_ci_lower` or `_ci_upper` refer only to those per-seed
 participant-bootstrap intervals; they are not the displayed across-seed
 interval.
+
+The frozen implementation encoded constant-input Spearman correlations as
+zero. Because the Food Compass baseline predicts a constant zero personalized
+residual, its residual Spearman correlation is mathematically not estimable.
+The publication-facing S1b table therefore records
+`not_estimable_constant_residual`, leaves the estimate and interval fields
+empty and sets the number of valid rank estimates to zero. This representation
+correction does not alter or rerun the frozen source files.
 
 ## Comparator Order
 
@@ -78,18 +87,20 @@ family; they are not independent cohorts.
 
 ## Column Dictionary
 
-Both panel CSVs contain one row per comparator and seed (20 rows). Empty values
-are not permitted.
+Both panel CSVs contain one row per comparator and seed (20 rows). Empty metric
+and interval values are permitted only when `metric_status` identifies a
+mathematically non-estimable quantity.
 
 | Column | Definition and units |
 | --- | --- |
 | `comparator_order`, `comparator_key`, `comparator_label` | Fixed display order, machine key and display label. |
 | `seed` | Independent simulation-seed identifier. |
 | `residual_rmse` | Seed-level residual root-mean-square error in score units; S1a only. |
-| `residual_spearman` | Seed-level Spearman rank correlation, unitless; S1b only. |
+| `residual_spearman` | Seed-level Spearman rank correlation, unitless; S1b only and empty when not estimable. |
+| `metric_status` | `estimated` or `not_estimable_constant_residual`. |
 | `mean_across_seeds` | Frozen across-seed arithmetic mean for the panel metric. |
 | `replicate_interval_lower`, `replicate_interval_upper` | Frozen empirical 2.5th and 97.5th percentiles across five seeds. |
-| `replicates_requested`, `replicates_valid` | Requested and valid independent seed counts; both equal 5. |
+| `replicates_requested`, `replicates_valid` | Requested and valid independent seed estimates; five are requested, and the valid count is zero only for the non-estimable baseline rank correlation. |
 | `n_individuals_per_seed`, `n_foods_per_seed`, `n_pairs_per_seed` | Nested descriptive dimensions: 24, 12 and 288. |
 | `evidence_role`, `data_class` | `correctly_specified_synthetic_positive_control` and `synthetic`. |
 | `seed_set` | Canonical five-seed set. |
@@ -114,7 +125,8 @@ metadata and a fixed SVG hash salt make clean repeated builds byte-stable.
 ## Package And Exclusions
 
 `figures/submission_asset_allowlist.txt` is the package boundary. It contains
-only the two authorized figures, their manifests and the two S1 source tables.
+only the two authorized figures, their manifests, the two S1 panel tables and
+the five copied frozen source files.
 `figures/figure_output_manifest.csv` records output hashes and technical
 properties. Historical figure and source-data files remain in the repository
 for provenance but are marked `excluded_stale` in `figure_manifest.csv` and

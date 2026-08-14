@@ -35,8 +35,10 @@ boundary on empirical interpretation.
 \subsection*{Bounded native-attribute calibration established the scoring object}
 
 The GMNPS method computes bounded attribute-level scores from locked inputs.
-For each person, normalized nutrient calibration inputs are combined with
-food-specific exposures and reviewed nutrient-to-attribute allocation weights.
+For each person, normalized microbiome-derived nutrient calibration inputs are
+combined with food-specific exposures and author-specified nutrient-to-attribute
+allocation weights. Available expert feedback informed nutrient-channel content,
+not the numerical allocation weights.
 The resulting response changes native attribute points before the selected Food Compass domains are dynamically recomposed. Calibration therefore occurs before domain recomposition rather than after completion of the 1-to-100 value.
 
 The primary attribute movement is capped at 20\% of each attribute's published
@@ -53,7 +55,7 @@ observations of population preservation.
 \includegraphics[width=\textwidth]{figure_1_attribute_calibration.pdf}
 \caption{\textbf{Bounded calibration acts on native nutrient-profile attributes.}
 \textbf{a}, Person-level normalized nutrient calibration inputs are combined
-with food-specific exposures and reviewed nutrient-to-attribute allocations to
+with food-specific exposures and author-specified nutrient-to-attribute allocations to
 define an attribute response. \textbf{b}, The response changes each baseline
 attribute point within its published native range, with movement bounded to
 20\% of that range in the locked primary mode. \textbf{c}, Personalized native
@@ -118,8 +120,7 @@ information to characterize inter-individual responses
 The present contribution addresses a different problem: how an individual
 calibration layer can remain legible inside a shared nutrient-profile reference.
 The correctly specified synthetic positive-control, shown in Supplementary
-Fig.~\ref{fig:supp_synthetic_positive_control} and summarized in Supplementary
-Table~\ref{tab:supp_synthetic_positive_control}, shows that the locked code
+Fig. S1 and summarized in Supplementary Table S2, shows that the locked code
 recovers a mapping programmed into its own data-generating process and loses
 that recovery after random or Sattolo-deranged assignment. Because generator
 and implementation share the mapping, this evidence diagnoses implementation
@@ -172,13 +173,26 @@ top-three selection for specific lipids.
 
 \subsection*{Microbiome-derived calibration interface}
 
-Let \(b_{in}\) denote the raw calibration input for person \(i\) and nutrient
-\(n\). Development-only medians and robust scales are frozen by nutrient, and
+Let \(M_i\) denote a person's centred log-ratio genus-abundance vector. A sparse
+logistic health index \(H\) is fitted in development data using available
+healthy and non-healthy labels. For nutrient \(n\), an author-specified
+nutrient-to-genus direction \(P_n\) combines a curated association matrix with
+the sign and magnitude of fitted genus coefficients. The raw calibration input
+is the central finite-difference contrast
+\[
+b_{in}=\frac{H(M_i+\delta P_n)-H(M_i-\delta P_n)}{2\delta}.
+\]
+This construction uses disease labels only to fit the development health index;
+it does not quantify effects of nutrient exposure. Evaluation cohorts must be
+excluded from health-index fitting and all subsequent normalization. The
+present evidence package did not execute this production evaluation chain.
+
+Development-only medians and robust scales are frozen by nutrient, and
 later scoring inputs are transformed as
 \[
 z_{in}=\tanh\!\left(\frac{b_{in}-m_n}{2s_n}\right).
 \]
-For food \(j\), normalized exposure \(e_{jna}\) and reviewed allocation
+For food \(j\), normalized exposure \(e_{jna}\) and author-specified allocation
 \(w_{na}\) map nutrient inputs to native attribute \(a\):
 \[
 r_{ija}=\sum_n z_{in}e_{jna}w_{na}.
@@ -207,12 +221,13 @@ returns the anchor exactly.
 
 \subsection*{Nutrient-channel content review}
 
-The reviewed mapping assigns nutrient inputs to native Food Compass attributes
+The author-specified mapping assigns nutrient inputs to native Food Compass attributes
 and records primary, applicability-only, explanatory, sensitivity-proxy and
 excluded roles. Available external feedback informed revisions concerning
 carbohydrate, zinc, copper and vitamin A as retinol activity equivalents. The
-feedback was used only for content review; no outcome was available for tuning
-the mapping.
+feedback was used only for nutrient-channel content review. Numerical
+nutrient-to-attribute allocation weights were author-specified. No outcome was
+available for tuning the mapping.
 
 \subsection*{Correctly specified synthetic positive-control}
 

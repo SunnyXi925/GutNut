@@ -166,7 +166,7 @@ SHA-256, method version, and beta normalization temperature are immutable
 normalization state. The fit-ID hash is SHA-256 of sorted development IDs joined
 by a newline.
 
-For food `j`, reviewed mapping row `n -> a`, allocation `w_na`, and normalized
+For food `j`, author-specified mapping row `n -> a`, allocation `w_na`, and normalized
 per-100-kcal exposure `e_jna`, the uncapped attribute response is:
 
 ```text

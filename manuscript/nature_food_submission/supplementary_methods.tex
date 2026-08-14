@@ -5,7 +5,9 @@
 The frozen specification is \texttt{attribute-gmnps-v1}. Its primary method is
 \texttt{attribute\_recomposition}, its primary mapping is
 \texttt{expert\_reviewed\_attribute\_mapping\_v1}, and its recomposition rule is
-\texttt{native\_domain\_fixed\_residual\_v1}. Mapping roles, allocation weights,
+\texttt{native\_domain\_fixed\_residual\_v1}. Expert review refers only to
+nutrient-channel content. The numerical allocation weights are author-specified.
+Mapping roles, allocation weights,
 attribute rules, temperatures, cap modes, domain membership and score centring
 were locked before outcome access. The six recomputed domains are
 \texttt{nutrient\_ratios}, \texttt{vitamins}, \texttt{minerals},
@@ -76,6 +78,32 @@ unavailable or fixed-baseline state rather than zero filling.
 
 \subsection*{Development-only beta normalization}
 
+The upstream microbiome interface begins with a centred log-ratio genus matrix
+\(M\). A sparse L1-regularized logistic regression \(H\) is fitted in the development
+set to distinguish available healthy from non-healthy metadata labels. Duplicate
+or contradictory health labels are excluded from fitting. Genus means and
+scales are estimated in development data; missing genera in later scoring data
+are aligned to the fitted genus order and filled with the corresponding
+development mean. No additional cross-cohort batch correction is performed by
+this module, so harmonized taxonomic processing and explicit cohort/batch
+sensitivity checks are prerequisites for empirical evaluation.
+
+For nutrient \(n\), the nutrient-to-genus bridge is aligned to the fitted genera.
+Each bridge row is oriented by the sign and square root of the absolute fitted
+health-index coefficient and by the prespecified nutrient-channel direction,
+row-centred, L2-normalized to the locked norm of 2.0 and multiplied by its
+channel weight to obtain \(P_n\). With the locked perturbation dose
+\(\delta=0.25\), the raw individual
+input is
+\[
+b_{in}=\frac{H(M_i+\delta P_n)-H(M_i-\delta P_n)}{2\delta}.
+\]
+The health index is evaluated on its logit scale. Values are clipped to the
+locked absolute numerical limit of 25 only after finite differencing. Health labels define the
+development index and are excluded from downstream endpoint adjudication. Any
+endpoint assessment must keep health-index fitting, normalization and endpoint
+evaluation in disjoint subject or family components.
+
 For raw calibration input \(b_{in}\), development median \(m_n\) and nutrient
 \(n\), the first positive scale is selected in this order:
 \[
@@ -123,6 +151,11 @@ temperature 2.0,
 \Delta p_{ija}=c(h_a-l_a)\tanh(r_{ija}/2),\qquad
 p_{ija}=\operatorname{clip}(p_{ja}+\Delta p_{ija},l_a,h_a).
 \]
+The 20\% fraction, response temperature and final 12-point cap are
+prespecified regularization constants; they are not biologically estimated
+thresholds. The 10\% and 30\% attribute fractions and 8- and 15-point final caps
+were reserved for future sensitivity analyses and were not evaluated in the
+present evidence package.
 A baseline \texttt{NOT\_CALCULATED} value remains
 \texttt{NOT\_CALCULATED}; attributes outside reviewed targets have zero
 response and zero movement.
@@ -261,5 +294,10 @@ The frozen synthetic positive-control manifest records CPython 3.11.15, NumPy
 2.4.6, pandas 3.0.5, SciPy 1.13.1 and scikit-learn 1.5.2. It also records the
 configuration digest, truth-definition digest, source-code digests, every
 random-number stream and SHA-256 values for each output file. The recorded
-NumPy version is outside SciPy 1.13.1's declared version range; all focused
-tests passed, but this environment mismatch remains a reproducibility concern.
+NumPy version is outside SciPy 1.13.1's declared version range. SciPy and
+scikit-learn were recorded for environment provenance but are not imported by
+the synthetic generator or attribute-scoring path; those paths use NumPy and
+pandas. The exact article environment is pinned separately from the broader
+production environment. The unsupported optional-package combination remains
+a limitation of the original full repository environment and must not be used
+for future empirical analyses.

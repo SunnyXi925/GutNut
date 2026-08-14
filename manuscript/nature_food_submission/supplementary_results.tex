@@ -5,8 +5,8 @@
 The locked implementation recovered the programmed mapping in a correctly
 specified synthetic positive-control. Across five independent simulation
 seeds, all five code-fixed checks passed. The locked attribute-level procedure
-had a mean residual root mean squared error of 0.3522, with an empirical
-five-seed 2.5th to 97.5th percentile interval of 0.3461 to 0.3647. The
+had a mean residual root mean squared error of 0.3522, with a
+2.5th to 97.5th percentile range across five seeds of 0.3461 to 0.3647. The
 corresponding residual Spearman correlation was 0.9876 (0.9848 to 0.9896).
 The Food Compass baseline residual root mean squared error was 3.5411 (3.0619
 to 3.8431) in the same programmed-truth experiment.
@@ -22,7 +22,7 @@ data.}
 \toprule
 Assignment or comparator & Residual RMSE & Residual Spearman \\
 \midrule
-Food Compass baseline & 3.5411 (3.0619--3.8431) & 0.0000 (0.0000--0.0000) \\
+Food Compass baseline & 3.5411 (3.0619--3.8431) & Not estimable (constant residual) \\
 Locked attribute-level procedure & 0.3522 (0.3461--0.3647) & 0.9876 (0.9848--0.9896) \\
 Random microbiome assignment & 2.8253 (2.5182--3.2532) & 0.1571 (0.0867--0.2767) \\
 Sattolo-deranged assignment & 3.6541 (3.1163--4.4582) & -0.0539 (-0.2599--0.1141) \\
@@ -40,7 +40,9 @@ random microbiome assignment and deterministic
 Sattolo-deranged assignment. \textbf{b}, Spearman correlation between predicted
 and programmed synthetic residuals for the same comparators. Small points
 denote independent simulation seeds; large points and horizontal lines denote
-the mean and empirical 2.5th--97.5th percentiles across five seeds. Each seed
+the mean and 2.5th--97.5th percentile range across five seeds. The baseline
+rank correlation is not estimable because its predicted residual is constant.
+Each seed
 comprised 24 synthetic individuals and 12 synthetic foods (288 person-food
 pairs). The generator and evaluated code share the programmed mapping; the
 controls belong to the same synthetic evidence family. The display assesses
@@ -58,7 +60,9 @@ preregistered. Because the generator uses the programmed mapping and domain
 aggregation evaluated by the implementation, these findings test numerical and
 assignment fidelity under correct specification. Biological misspecification
 was not assessed. Real participant responses were not evaluated. External
-validity was not established.
+validity was not established. The frozen synthetic file encoded a constant-input
+Spearman correlation as zero. The publication display reports this coefficient
+as not estimable; no frozen simulation file was altered or rerun.
 
 \subsection*{Combined evidence and expert-record boundary}
 
@@ -68,6 +72,11 @@ paired metric table, prediction table, split audit or analysis-status artifact
 was available. The production Food Compass and FNDDS registry also had no
 approved artifact chain, and the supporting GMrepo, ZOE and knowledge-path
 production registries or runs were absent.
+
+Available expert feedback informed the treatment of carbohydrate, zinc, copper
+and vitamin A as retinol activity equivalents. The available evidence supports
+qualitative content review only; the combined evidence and expert-record
+boundary is reported in Supplementary Table S3.
 
 \begin{table}[t]
 \caption{\textbf{Combined evidence and expert-record boundary.} Missing
@@ -87,16 +96,9 @@ Registry-bound GMrepo run & Not executed & No person-level generalization or dis
 Registry-bound ZOE rank run & Not executed & No aggregate rank-concordance result \\
 Registry-bound knowledge-path run & Not executed & No biological or mechanistic validation result \\
 External C1 feedback workbooks & Available and hash bound & Qualitative nutrient-channel content review \\
-Anonymous item-level C3 records & AUTHOR\_INPUT\_NEEDED & No consensus percentage or final-passage claim \\
-Anonymous item-level E4 records & AUTHOR\_INPUT\_NEEDED & No clinical-readiness or translation verdict \\
+Anonymous item-level C3 records & Not supplied & No consensus percentage or final-passage claim \\
+Anonymous item-level E4 records & Not supplied & No clinical-readiness or translation verdict \\
 Exact reviewer denominator & Not established & No exact expert-count claim \\
 \bottomrule
 \end{tabular}
 \end{table}
-
-\subsection*{Available expert records supported content review only}
-
-Available expert feedback informed the treatment of carbohydrate, zinc, copper
-and vitamin A as retinol activity equivalents. The available evidence supports
-qualitative content review only; the combined evidence and expert-record
-boundary is reported in Supplementary Table S3.

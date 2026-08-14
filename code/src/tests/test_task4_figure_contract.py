@@ -102,6 +102,7 @@ PANEL_COMMON_COLUMNS = [
     "seed",
 ]
 PANEL_TRAILING_COLUMNS = [
+    "metric_status",
     "mean_across_seeds",
     "replicate_interval_lower",
     "replicate_interval_upper",
@@ -285,7 +286,7 @@ def test_panel_csvs_are_exact_filters(
     assert panel["comparator_label"].drop_duplicates().tolist() == LABELS
     assert panel.groupby("comparator_key", sort=False)["seed"].apply(list).tolist() == [SEEDS] * 4
     assert set(panel["replicates_requested"]) == {5}
-    assert set(panel["replicates_valid"]) == {5}
+    assert set(panel["replicates_valid"]) == ({0, 5} if metric == "residual_spearman" else {5})
     assert set(panel["n_individuals_per_seed"]) == {24}
     assert set(panel["n_foods_per_seed"]) == {12}
     assert set(panel["n_pairs_per_seed"]) == {288}
@@ -296,16 +297,29 @@ def test_panel_csvs_are_exact_filters(
     expected = replicate[replicate["comparator"].isin(COMPARATORS)].copy()
     expected["comparator"] = pd.Categorical(expected["comparator"], COMPARATORS, ordered=True)
     expected = expected.sort_values(["comparator", "seed"])
-    assert panel[metric].tolist() == expected[metric].tolist()
-    assert panel["bootstrap_replicates_valid"].tolist() == expected[bootstrap_valid].tolist()
-    assert panel["per_seed_bootstrap_interval_lower"].tolist() == expected[bootstrap_lower].tolist()
-    assert panel["per_seed_bootstrap_interval_upper"].tolist() == expected[bootstrap_upper].tolist()
+    estimated = panel["metric_status"].eq("estimated")
+    expected_estimated = expected.loc[estimated.to_numpy()]
+    assert panel.loc[estimated, metric].tolist() == expected_estimated[metric].tolist()
+    assert panel.loc[estimated, "bootstrap_replicates_valid"].tolist() == expected_estimated[bootstrap_valid].tolist()
+    assert panel.loc[estimated, "per_seed_bootstrap_interval_lower"].tolist() == expected_estimated[bootstrap_lower].tolist()
+    assert panel.loc[estimated, "per_seed_bootstrap_interval_upper"].tolist() == expected_estimated[bootstrap_upper].tolist()
+
+    if metric == "residual_spearman":
+        baseline = panel[panel["comparator_key"] == "fcs_baseline"]
+        assert set(baseline["metric_status"]) == {"not_estimable_constant_residual"}
+        assert baseline[metric].isna().all()
+        assert baseline["mean_across_seeds"].isna().all()
+        assert baseline["replicate_interval_lower"].isna().all()
+        assert baseline["replicate_interval_upper"].isna().all()
+        assert set(baseline["bootstrap_replicates_valid"]) == {0}
 
     summary = pd.read_csv(FROZEN / "synthetic_attribute_twin_summary.csv")
     summary = summary[(summary["comparator"].isin(COMPARATORS)) & (summary["metric"] == summary_metric)]
     summary = summary.set_index("comparator").loc[COMPARATORS]
     for key, (_, row) in zip(COMPARATORS, summary.iterrows()):
         selected = panel[panel["comparator_key"] == key]
+        if metric == "residual_spearman" and key == "fcs_baseline":
+            continue
         assert set(selected["mean_across_seeds"]) == {row["estimate"]}
         assert set(selected["replicate_interval_lower"]) == {row["ci_lower"]}
         assert set(selected["replicate_interval_upper"]) == {row["ci_upper"]}
@@ -315,9 +329,13 @@ def test_source_manifest_hashes_and_semantics() -> None:
     manifest = SOURCE_DATA / "source_data_manifest.csv"
     rows = _rows(manifest)
     assert list(rows[0]) == SOURCE_MANIFEST_COLUMNS
-    assert [r["file_path"] for r in rows] == [
+    assert [r["file_path"] for r in rows[:2]] == [
         "source_data/figS1a_programmed_mapping_rmse.csv",
         "source_data/figS1b_assignment_control_spearman.csv",
+    ]
+    assert [r["file_path"] for r in rows[2:]] == [
+        f"source_data/frozen_synthetic_positive_control/{name}"
+        for name in FROZEN_HASHES
     ]
     for row in rows:
         path = SUBMISSION / row["file_path"]
@@ -332,10 +350,14 @@ def test_source_manifest_hashes_and_semantics() -> None:
         ):
             assert re.fullmatch(r"[0-9a-f]{64}", row[key])
         assert row["data_class"] == "synthetic"
+    for row in rows[:2]:
         assert row["inference_unit"] == "independent simulation seed"
         assert row["n_effective"] == "5"
-        assert row["interval_type"] == "empirical replicate interval"
-        assert row["replicates_requested"] == row["replicates_valid"] == "5"
+        assert row["interval_type"] == "across-seed percentile range"
+        assert row["replicates_requested"] == "5"
+    for name, row in zip(FROZEN_HASHES, rows[2:]):
+        assert row["generated_file_sha256"] == FROZEN_HASHES[name]
+        assert row["source_artifact_sha256"] == FROZEN_HASHES[name]
 
 
 def test_export_dimensions_fonts_vectors_and_text() -> None:
@@ -365,6 +387,7 @@ def test_export_dimensions_fonts_vectors_and_text() -> None:
     assert "CORRECTLY SPECIFIED SYNTHETIC POSITIVE-CONTROL" in s1_svg
     assert "Method-only; not biological, clinical or external validation" in s1_svg
     assert "confidence interval" not in s1_svg.casefold()
+    assert "not estimable (constant residual)" in s1_svg
 
 
 def test_outputs_use_accessible_redundant_encoding() -> None:
@@ -395,6 +418,10 @@ def test_two_clean_builds_are_deterministic(tmp_path: Path) -> None:
     relative = [
         Path("source_data/figS1a_programmed_mapping_rmse.csv"),
         Path("source_data/figS1b_assignment_control_spearman.csv"),
+        *[
+            Path("source_data/frozen_synthetic_positive_control") / name
+            for name in FROZEN_HASHES
+        ],
         Path("figures/figure_1_attribute_calibration.svg"),
         Path("figures/figure_1_attribute_calibration.pdf"),
         Path("figures/figure_1_attribute_calibration.png"),
@@ -412,9 +439,10 @@ def test_tex_captions_preserve_evidence_boundaries() -> None:
     supplement = (SUBMISSION / "supplementary_results.tex").read_text(encoding="utf-8")
     assert "figure_1_attribute_calibration.pdf" in main
     assert "Every panel is conceptual; none contains observed or synthetic data" in " ".join(main.split())
-    assert "Supplementary Fig.~\\ref{fig:supp_synthetic_positive_control}" in " ".join(main.split())
+    assert "Supplementary Fig. S1" in " ".join(main.split())
     assert "supplementary_figure_S1_synthetic_positive_control.pdf" in supplement
-    assert "empirical 2.5th--97.5th percentiles across five seeds" in supplement
+    assert "2.5th--97.5th percentile range across five seeds" in supplement
+    assert "not estimable because its predicted residual is constant" in " ".join(supplement.split())
     assert "Biological misspecification was not assessed" in " ".join(supplement.split())
     assert "External validity was not established" in " ".join(supplement.split())
     assert "confidence interval" not in supplement.casefold()

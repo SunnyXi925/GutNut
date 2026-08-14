@@ -1,0 +1,6 @@
+criterion_id,criterion,passed,evidence_role,data_class,seed_set,payload_sha256
+programmed_mapping_recovery_vs_fcs,locked programmed-mapping residual RMSE strictly below FCS baseline,True,correctly_specified_synthetic_positive_control,synthetic,"[1701,1702,1703,1704,1705]",86efca9d8a8efad94839fe16b0344d7f10cfa2441be16e047d13e7844158c927
+random_assignment_loses_recovery,locked residual RMSE strictly below random microbiome assignment,True,correctly_specified_synthetic_positive_control,synthetic,"[1701,1702,1703,1704,1705]",86efca9d8a8efad94839fe16b0344d7f10cfa2441be16e047d13e7844158c927
+sattolo_assignment_loses_recovery,locked residual RMSE strictly below Sattolo-deranged microbiome assignment,True,correctly_specified_synthetic_positive_control,synthetic,"[1701,1702,1703,1704,1705]",86efca9d8a8efad94839fe16b0344d7f10cfa2441be16e047d13e7844158c927
+locked_preserves_universal_rank,mean universal-rank Spearman >= 0.90,True,correctly_specified_synthetic_positive_control,synthetic,"[1701,1702,1703,1704,1705]",86efca9d8a8efad94839fe16b0344d7f10cfa2441be16e047d13e7844158c927
+expert_mask_excludes_programmed_proxies,expert-mask excluded-proxy contribution is zero and original-mask contribution is positive,True,correctly_specified_synthetic_positive_control,synthetic,"[1701,1702,1703,1704,1705]",86efca9d8a8efad94839fe16b0344d7f10cfa2441be16e047d13e7844158c927
