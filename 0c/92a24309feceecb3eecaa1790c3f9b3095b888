@@ -1,0 +1,54 @@
+manuscript/nature_food_submission/narrative_outline.md
+  s_4d75bbbcc79dac::t_da6b83865a99b1 39-42,46-50,79-83,87-92,96-100
+code/src/tests/test_manuscript_claim_gate.py
+  s_4d75bbbcc79dac::t_2d389cfb5737ff 17-20,54,268,278-364,371,384-403,423-425
+  s_4d75bbbcc79dac::t_e5b981616d6a13 365-370,372-383
+  s_4d75bbbcc79dac::t_4af2c97f9ff422 404-422
+manuscript/nature_food_submission/sn-article.tex
+  s_4d75bbbcc79dac::t_e5b981616d6a13 21
+.superpowers/sdd/phase3-task3-report.md
+  s_4d75bbbcc79dac::t_da6b83865a99b1 1-89
+.superpowers/sdd/progress.md
+  s_4d75bbbcc79dac::t_da6b83865a99b1 60
+manuscript/nature_food_submission/claim_evidence_matrix.csv
+  s_4d75bbbcc79dac::t_da6b83865a99b1 2-3,8-13
+manuscript/nature_food_submission/sections.tex
+  s_4d75bbbcc79dac::t_1ac8fc52d1cf3b 12,18
+  s_4d75bbbcc79dac::t_61b47412df8fad 134
+  s_4d75bbbcc79dac::t_0bddf8759e619f 4,6-7,10,20,123,128
+  s_4d75bbbcc79dac::t_e5b981616d6a13 24,115-116
+manuscript/nature_food_submission/references.bib
+  s_4d75bbbcc79dac::t_486580affb6c67 74-75,108-131,140-141,152-154,165-166,199-200,225,232-235,289-291,302-303,339,347-348,459-460,476,479-481
+  s_44ab89c3c3b5d7::t_cd437c71743a2f 12-22,34-63,78-83,180-188,238-245,259-274,276-278,328-336,450-458
+  s_4d75bbbcc79dac::t_b1b3696ecf71e4 76-77,236-237,337-338
+manuscript/nature_food_submission/reference_audit.csv
+  s_4d75bbbcc79dac::t_da6b83865a99b1 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "0c92a24309feceecb3eecaa1790c3f9b3095b888",
+  "prompts": {},
+  "sessions": {
+    "s_44ab89c3c3b5d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fca67-f393-7372-9a61-f5faa1d9137d",
+        "model": "gpt-5.5"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 506,
+      "accepted_lines": 506
+    },
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 6,
+      "accepted_lines": 6
+    }
+  }
+}
