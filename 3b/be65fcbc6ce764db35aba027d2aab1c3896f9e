@@ -1,0 +1,75 @@
+manuscript/nature_food_submission/source_data/figS1b_assignment_control_spearman.csv
+  s_4d75bbbcc79dac::t_452de3794d170f 1-21
+manuscript/nature_food_submission/source_data/README.md
+  s_4d75bbbcc79dac::t_452de3794d170f 1,3-127
+code/src/scripts/make_main_figures.py
+  s_4d75bbbcc79dac::t_f7f2b004c851c6 323,329-332,426-430
+  s_4d75bbbcc79dac::t_66a8605a5c77d8 20,272-276,278
+  s_4d75bbbcc79dac::t_b219ccb501d8f8 261-264,266
+  s_4d75bbbcc79dac::t_192919a988e9ca 321,328,359-360,397-399,401-402
+  s_4d75bbbcc79dac::t_eac654e73e6d5c 2,6-9,13,15,17-18,21-177,180-181,183-194,197-198,200-208,210-213,218-227,229-260,265,271,279-293,296-313,316-317,324,333-334,336-337,341-343,345-358,361-372,374-376,378-381,383-385,387-394,403-405,407-409,411-413,416-417,431-449,459-466,468,470,473-509,516-522,524,528-564,566-567,569-616,627,629-632,634-671,674-694,696-703,705-717,719-900,904-910,914-920,922-925,927-930,932-933,937
+  s_4d75bbbcc79dac::t_b45e15802e3d7f 11,267-270,277
+  s_4d75bbbcc79dac::t_d6d18819c78d87 450-458,467,471,510-515,523,525-527,565,568
+  s_4d75bbbcc79dac::t_94ccc4cba87f4a 382,410,414-415,418-425,617-626,628,633,672-673,695,704
+  s_4d75bbbcc79dac::t_02ca4eb6779241 315,318-320,322,325-327,335,339-340,344,373,377,386,395-396,400,406
+  s_4d75bbbcc79dac::t_ba4f7116dd4f46 228
+  s_4d75bbbcc79dac::t_613dc1b921b09f 469,472
+  s_4d75bbbcc79dac::t_52af0e15b0e4ce 314
+manuscript/nature_food_submission/figures/figure_1_attribute_calibration.svg
+  s_4d75bbbcc79dac::t_452de3794d170f 1-1227
+.superpowers/sdd/progress.md
+  s_4d75bbbcc79dac::t_452de3794d170f 61
+.superpowers/sdd/phase3-task4-report.md
+  s_4d75bbbcc79dac::t_452de3794d170f 1-70
+manuscript/nature_food_submission/figures/figure_manifest.csv
+  s_4d75bbbcc79dac::t_452de3794d170f 1-16
+manuscript/nature_food_submission/supplementary_results.tex
+  s_4d75bbbcc79dac::t_4f2d72278fe5ce 36-39,45-48
+  s_4d75bbbcc79dac::t_7dffe12d96b11f 33-35,40-44,51-53
+  s_4d75bbbcc79dac::t_5a725e7d79eab0 49-50
+manuscript/nature_food_submission/figures/figure_output_manifest.csv
+  s_4d75bbbcc79dac::t_452de3794d170f 1-7
+manuscript/nature_food_submission/source_data/source_data_manifest.csv
+  s_4d75bbbcc79dac::t_452de3794d170f 1-3
+manuscript/nature_food_submission/figures/supplementary_figure_S1_synthetic_positive_control.svg
+  s_4d75bbbcc79dac::t_452de3794d170f 1-558
+manuscript/nature_food_submission/supplementary_information.tex
+  s_4d75bbbcc79dac::t_7dffe12d96b11f 6
+manuscript/nature_food_submission/sections.tex
+  s_4d75bbbcc79dac::t_7dffe12d96b11f 51-64,69-71,120-122
+  s_4d75bbbcc79dac::t_4f2d72278fe5ce 65
+  s_4d75bbbcc79dac::t_5a725e7d79eab0 66-68
+code/src/tests/test_task4_figure_contract.py
+  s_4d75bbbcc79dac::t_d6d18819c78d87 415
+  s_4d75bbbcc79dac::t_66a8605a5c77d8 361
+  s_4d75bbbcc79dac::t_b219ccb501d8f8 382-386
+  s_4d75bbbcc79dac::t_5a725e7d79eab0 414,418-419
+  s_4d75bbbcc79dac::t_bb79e18a8bdbbd 1-360,362-381,387-413,416-417,420
+manuscript/nature_food_submission/figures/submission_asset_allowlist.txt
+  s_4d75bbbcc79dac::t_452de3794d170f 1-14
+manuscript/nature_food_submission/source_data/figS1a_programmed_mapping_rmse.csv
+  s_4d75bbbcc79dac::t_452de3794d170f 1-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "3bbe65fcbc6ce764db35aba027d2aab1c3896f9e",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  },
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 1,
+      "accepted_lines": 1
+    }
+  }
+}
