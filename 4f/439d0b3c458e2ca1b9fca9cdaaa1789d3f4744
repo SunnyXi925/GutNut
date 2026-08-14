@@ -1,0 +1,39 @@
+results/phase2/evidence-gate/current_gate_decision.json
+  s_4d75bbbcc79dac::t_35df499f10b4cd 19,34
+results/phase2/evidence-gate/claim_policy.json
+  s_4d75bbbcc79dac::t_35df499f10b4cd 63-72,75,82,85
+code/src/gmnps/validation/claim_policy.py
+  s_4d75bbbcc79dac::t_162e90d977fb5f 74,102-105,107-140,142-143,190,199-201,390,412-422,504-507,512-520,558,560-567
+code/src/tests/test_evidence_gate.py
+  s_4d75bbbcc79dac::t_162e90d977fb5f 1089-1103,1148-1184
+  s_4d75bbbcc79dac::t_99f8cea34481d5 1086-1088,1185-1186
+code/src/configs/claim_policy_registry.json
+  s_4d75bbbcc79dac::t_554b7c863fa5b4 4,6,8
+.superpowers/sdd/phase2-task5-report.md
+  s_4d75bbbcc79dac::t_7437545a4c580c 577-626
+docs/data/validation_evidence_matrix.md
+  s_4d75bbbcc79dac::t_7437545a4c580c 68-79,84,88-89,102-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "4f439d0b3c458e2ca1b9fca9cdaaa1789d3f4744",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  },
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 5,
+      "accepted_lines": 5
+    }
+  }
+}
