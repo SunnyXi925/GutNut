@@ -1,0 +1,38 @@
+results/phase2/evidence-gate/claim_policy.json
+  s_4d75bbbcc79dac::t_99650c8300244e 121,149
+.superpowers/sdd/phase3-task3-report.md
+  s_4d75bbbcc79dac::t_4bd1d0cfb3efa2 39-48,113-114,116-117,122
+.superpowers/sdd/progress.md
+  s_4d75bbbcc79dac::t_4bd1d0cfb3efa2 60
+code/src/gmnps/validation/claim_policy.py
+  s_4d75bbbcc79dac::t_4cfe881b3f78b4 29,95,98,314-317,674-682,686,689-697,719-721,724-725,727,735,740,742-744,746-748,766-768,780,795,941-951
+  s_4d75bbbcc79dac::t_d0f8229a2c26fe 99,733,745,781-786,790,792,794
+results/phase2/evidence-gate/current_gate_decision.json
+  s_4d75bbbcc79dac::t_99650c8300244e 19,34
+code/src/tests/test_manuscript_claim_gate.py
+  s_4d75bbbcc79dac::t_4cfe881b3f78b4 790-792,833-835,863,875-886
+  s_4d75bbbcc79dac::t_e5d364b9212fc0 887-888
+code/src/configs/claim_policy_registry.json
+  s_4d75bbbcc79dac::t_99650c8300244e 4,6,8
+code/src/tests/test_evidence_gate.py
+  s_4d75bbbcc79dac::t_4cfe881b3f78b4 1262-1264,1276-1278,1347-1385
+  s_4d75bbbcc79dac::t_e5d364b9212fc0 1386-1387
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "e94562c9643c229325794192f8d02db2b841354f",
+  "prompts": {},
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 4,
+      "accepted_lines": 4
+    }
+  }
+}
