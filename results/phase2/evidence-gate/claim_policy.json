@@ -5,7 +5,32 @@
     "audited_data_unavailable",
     "fail_closed_computational_design"
   ],
+  "assertion_patterns": [
+    "\\bpredict(?:s|ed|ing)?\\b|\\bprediction\\b",
+    "\\boutperform(?:s|ed|ing)?\\b",
+    "\\bimprov(?:e|es|ed|ing|ement|ements)\\b",
+    "\\bgenerali[sz]\\w*\\b",
+    "\\bvalidat(?:e|es|ed|ing|ion|ions)\\b",
+    "\\baccur(?:ate|ately|acy)\\b",
+    "\\bestablish(?:es|ed|ing|ment)?\\b",
+    "\\bdemonstrat(?:e|es|ed|ing|ion|ions)\\b",
+    "\\bsupport(?:s|ed|ing)?\\b",
+    "\\benabl(?:e|es|ed|ing)\\b",
+    "\\bguid(?:e|es|ed|ing|ance)\\b",
+    "\\brecommend(?:s|ed|ing|ation|ations)?\\b",
+    "\\bassociate(?:s|d|ing)?\\b|\\bassociation(?:s)?\\b",
+    "\\brecover(?:s|ed|ing|y)?\\b",
+    "\\bresponses?\\b"
+  ],
   "authorization": "production_path_only_evidence_gate",
+  "claim_subject_patterns": [
+    "\\bGMNPS\\b",
+    "\\b(?:model|framework|approach|method|system|platform|algorithm|implementation)\\b",
+    "\\bpersonal(?:i[sz]ation|i[sz]ed(?:\\s+GMNPS)?\\s+scores?)\\b",
+    "\\bmicrobiome[- ]informed(?:\\s+\\w+){0,2}\\s+scores?\\b",
+    "\\b(?:GMNPS|personal(?:i[sz]ed)?|microbiome[- ]informed)\\s+(?:model|framework|approach|method|system|platform|algorithm|scores?)\\b",
+    "\\b(?:scores?|findings|results|analysis)\\b"
+  ],
   "direct_scope_whitelist": [],
   "forbidden_claims": [
     "transforms_postprandial_response",
@@ -35,15 +60,16 @@
     "\\bcausal\\w*\\b",
     "\\bprecision[- ]ready\\b"
   ],
+  "negative_cue_max_words": 6,
   "negative_limitation_sentences_allowed": true,
-  "payload_sha256": "11470350f08b2e5fb6e28380e638039e1a26a7f7ddde622457b452c4af9c19c1",
+  "payload_sha256": "5c33cdf2dd30a322203439dbe57f2d0baf0b6b38e862585278b92d511825668d",
   "phase3_must_consume": true,
   "positive_claim_templates": [
     "The locked implementation recovered the programmed mapping in a correctly specified synthetic positive-control.",
     "Eligible observed participant-by-meal outcomes are unavailable in the audited data.",
     "The evidence gate implements a computational, fail-closed design."
   ],
-  "schema_version": "claim-policy-v2",
+  "schema_version": "claim-policy-v3",
   "scope": "Phase 3 manuscript and build inputs",
   "source_state": "absent_real_validation_artifacts",
   "tier": "computational_feasibility"

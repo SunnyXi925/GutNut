@@ -44,6 +44,33 @@ _FORBIDDEN_PATTERNS = (
     r"\bcausal\w*\b",
     r"\bprecision[- ]ready\b",
 )
+_CLAIM_SUBJECT_PATTERNS = (
+    r"\bGMNPS\b",
+    r"\b(?:model|framework|approach|method|system|platform|algorithm|implementation)\b",
+    r"\bpersonal(?:i[sz]ation|i[sz]ed(?:\s+GMNPS)?\s+scores?)\b",
+    r"\bmicrobiome[- ]informed(?:\s+\w+){0,2}\s+scores?\b",
+    r"\b(?:GMNPS|personal(?:i[sz]ed)?|microbiome[- ]informed)\s+"
+    r"(?:model|framework|approach|method|system|platform|algorithm|scores?)\b",
+    r"\b(?:scores?|findings|results|analysis)\b",
+)
+_ASSERTION_PATTERNS = (
+    r"\bpredict(?:s|ed|ing)?\b|\bprediction\b",
+    r"\boutperform(?:s|ed|ing)?\b",
+    r"\bimprov(?:e|es|ed|ing|ement|ements)\b",
+    r"\bgenerali[sz]\w*\b",
+    r"\bvalidat(?:e|es|ed|ing|ion|ions)\b",
+    r"\baccur(?:ate|ately|acy)\b",
+    r"\bestablish(?:es|ed|ing|ment)?\b",
+    r"\bdemonstrat(?:e|es|ed|ing|ion|ions)\b",
+    r"\bsupport(?:s|ed|ing)?\b",
+    r"\benabl(?:e|es|ed|ing)\b",
+    r"\bguid(?:e|es|ed|ing|ance)\b",
+    r"\brecommend(?:s|ed|ing|ation|ations)?\b",
+    r"\bassociate(?:s|d|ing)?\b|\bassociation(?:s)?\b",
+    r"\brecover(?:s|ed|ing|y)?\b",
+    r"\bresponses?\b",
+)
+_NEGATIVE_CUE_MAX_WORDS = 6
 _DIRECT_SCOPED_SENTENCE = (
     "For the locked primary endpoints glucose_iAUC_2h and tg_6h_rise, "
     "locked_attribute_gmnps had lower subject-held-out RMSE than fcs_microbiome."
@@ -54,15 +81,41 @@ _COMPUTATIONAL_POSITIVE_TEMPLATES = (
     "Eligible observed participant-by-meal outcomes are unavailable in the audited data.",
     "The evidence gate implements a computational, fail-closed design.",
 )
-_NEGATIVE_LIMITATION_CUE = re.compile(
+_PRECEDING_NEGATIVE_CUE = re.compile(
     r"\b(?:does|do|did|is|are|was|were|has|have|had|can|could|will|would)\s+not\b"
-    r"|\b(?:cannot|can't|without|unavailable|absent|unverified|unsupported)\b"
-    r"|\bno\s+(?:evidence|proof|claim|support|completed|eligible|independent)\b"
-    r"|\bnot\s+(?:established|demonstrated|shown|supported|assessed|evaluated|performed|available)\b",
+    r"|\bcannot\b|\bcan't\b|\bno\s+evidence\s+of\b"
+    r"|\bremains?\s+unvalidated\b",
     flags=re.IGNORECASE,
 )
-_CONTRAST_BOUNDARY = re.compile(
-    r"\b(?:but|however|yet|although)\b|,\s+and\s+|;",
+_FOLLOWING_NEGATIVE_CUE = re.compile(
+    r"\b(?:is|are|was|were|has|have|had)\s+not\s+"
+    r"(?:established|demonstrated|shown|supported|assessed|evaluated|performed|"
+    r"available|validated)\b|\bremains?\s+unvalidated\b",
+    flags=re.IGNORECASE,
+)
+_LOCAL_CLAUSE_BOUNDARY = re.compile(
+    r"[,;:]|\b(?:but|however|yet|although|though|whereas|while)\b",
+    flags=re.IGNORECASE,
+)
+_WORD = re.compile(r"\b[\w'-]+\b")
+_METHODS_INFRASTRUCTURE = re.compile(
+    r"\b(?:sha-?256|hash(?:es)?|digest(?:s)?|checksum(?:s)?|manifest|registry|"
+    r"artifact|configuration|repository|source\s+file|file\s+path|version)\b",
+    flags=re.IGNORECASE,
+)
+_SCIENTIFIC_OBJECT = re.compile(
+    r"\b(?:glycaem\w*|glucos\w*|triglyceride\w*|postprandial|metabolic|"
+    r"clinical\w*|biological\w*|external\s+validity|cohort|participant|patient|"
+    r"individual|personal(?:i[sz]ed|i[sz]ation)|microbiome|nutrition|health|"
+    r"dietary|food\s+compass|outcomes?|responses?|prediction|performance)\b",
+    flags=re.IGNORECASE,
+)
+_METHODS_ONLY_ASSERTION = re.compile(
+    r"(?:support(?:s|ed|ing)?|enabl(?:e|es|ed|ing))",
+    flags=re.IGNORECASE,
+)
+_NEGATION_SCOPE_BREAK = re.compile(
+    r"\b(?:and|or|but|yet|however)\b",
     flags=re.IGNORECASE,
 )
 _DIGEST = re.compile(r"[0-9a-f]{64}")
@@ -105,12 +158,15 @@ def _build_claim_policy_payload(
     if direct:
         positive_templates.append(_DIRECT_SCOPED_SENTENCE)
     payload: dict[str, object] = {
-        "schema_version": "claim-policy-v2",
+        "schema_version": "claim-policy-v3",
         "tier": outcome.tier,
         "source_state": outcome.source_state,
         "allowed_claims": list(outcome.allowed_claims),
         "forbidden_claims": list(outcome.prohibited_claims),
         "forbidden_patterns": list(_FORBIDDEN_PATTERNS),
+        "claim_subject_patterns": list(_CLAIM_SUBJECT_PATTERNS),
+        "assertion_patterns": list(_ASSERTION_PATTERNS),
+        "negative_cue_max_words": _NEGATIVE_CUE_MAX_WORDS,
         "direct_scope_whitelist": [_DIRECT_SCOPED_SENTENCE] if direct else [],
         "positive_claim_templates": positive_templates,
         "negative_limitation_sentences_allowed": True,
@@ -299,7 +355,7 @@ def _validate_bound_bundle() -> dict[str, object]:
     )
     if decision.get("schema_version") != "evidence-gate-decision-v2":
         raise ValueError("gate decision schema version is invalid")
-    if policy.get("schema_version") != "claim-policy-v2":
+    if policy.get("schema_version") != "claim-policy-v3":
         raise ValueError("claim policy schema version is invalid")
     if decision.get("authorization") != "production_path_only_evidence_gate" or policy.get(
         "authorization"
@@ -315,6 +371,12 @@ def _validate_bound_bundle() -> dict[str, object]:
     patterns = policy.get("forbidden_patterns")
     if patterns != list(_FORBIDDEN_PATTERNS):
         raise ValueError("claim policy forbidden_patterns is invalid or incomplete")
+    if policy.get("claim_subject_patterns") != list(_CLAIM_SUBJECT_PATTERNS):
+        raise ValueError("claim policy claim_subject_patterns is invalid")
+    if policy.get("assertion_patterns") != list(_ASSERTION_PATTERNS):
+        raise ValueError("claim policy assertion_patterns is invalid")
+    if policy.get("negative_cue_max_words") != _NEGATIVE_CUE_MAX_WORDS:
+        raise ValueError("claim policy negative-cue window is invalid")
     whitelist = policy.get("direct_scope_whitelist")
     expected_whitelist = (
         [_DIRECT_SCOPED_SENTENCE]
@@ -343,17 +405,75 @@ def _sentences(text: str) -> tuple[str, ...]:
     )
 
 
+def _bounded_words(text: str, *, from_end: bool) -> str:
+    words = list(_WORD.finditer(text))
+    selected = (
+        words[-_NEGATIVE_CUE_MAX_WORDS :]
+        if from_end
+        else words[:_NEGATIVE_CUE_MAX_WORDS]
+    )
+    if not selected:
+        return ""
+    return text[selected[0].start() : selected[-1].end()]
+
+
 def _is_negative_limitation(sentence: str, match: re.Match[str]) -> bool:
-    boundaries = list(_CONTRAST_BOUNDARY.finditer(sentence))
-    start = max(
+    boundaries = list(_LOCAL_CLAUSE_BOUNDARY.finditer(sentence))
+    clause_start = max(
         (boundary.end() for boundary in boundaries if boundary.end() <= match.start()),
         default=0,
     )
-    end = min(
+    clause_end = min(
         (boundary.start() for boundary in boundaries if boundary.start() >= match.end()),
         default=len(sentence),
     )
-    return _NEGATIVE_LIMITATION_CUE.search(sentence[start:end]) is not None
+    preceding = _bounded_words(
+        sentence[clause_start : match.start()], from_end=True
+    )
+    following = _bounded_words(
+        sentence[match.end() : clause_end], from_end=False
+    )
+    preceding_cue = _PRECEDING_NEGATIVE_CUE.search(preceding)
+    if preceding_cue is not None and _NEGATION_SCOPE_BREAK.search(
+        preceding[preceding_cue.end() :]
+    ) is None:
+        return True
+    following_cue = _FOLLOWING_NEGATIVE_CUE.search(following)
+    return following_cue is not None and _NEGATION_SCOPE_BREAK.search(
+        following[following_cue.end() :]
+    ) is None
+
+
+def _pattern_matches(
+    patterns: Iterable[str], sentence: str
+) -> list[tuple[str, re.Match[str]]]:
+    return [
+        (pattern, match)
+        for pattern in patterns
+        for match in re.finditer(pattern, sentence, flags=re.IGNORECASE)
+    ]
+
+
+def _is_methods_infrastructure_sentence(
+    sentence: str,
+    assertion_matches: list[tuple[str, re.Match[str]]],
+) -> bool:
+    return (
+        bool(assertion_matches)
+        and _SCIENTIFIC_OBJECT.search(sentence) is None
+        and all(
+            _METHODS_ONLY_ASSERTION.fullmatch(match.group(0)) is not None
+            and _METHODS_INFRASTRUCTURE.search(
+                _bounded_words(sentence[: match.start()], from_end=True)
+            )
+            is not None
+            and _METHODS_INFRASTRUCTURE.search(
+                _bounded_words(sentence[match.end() :], from_end=False)
+            )
+            is not None
+            for _, match in assertion_matches
+        )
+    )
 
 
 def _is_exact_positive_template(sentence: str, policy: dict[str, object]) -> bool:
@@ -370,26 +490,44 @@ def check_claim_inputs(
     """Check inputs against the fixed, registry-approved production claim bundle."""
 
     policy = _validate_bound_bundle()
-    patterns = policy["forbidden_patterns"]
+    forbidden_patterns = policy["forbidden_patterns"]
+    subject_patterns = policy["claim_subject_patterns"]
+    assertion_patterns = policy["assertion_patterns"]
     violations: list[ClaimViolation] = []
     for value in input_paths:
         path = Path(value)
         text = path.read_text(encoding="utf-8")
         for sentence in _sentences(text):
-            matches = [
-                (pattern, match)
-                for pattern in patterns
-                for match in re.finditer(pattern, sentence, flags=re.IGNORECASE)
-            ]
-            if not matches or _is_exact_positive_template(sentence, policy):
+            if _is_exact_positive_template(sentence, policy):
                 continue
-            unnegated = [
+            forbidden_matches = _pattern_matches(forbidden_patterns, sentence)
+            unnegated_forbidden = [
                 pattern
-                for pattern, match in matches
+                for pattern, match in forbidden_matches
                 if not _is_negative_limitation(sentence, match)
             ]
-            if unnegated:
-                violations.append(ClaimViolation(path=path, pattern=unnegated[0]))
+            if unnegated_forbidden:
+                violations.append(
+                    ClaimViolation(path=path, pattern=unnegated_forbidden[0])
+                )
+                continue
+            subject_matches = _pattern_matches(subject_patterns, sentence)
+            assertion_matches = _pattern_matches(assertion_patterns, sentence)
+            if (
+                not subject_matches
+                or not assertion_matches
+                or _is_methods_infrastructure_sentence(sentence, assertion_matches)
+            ):
+                continue
+            unnegated_assertions = [
+                pattern
+                for pattern, match in assertion_matches
+                if not _is_negative_limitation(sentence, match)
+            ]
+            if unnegated_assertions:
+                violations.append(
+                    ClaimViolation(path=path, pattern=unnegated_assertions[0])
+                )
     return tuple(violations)
 
 

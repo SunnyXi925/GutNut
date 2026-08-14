@@ -1054,6 +1054,63 @@ def test_sentence_level_final_review_claim_examples_are_rejected(
     assert check_claim_inputs([claim])
 
 
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "GMNPS accurately predicts individual postprandial glycaemic excursions.",
+        (
+            "Personalized GMNPS scores outperform Food Compass for glycaemic "
+            "and triglyceride outcomes."
+        ),
+        "The GMNPS model predicts individual postprandial glycaemic responses.",
+        "The personalization framework improves glycaemic response prediction.",
+        (
+            "The microbiome-informed score is associated with better metabolic "
+            "outcomes."
+        ),
+        (
+            "The GMNPS model hash supports personalized nutrition and artifact "
+            "verification."
+        ),
+    ],
+)
+def test_unlisted_subject_assertion_claims_fail_closed(
+    tmp_path, monkeypatch, sentence
+):
+    _activate_claim_bundle(tmp_path, monkeypatch, evaluate_evidence_gate())
+    claim = tmp_path / "claim.txt"
+    claim.write_text(sentence)
+    assert check_claim_inputs([claim])
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        (
+            "Although external validation was not performed, external validity "
+            "is established."
+        ),
+        (
+            "The GMNPS model does not establish external validity but accurately "
+            "predicts glycaemic response."
+        ),
+        (
+            "No evidence of external validity was found; the personalized score "
+            "outperforms Food Compass."
+        ),
+        "The GMNPS model does not fail and accurately predicts glycaemic response.",
+        "External validity was not assessed and is established by the model.",
+    ],
+)
+def test_negative_cues_do_not_exempt_later_positive_claims(
+    tmp_path, monkeypatch, sentence
+):
+    _activate_claim_bundle(tmp_path, monkeypatch, evaluate_evidence_gate())
+    claim = tmp_path / "claim.txt"
+    claim.write_text(sentence)
+    assert check_claim_inputs([claim])
+
+
 def test_computational_tier_accepts_only_exact_safe_methods_and_limitations(
     tmp_path, monkeypatch
 ):
@@ -1064,7 +1121,8 @@ def test_computational_tier_accepts_only_exact_safe_methods_and_limitations(
         "specified synthetic positive-control.\n"
         "Eligible observed participant-by-meal outcomes are unavailable in the audited data.\n"
         "The evidence gate implements a computational, fail-closed design.\n"
-        "This analysis does not establish external validity, clinical utility, or causal effects."
+        "This analysis does not establish external validity.\n"
+        "The GMNPS model source hash supports reproducible artifact verification."
     )
     assert check_claim_inputs([safe]) == ()
 

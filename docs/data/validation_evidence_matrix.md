@@ -65,12 +65,36 @@ CLI accepts input files only: it loads the fixed decision/policy paths and verif
 exact hashes against `code/src/configs/claim_policy_registry.json`. Arbitrary decision
 or policy paths cannot authorize a claim. The production policy builder reruns the
 path-only evidence gate; an in-memory outcome can create testing-only bytes but cannot
-create an authorized bundle. Claim-bearing sentences are checked individually. At the
-current computational tier, only exact templates for the correctly specified synthetic
-programmed mapping, audited outcome unavailability and the computational fail-closed
-design are eligible; explicit negative limitation sentences are also permitted. Even
-at a future direct tier, generic external-validity, clinical, causal, guidance and
-recommendation wording remains forbidden. The sole additional positive template is
-explicitly scoped to both locked primary endpoints, `glucose_iAUC_2h` and
-`tg_6h_rise`, and their subject-held-out RMSE comparison. Task 5 did not check or
-revise the current manuscript.
+create an authorized bundle. Claim-bearing sentences are checked individually. The
+checker recognizes both the fixed forbidden families and subject-plus-assertion
+combinations covering GMNPS/models/frameworks/approaches/personalization/scores and
+scientific prediction, superiority, improvement, generalization, validation,
+accuracy, establishment, demonstration, support, enablement, guidance,
+recommendation, association, recovery or response assertions. Every supplied
+plain-text input is scanned, so section labelling cannot bypass enforcement. A narrow
+Methods exception is limited to support/enable statements about hashes, manifests or
+artifacts that contain no scientific outcome object.
+
+At the current computational tier, only exact templates for the correctly specified
+synthetic programmed mapping, audited outcome unavailability and the computational
+fail-closed design are eligible. An explicit negative limitation is permitted only
+when its cue is bound to the specific forbidden/assertion match within the same local
+clause and at most six words; punctuation, contrast and a new coordinated predicate
+end that scope. Thus `does not establish external validity` is allowed, but
+`Although external validation was not performed, external validity is established.`
+is rejected. Unrecognized positive subject-plus-assertion claims fail closed.
+
+Even at a future direct tier, generic external-validity, clinical, causal, guidance
+and recommendation wording remains forbidden. The sole additional positive template
+is explicitly scoped to both locked primary endpoints, `glucose_iAUC_2h` and
+`tg_6h_rise`, and their subject-held-out RMSE comparison. No Task 4 production
+evidence has been executed and registry-bound, so biological consistency remains a
+forbidden positive claim. Task 5 did not check or revise the current manuscript.
+
+Current approved claim-control hashes:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `claim_policy.json` | `43b9781f19f99d1bc84210e0f0f53784a54ded6cc3b230a9678ed5cd97eaf7cc` |
+| `current_gate_decision.json` | `e2ae3020bfcea4b208d1ac3afd50987d8b2f943632df31afa306c05e929e18eb` |
+| `claim_policy_registry.json` | `4b15b40cb58f21f0cdded7c02d609195b8cd970fc31a9109a7a091719c4c862c` |

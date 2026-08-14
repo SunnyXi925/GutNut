@@ -525,3 +525,52 @@ rerun and frozen; all code-fixed checks passed.
 The full suite exceeds the 665-test baseline by 18 tests and has no failures. The sole
 warning is the pre-existing environment mismatch: installed NumPy 2.4.6 is outside
 SciPy 1.13.1's declared `<2.3.0` range. This remains the only known concern.
+
+## Final claim-policy Major closure (2026-08-14)
+
+### Status and enforcement
+
+**DONE.** This section supersedes the sentence-detection and negative-limitation
+descriptions above. The fixed policy is now `claim-policy-v3`. In addition to the
+existing forbidden families, it records claim-bearing subject patterns for GMNPS,
+models, frameworks, approaches, personalization, personalized scores,
+microbiome-informed scores and related scientific subjects, plus assertion families
+covering prediction, superiority, improvement, generalization, validation, accuracy,
+establishment, demonstration, support, enablement, guidance, recommendation,
+association, recovery and response.
+
+Any subject-plus-assertion sentence supplied to the checker fails closed unless it
+exactly matches a positive template authorized for the current tier or is an explicit
+negative limitation. This applies to every supplied plain-text input, so a caller
+cannot bypass enforcement by labelling content as Methods or another section. A
+narrow infrastructure exception covers support/enable statements whose objects are
+only hashes, manifests or artifacts and contain no scientific outcome object.
+
+Negative cues are bound to the specific forbidden/assertion match in the same local
+clause, with a maximum six-word window. Commas, semicolons, contrast boundaries and
+coordinating predicates terminate the exemption. Consequently, both `Although
+external validation was not performed, external validity is established.` and
+`does not fail and accurately predicts` constructions are rejected, while `does not
+establish external validity` remains allowed.
+
+No Task 4 production evidence has been executed and registry-bound. Biological
+consistency remains a forbidden positive claim at the current computational tier.
+The current approved hashes are:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `claim_policy.json` | `43b9781f19f99d1bc84210e0f0f53784a54ded6cc3b230a9678ed5cd97eaf7cc` |
+| `current_gate_decision.json` | `e2ae3020bfcea4b208d1ac3afd50987d8b2f943632df31afa306c05e929e18eb` |
+| `claim_policy_registry.json` | `4b15b40cb58f21f0cdded7c02d609195b8cd970fc31a9109a7a091719c4c862c` |
+
+### Verification
+
+| Scope | Result | Time |
+| --- | ---: | ---: |
+| Focused `test_evidence_gate.py` | 56 passed, 1 warning | 13.95 s |
+| Related Task 1/2/3/5 claim/gate validation | 338 passed, 1 warning | 169.23 s |
+| Full `code/src/tests` | 694 passed, 1 warning | 185.50 s |
+
+The full suite exceeds the 683-test baseline by 11 regression cases and has no
+failures. The sole warning remains the pre-existing NumPy 2.4.6 / SciPy 1.13.1
+declared-version mismatch.

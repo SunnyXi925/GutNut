@@ -315,6 +315,11 @@ after outcomes are inspected.
 - **Writer:** no result should describe synthetic, aggregate or inaccessible
   controlled data as observed participant-by-meal validation.
 
+**Superseded claim note (2026-08-14):** The “biological consistency” portion of
+the Reviewer statement above is superseded. No Task 4 production evidence has
+been executed and bound to the current registry, so a positive biological
+consistency claim is not allowed by the current computational policy.
+
 ## Frozen-configuration hash supersession note (2026-08-14)
 
 The `12bbe284674cac0cf96344112a5e47a279d87e83fe5727e2841635ec0dc70f6b`
