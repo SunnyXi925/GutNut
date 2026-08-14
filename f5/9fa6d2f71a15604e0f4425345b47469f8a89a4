@@ -1,0 +1,25 @@
+code/src/tests/test_manuscript_claim_gate.py
+  s_4d75bbbcc79dac::t_34dbcf15630495 487-489
+  s_4d75bbbcc79dac::t_389f1d802e0841 461-476,480-481,568-597
+code/src/gmnps/validation/manuscript_claim_gate.py
+  s_4d75bbbcc79dac::t_34dbcf15630495 56-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "f59fa6d2f71a15604e0f4425345b47469f8a89a4",
+  "prompts": {},
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 253,
+      "total_deletions": 15,
+      "accepted_lines": 253
+    }
+  }
+}
