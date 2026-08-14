@@ -1,0 +1,59 @@
+.superpowers/sdd/progress.md
+  s_4d75bbbcc79dac::t_4b4eb09f8c6c1d 60
+manuscript/nature_food_submission/sn-article.tex
+  s_4d75bbbcc79dac::t_9e093e994a188a 21
+code/src/gmnps/validation/manuscript_claim_gate.py
+  s_4d75bbbcc79dac::t_1aae85e1aab221 69,343-346
+  s_4d75bbbcc79dac::t_b2c9ee0c75a6d8 29,34,51-67,91,252-296,338-342,347-348,353-354,364-378,412-414
+manuscript/nature_food_submission/sections.tex
+  s_4d75bbbcc79dac::t_9e093e994a188a 12,18,115
+manuscript/nature_food_submission/supplementary_methods.tex
+  s_4d75bbbcc79dac::t_9e093e994a188a 18,155
+code/src/tests/test_evidence_gate.py
+  s_4d75bbbcc79dac::t_26b4272a68cbb7 1242
+  s_4d75bbbcc79dac::t_85d3305613fc39 958-962,1166,1204,1234-1241,1243-1253,1268,1276-1280,1284
+code/src/tests/test_manuscript_claim_gate.py
+  s_4d75bbbcc79dac::t_26b4272a68cbb7 498,500,502
+  s_4d75bbbcc79dac::t_c3781bef633813 442-449,457,459
+  s_4d75bbbcc79dac::t_07ea563d00c3ca 176,181,209-267
+  s_4d75bbbcc79dac::t_eb85da527fbbe0 482-485,494-497,499,501,503-504,658-662
+  s_4d75bbbcc79dac::t_ac090e9622979f 688-744,746-774
+  s_4d75bbbcc79dac::t_a907412c6fe68c 356-367,374,376-378
+  s_4d75bbbcc79dac::t_159037911f1d1f 745
+  s_4d75bbbcc79dac::t_6dd8d9147995d2 268-269
+code/src/gmnps/validation/claim_policy.py
+  s_4d75bbbcc79dac::t_26b4272a68cbb7 80-81,88-89
+  s_4d75bbbcc79dac::t_c3cfc424cd5656 29,87,90-91,155,212,232-234,239-241,315,320-339,447,485-488,510-513,538,540-543,546-551,650-651,668
+manuscript/nature_food_submission/claim_evidence_matrix.csv
+  s_4d75bbbcc79dac::t_4b4eb09f8c6c1d 4,7,11-12
+.superpowers/sdd/phase3-task3-report.md
+  s_4d75bbbcc79dac::t_4b4eb09f8c6c1d 10-15,30,72-74,78-88,98-99
+manuscript/nature_food_submission/narrative_outline.md
+  s_4d75bbbcc79dac::t_4b4eb09f8c6c1d 54-57,73-76,92-95,99-101
+results/phase2/evidence-gate/claim_policy.json
+  s_4d75bbbcc79dac::t_b0b3d340450a4e 36,91,94
+  s_4d75bbbcc79dac::t_b202c6173acc97 35,37-38,68-70,99
+results/phase2/evidence-gate/current_gate_decision.json
+  s_4d75bbbcc79dac::t_b0b3d340450a4e 19,34
+code/src/configs/claim_policy_registry.json
+  s_4d75bbbcc79dac::t_b202c6173acc97 4
+  s_4d75bbbcc79dac::t_b0b3d340450a4e 6,8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "beb7e2b1127d980fbce9bf20ab248e4417b317ab",
+  "prompts": {},
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 2,
+      "accepted_lines": 2
+    }
+  }
+}
