@@ -1,0 +1,36 @@
+manuscript/nature_food_submission/sn-article.tex
+  s_4d75bbbcc79dac::t_5bd5092297a45a 21
+manuscript/nature_food_submission/sections.tex
+  s_4d75bbbcc79dac::t_5bd5092297a45a 101-102,117-118
+manuscript/nature_food_submission/supplementary_results.tex
+  s_4d75bbbcc79dac::t_5bd5092297a45a 1,42,52-55,59,68-71,80-81
+manuscript/nature_food_submission/supplementary_methods.tex
+  s_4d75bbbcc79dac::t_5bd5092297a45a 1,10-24,39-45,185-196
+manuscript/nature_food_submission/supplementary_data_1_attribute_mapping_table.csv
+  s_4d75bbbcc79dac::t_0d6f00f4e17c8e 1-57
+.superpowers/sdd/phase3-task2-report.md
+  s_4d75bbbcc79dac::t_0d6f00f4e17c8e 1-305
+.superpowers/sdd/progress.md
+  s_4d75bbbcc79dac::t_0d6f00f4e17c8e 1-59
+manuscript/nature_food_submission/supplementary_information.tex
+  s_4d75bbbcc79dac::t_5bd5092297a45a 1-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "54989717124a31bf026a4403fc17d23c9bde66ec",
+  "prompts": {},
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 446,
+      "total_deletions": 41,
+      "accepted_lines": 446
+    }
+  }
+}
