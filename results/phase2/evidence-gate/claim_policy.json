@@ -32,6 +32,10 @@
     "\\b(?:scores?|findings|results|analysis)\\b"
   ],
   "direct_scope_whitelist": [],
+  "exact_negative_limitation_templates": [
+    "The framework provides an auditable basis for future empirical testing, but GMNPS does not establish external validity.",
+    "No analysis evaluated clinical utility or dietary recommendations."
+  ],
   "forbidden_claims": [
     "transforms_postprandial_response",
     "precision_ready",
@@ -61,6 +65,9 @@
     "\\bprecision[- ]ready\\b"
   ],
   "methods_forbidden_semantics_pattern": "\\b(?:outcomes?|performance|validat\\w*|validity|guid\\w*|recommend\\w*|predict\\w*|forecast\\w*|stratif\\w*|responses?|rmse|mae|auroc|superior|better|lower|improv\\w*|achiev\\w*|yield\\w*|glycaem\\w*|glucos\\w*|triglyceride\\w*|postprandial|metabolic|clinical\\w*|biological\\w*|causal\\w*|external|cohort|participant|patient|individual|personal(?:i[sz]ed|i[sz]ation)|microbiome|nutrition|health|dietary|food\\s+compass)\\b",
+  "methods_infrastructure_exact_identifiers": [
+    "attribute-gmnps-v1"
+  ],
   "methods_infrastructure_patterns": [
     "\\A(?:the\\s+)?(?:GMNPS(?:\\s+(?:model|framework|approach|method|system|platform|algorithm|implementation))?|model|framework|approach|method|system|platform|algorithm|implementation|evidence\\s+gate)\\s+(?:is\\s+)?implemented\\s+as\\s+(?:an?\\s+)?(?:(?:locked|deterministic|computational|fail-closed|bounded|attribute-level|repository-local|path-only)\\s+){0,4}(?:pipeline|workflow|procedure|implementation|scoring\\s+pipeline|evidence\\s+gate|software\\s+component)\\.?\\Z",
     "\\A(?:the\\s+)?(?:GMNPS(?:\\s+(?:model|framework|approach|method|system|platform|algorithm|implementation))?|model|framework|approach|method|system|platform|algorithm|implementation|evidence\\s+gate)\\s+computes\\s+(?:bounded\\s+)?(?:attribute(?:-level)?|component|domain|GMNPS)\\s+scores?(?:\\s+from\\s+(?:locked|verified|repository-local)\\s+(?:inputs|configuration|artifacts))?\\.?\\Z",
@@ -81,14 +88,15 @@
   "negative_limitation_remains_unvalidated_pattern": "\\A[^.!?,;:]+\\bremains?\\s+unvalidated\\.?\\Z",
   "negative_limitation_rule": "strict_direct_governance_v1",
   "negative_limitation_sentences_allowed": true,
-  "payload_sha256": "8841a5c6f9b868b6aba20c398f5a4721bf5831d30046723f3c2bcbdcbfd7ff01",
+  "payload_sha256": "91e0d6502ee6769b03815249b898501d228daf8c93e8eb55e929b5280609d27d",
   "phase3_must_consume": true,
   "positive_claim_templates": [
+    "The Gut Microbiome-informed Nutrient Profiling System (GMNPS) uses bounded attribute-level calibration with locked inputs.",
     "The locked implementation recovered the programmed mapping in a correctly specified synthetic positive-control.",
     "Eligible observed participant-by-meal outcomes are unavailable in the audited data.",
     "The evidence gate implements a computational, fail-closed design."
   ],
-  "schema_version": "claim-policy-v5",
+  "schema_version": "claim-policy-v6",
   "scope": "Phase 3 manuscript and build inputs",
   "source_state": "absent_real_validation_artifacts",
   "subject_default_deny": true,

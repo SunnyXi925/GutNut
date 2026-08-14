@@ -15,11 +15,7 @@ nutrient-to-attribute mapping, including rules, roles, component policies and
 allocation weights, are supplied as Supplementary Data 1 in
 \texttt{supplementary\_data\_1\_attribute\_mapping\_table.csv}.
 
-An eligible production run must bind the trusted release-registry snapshot and
-one approved artifact entry; immutable source bytes and parsed-content
-fingerprints; release labels; food and participant linkage and units;
-nutrient/exposure basis; development and scoring beta inputs; and configuration
-and implementation hashes. The current registry has no approved production
+An eligible production run must bind the trusted release-registry snapshot, one approved artifact entry, immutable source bytes and parsed-content fingerprints, release labels, food and participant linkage and units, nutrient/exposure basis, development and beta inputs, configuration digests, and source-code digests. The current registry has no approved production
 artifact, so no empirical production-food result is authorized and no
 placeholder production instance was created.
 
@@ -156,8 +152,7 @@ F^{\mathrm{native}}_{ij}=F(U_{ij}),
 \left(F^{\mathrm{native}}_{ij}-F_j,-12,12\right),\qquad
 S_{ij}=\operatorname{clip}(F_j+\Delta_{ij},1,100).
 \]
-Population and per-food centring are absent. The manifest distinguishes
-\texttt{score\_centering: none} from development-median beta centring. If every
+Population and per-food centring are absent. The manifest distinguishes that absence from development-median beta centring. If every
 \(z_{in}=0\), every recomputed domain equals baseline and
 \(S_{ij}=F_j\). The numerical identity tolerance is \(10^{-8}\).
 

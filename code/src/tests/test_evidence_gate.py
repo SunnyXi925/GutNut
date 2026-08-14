@@ -955,6 +955,11 @@ def test_production_policy_builder_reruns_path_only_gate_and_rejects_outcome_aut
     monkeypatch.setattr(
         policy_module, "_TRUSTED_POLICY_PATH", output / "claim_policy.json"
     )
+    monkeypatch.setattr(
+        policy_module,
+        "_TRUSTED_POLICY_REGISTRY_PATH",
+        tmp_path / "code/src/configs/claim_policy_registry.json",
+    )
     generated = build_claim_policy_from_evidence_gate()
     decision = json.loads(generated["decision"].read_text())
     policy = json.loads(generated["policy"].read_text())
@@ -1158,6 +1163,7 @@ def test_inverted_or_indirect_negation_cannot_bypass_claim_gate(
         "No evidence supports clinical validity.",
         "No evidence of clinical validity is available.",
         "External validation was not performed.",
+        "No analysis evaluated clinical utility or dietary recommendations.",
     ],
 )
 def test_strict_negative_limitation_templates_remain_allowed(
@@ -1195,6 +1201,7 @@ def test_computational_tier_accepts_only_exact_safe_methods_and_limitations(
         "The evidence gate hash-binds the claim policy to the gate decision.",
         "The GMNPS method uses bounded attribute calibration.",
         "The GMNPS model source hash supports reproducible artifact verification.",
+        r"The frozen specification is \texttt{attribute-gmnps-v1}.",
     ],
 )
 def test_enumerated_methods_infrastructure_templates_are_allowed(
@@ -1224,6 +1231,26 @@ def test_methods_templates_cannot_carry_scientific_claim_semantics(
     assert check_claim_inputs([methods])
 
 
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        r"The frozen specification is \texttt{attribute-gmnps-v2}.",
+        r"The frozen specification is \texttt{attribute-gmnps-v1-beta}.",
+        r"The frozen specification uses \texttt{attribute-gmnps-v1}.",
+        r"The frozen specification is \texttt{attribute-gmnps-v1} and validates outcomes.",
+        "No analysis evaluated clinical utility or dietary recommendations and GMNPS improves outcomes.",
+        "The framework provides an auditable basis for future empirical testing, but GMNPS establishes external validity.",
+    ],
+)
+def test_exact_methods_and_limitation_allowances_reject_near_matches_and_extensions(
+    tmp_path, monkeypatch, sentence
+):
+    _activate_claim_bundle(tmp_path, monkeypatch, evaluate_evidence_gate())
+    candidate = tmp_path / "candidate.txt"
+    candidate.write_text(sentence)
+    assert check_claim_inputs([candidate])
+
+
 def test_negative_limitation_sentence_is_allowed_by_current_policy(tmp_path):
     negative = tmp_path / "negative.txt"
     positive = tmp_path / "positive.txt"
@@ -1238,6 +1265,7 @@ def test_negative_limitation_sentence_is_allowed_by_current_policy(tmp_path):
 def test_current_decision_policy_registry_and_cli_are_fixed(tmp_path, monkeypatch):
     decision = ROOT / "results/phase2/evidence-gate/current_gate_decision.json"
     policy = ROOT / "results/phase2/evidence-gate/claim_policy.json"
+    registry = ROOT / "code/src/configs/claim_policy_registry.json"
     output = tmp_path / "generated"
     monkeypatch.setattr(
         policy_module, "_TRUSTED_DECISION_PATH", output / "current_gate_decision.json"
@@ -1245,9 +1273,15 @@ def test_current_decision_policy_registry_and_cli_are_fixed(tmp_path, monkeypatc
     monkeypatch.setattr(
         policy_module, "_TRUSTED_POLICY_PATH", output / "claim_policy.json"
     )
+    monkeypatch.setattr(
+        policy_module,
+        "_TRUSTED_POLICY_REGISTRY_PATH",
+        output / "claim_policy_registry.json",
+    )
     generated = build_claim_policy_from_evidence_gate()
     assert generated["decision"].read_bytes() == decision.read_bytes()
     assert generated["policy"].read_bytes() == policy.read_bytes()
+    assert generated["registry"].read_bytes() == registry.read_bytes()
     monkeypatch.undo()
     forbidden = tmp_path / "forbidden.txt"
     forbidden.write_text("The system has clinical validity.")

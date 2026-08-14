@@ -51,9 +51,10 @@ GMNPS.
 
 ### ABS-S3: approach
 
-Claim ID: `ABS-03`. Introduce Gut Microbiome-informed Nutrient Profiling System
-(GMNPS) as locked, bounded, attribute-level personalized calibration inside a
-nutrient profiling system. Food Compass 2.0 is only the baseline implementation.
+Claim ID: `ABS-03`. Use the exact first-use definition: "The Gut
+Microbiome-informed Nutrient Profiling System (GMNPS) uses bounded
+attribute-level calibration with locked inputs." Food Compass 2.0 is only the
+baseline implementation.
 
 ### ABS-S4: current feasibility
 
@@ -69,8 +70,10 @@ negative controls into multiple independent evidence units.
 
 ### ABS-S6: implication and hard boundary
 
-Claim ID: `ABS-06`. Close with the direct limitation that external validity is
-not established. Omit guidance, clinical, causal, and real-response language.
+Claim ID: `ABS-06`. Close with the exact implication and hard boundary: "The
+framework provides an auditable basis for future empirical testing, but GMNPS
+does not establish external validity." Omit guidance, clinical, causal, and
+real-response language.
 
 ## Introduction
 
@@ -86,15 +89,16 @@ for purpose-specific food comparison, supported directly by Scarborough et al.
 
 Claim IDs: `INT-03`, `INT-04`. State inter-individual heterogeneity in
 postprandial glycaemic responses with direct support from Zeevi et al. 2015.
-Then define the GMNPS design choice: retain a shared food-level reference and
-represent personal information as a separate bounded calibration. The latter
-claim is a project method definition with no literature citation and no
-observed preservation claim.
+Then use the exact GMNPS design definition: "GMNPS retains a shared food-level
+reference and represents personal information as a separate bounded
+calibration." This is a project method definition with no literature citation
+and no observed preservation claim.
 
 ### INT-P3: method concept and microbiome test case
 
-Claim IDs: `INT-05`, `INT-06`. Define bounded native-attribute changes before
-domain recomposition as a GMNPS method statement with no literature citation.
+Claim IDs: `INT-05`, `INT-06`. Use the exact method definition: "GMNPS applies
+bounded changes to native attributes before domain recomposition." It has no
+literature citation.
 Use Zeevi et al. 2015 only to support gut microbiome features as candidate
 inputs to personalized dietary-response models. Do not present the microbiome
 as a causal mechanism or complete basis for dietary decisions.

@@ -173,10 +173,12 @@ def _route_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
                 "allowed_wording": wording,
                 "evidence_tier": "published_context",
                 "evidence_role": "literature_context",
+                "evidence_family": "published_test_context",
                 "data_class": "published_literature_context",
                 "claim_scope": "published_field_context",
                 "status": "supported",
                 "citation_keys": "Smith2025",
+                "source_path": "manuscript/nature_food_submission/references.bib",
             }
         ],
     )
@@ -202,6 +204,67 @@ def _route_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
         encoding="utf-8",
     )
     return candidate, matrix, audit
+
+
+def _project_route_fixture(
+    tmp_path: Path,
+    *,
+    claim_id: str = "INT-04",
+) -> tuple[Path, Path]:
+    wording = (
+        "GMNPS retains a shared food-level reference and represents personal "
+        "information as a separate bounded calibration."
+        if claim_id == "INT-04"
+        else "GMNPS applies bounded changes to native attributes before domain recomposition."
+    )
+    matrix = tmp_path / "project-matrix.csv"
+    _write_csv(
+        matrix,
+        [
+            {
+                "claim_id": claim_id,
+                "section": "Introduction",
+                "allowed_wording": wording,
+                "evidence_tier": "locked_method_definition",
+                "evidence_role": "method_definition_or_invariant",
+                "evidence_family": "locked_attribute_level_method",
+                "data_class": "computational_method",
+                "claim_scope": "gmnps_project",
+                "status": "supported",
+                "citation_keys": "not_applicable",
+                "source_path": (
+                    "docs/methods/attribute_level_gmnps_spec.md|"
+                    "code/src/configs/attribute_gmnps.yaml"
+                ),
+            }
+        ],
+    )
+    candidate = tmp_path / "project-introduction.tex"
+    candidate.write_text(
+        f"% CLAIM_ID: {claim_id}\n{wording}\n",
+        encoding="utf-8",
+    )
+    return candidate, matrix
+
+
+def _visible_citation_keys() -> set[str]:
+    cited_keys: set[str] = set()
+    for path in sorted(SUBMISSION_DIR.glob("*.tex")):
+        for group in re.findall(
+            r"\\cite[a-zA-Z*]*\{([^}]+)\}", path.read_text(encoding="utf-8")
+        ):
+            cited_keys.update(key.strip() for key in group.split(","))
+    return cited_keys
+
+
+def _bibliography_entries(text: str) -> list[tuple[str, str]]:
+    return [
+        (match.group(1).strip(), match.group(2))
+        for match in re.finditer(
+            r"(?ms)^@\w+\{\s*([^,\s]+)\s*,(.*?)(?=^@\w+\{|\Z)",
+            text,
+        )
+    ]
 
 
 def test_matrix_exists_and_has_complete_schema():
@@ -290,13 +353,29 @@ def test_claim_scopes_and_task3_literature_routes_are_explicit():
 
     project_rows = {row["claim_id"]: row for row in rows if row["claim_id"] in {"INT-04", "INT-05"}}
     assert set(project_rows) == {"INT-04", "INT-05"}
+    assert {
+        claim_id: row["allowed_wording"] for claim_id, row in project_rows.items()
+    } == {
+        "INT-04": (
+            "GMNPS retains a shared food-level reference and represents personal "
+            "information as a separate bounded calibration."
+        ),
+        "INT-05": (
+            "GMNPS applies bounded changes to native attributes before domain "
+            "recomposition."
+        ),
+    }
     for row in project_rows.values():
         assert row["claim_scope"] == "gmnps_project"
         assert row["citation_keys"] == "not_applicable"
         assert row["evidence_tier"] == "locked_method_definition"
         assert row["evidence_role"] == "method_definition_or_invariant"
         assert row["evidence_family"] == "locked_attribute_level_method"
+        assert row["data_class"] == "computational_method"
         assert row["status"] == "supported"
+        assert "docs/methods/attribute_level_gmnps_spec.md" in row[
+            "source_path"
+        ].split("|")
 
 
 def test_task3_reference_audit_has_exact_columns_and_rows():
@@ -360,6 +439,14 @@ def test_task3_abstract_has_six_uncited_sentences_and_locked_context():
         "for defined public-health applications. Postprandial glycaemic responses "
         "to the same foods can differ substantially between individuals."
     )
+    assert (
+        "The Gut Microbiome-informed Nutrient Profiling System (GMNPS) uses "
+        "bounded attribute-level calibration with locked inputs."
+    ) in abstract
+    assert abstract.endswith(
+        "The framework provides an auditable basis for future empirical testing, "
+        "but GMNPS does not establish external validity."
+    )
 
 
 def test_task3_main_manuscript_routes_pass_exact_claim_gate():
@@ -367,20 +454,9 @@ def test_task3_main_manuscript_routes_pass_exact_claim_gate():
     assert check_manuscript_claim_inputs(main_tex) == ()
 
 
-def test_full_visible_tex_gate_retains_preexisting_supplementary_denials():
+def test_full_visible_tex_package_passes_exact_claim_gate():
     visible_tex = sorted(SUBMISSION_DIR.glob("*.tex"))
-    observed = check_manuscript_claim_inputs(visible_tex)
-    assert [(item.path.name, item.pattern) for item in observed] == [
-        ("supplementary_methods.tex", r"\bGMNPS\b"),
-        (
-            "supplementary_methods.tex",
-            r"\b(?:model|framework|approach|method|system|platform|algorithm|implementation)\b",
-        ),
-        (
-            "supplementary_methods.tex",
-            r"\b(?:scores?|findings|results|analysis)\b",
-        ),
-    ]
+    assert check_manuscript_claim_inputs(visible_tex) == ()
 
 
 def test_task3_bibliography_records_corrections_and_removes_misrouted_keys():
@@ -403,21 +479,27 @@ def test_task3_bibliography_records_corrections_and_removes_misrouted_keys():
 
 def test_task3_visible_citations_resolve_and_do_not_misroute_personalization():
     bibliography = REFERENCES.read_text(encoding="utf-8")
-    defined_keys = set(re.findall(r"(?m)^@\\w+\\{\\s*([^,\\s]+)", bibliography))
-    cited_keys: set[str] = set()
-    for path in sorted(SUBMISSION_DIR.glob("*.tex")):
-        for group in re.findall(
-            r"\\\\cite[a-zA-Z*]*\\{([^}]+)\\}", path.read_text(encoding="utf-8")
-        ):
-            cited_keys.update(key.strip() for key in group.split(","))
-
-    assert cited_keys <= defined_keys
+    entries = _bibliography_entries(bibliography)
+    defined_keys = {key for key, _ in entries}
+    assert len(defined_keys) == len(entries)
+    assert defined_keys == _visible_citation_keys()
     visible_text = "\n".join(
         path.read_text(encoding="utf-8")
         for path in sorted(SUBMISSION_DIR.glob("*.tex"))
     )
     assert "vanCalster2019calibration" not in visible_text
     assert "mozaffarian2021foodcompass" not in visible_text
+
+
+def test_task3_bibliography_has_no_duplicate_fields_or_malformed_dois():
+    entries = _bibliography_entries(REFERENCES.read_text(encoding="utf-8"))
+    assert entries
+    for key, body in entries:
+        fields = re.findall(r"(?m)^\s*([A-Za-z][\w-]*)\s*=", body)
+        assert len(fields) == len({field.casefold() for field in fields}), key
+        dois = re.findall(r"(?im)^\s*doi\s*=\s*\{([^{}]+)\}", body)
+        assert len(dois) == 1, key
+        assert re.fullmatch(r"10\.\d{4,9}/[-._;()/:A-Za-z0-9]+", dois[0]), key
 
 
 def test_task3_has_no_pending_reference_placeholders():
@@ -573,7 +655,11 @@ def test_outline_has_required_architecture_and_terminology():
 def test_current_claim_policy_accepts_every_project_allowed_wording(tmp_path):
     for row in _rows():
         wording = row["allowed_wording"]
-        if not wording or row["claim_scope"] != "gmnps_project":
+        if (
+            not wording
+            or row["claim_scope"] != "gmnps_project"
+            or row["claim_id"] in {"INT-04", "INT-05"}
+        ):
             continue
         candidate = tmp_path / f"{row['claim_id']}.txt"
         candidate.write_text(wording + "\n", encoding="utf-8")
@@ -597,6 +683,93 @@ def test_current_claim_policy_rejects_forbidden_or_real_data_overclaims(
     candidate = tmp_path / "overclaim.txt"
     candidate.write_text(overclaim, encoding="utf-8")
     assert check_claim_inputs([candidate])
+
+
+@pytest.mark.parametrize("claim_id", ["INT-04", "INT-05"])
+def test_locked_project_method_route_sanitizes_only_exact_matrix_backed_claims(
+    tmp_path, claim_id
+):
+    candidate, matrix = _project_route_fixture(tmp_path, claim_id=claim_id)
+    assert check_claim_inputs([candidate])
+    assert check_manuscript_claim_inputs(
+        [candidate],
+        matrix_path=matrix,
+        reference_audit_path=REFERENCE_AUDIT,
+    ) == ()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("section", "Methods"),
+        ("claim_scope", "published_field_context"),
+        ("evidence_tier", "computational_feasibility"),
+        ("evidence_role", "literature_context"),
+        ("evidence_family", "locked_attribute_level_method_v2"),
+        ("data_class", "audited_metadata"),
+        ("status", "conditional"),
+        ("citation_keys", "Smith2025"),
+        ("allowed_wording", "GMNPS uses a bounded calibration."),
+        ("source_path", "README.md"),
+        (
+            "source_path",
+            "docs/methods/attribute_level_gmnps_spec.md|missing-method-source.md",
+        ),
+        (
+            "source_path",
+            "docs/methods/attribute_level_gmnps_spec.md|EXTERNAL_BLOCKER: pending source",
+        ),
+        ("source_path", "../GMNPS/docs/methods/attribute_level_gmnps_spec.md"),
+    ],
+)
+def test_locked_project_method_route_rejects_any_matrix_or_source_mismatch(
+    tmp_path, field, value
+):
+    candidate, matrix = _project_route_fixture(tmp_path)
+    with matrix.open(newline="", encoding="utf-8") as handle:
+        row = next(csv.DictReader(handle))
+    row[field] = value
+    _write_csv(matrix, [row])
+    assert check_manuscript_claim_inputs(
+        [candidate],
+        matrix_path=matrix,
+        reference_audit_path=REFERENCE_AUDIT,
+    )
+
+
+@pytest.mark.parametrize(
+    "candidate_text",
+    [
+        "GMNPS retains a shared food-level reference and represents personal information as a separate bounded calibration.\n",
+        "% CLAIM_ID: INT-04\n% CLAIM_ID: INT-04\nGMNPS retains a shared food-level reference and represents personal information as a separate bounded calibration.\n",
+        "% CLAIM_ID: INT-04\nGMNPS retains a shared food-level reference and represents personal information as a separate bounded calibration.\n% CLAIM_ID: INT-04 trailing-text\n",
+        "% CLAIM_ID: INT-04\nGMNPS retains a shared food-level reference and represents personal information as a separate bounded calibration. A second sentence.\n",
+        "% CLAIM_ID: INT-04\nGMNPS retains a shared food-level reference and represents personal information as a separate bounded calibration \\cite{Smith2025}.\n",
+        "% CLAIM_ID: INT-04\nGMNPS retains a shared food-level reference and represents personal\ninformation as a separate bounded calibration.\n",
+        "% CLAIM_ID: INT-04\nGMNPS retains a shared food-level reference and represents personal information as a separate bounded calibration that improves outcomes.\n",
+    ],
+)
+def test_locked_project_method_route_rejects_inexact_marker_sentence_or_citation(
+    tmp_path, candidate_text
+):
+    candidate, matrix = _project_route_fixture(tmp_path)
+    candidate.write_text(candidate_text, encoding="utf-8")
+    assert check_manuscript_claim_inputs(
+        [candidate],
+        matrix_path=matrix,
+        reference_audit_path=REFERENCE_AUDIT,
+    )
+
+
+def test_locked_project_method_route_requires_one_marker_across_all_inputs(tmp_path):
+    candidate, matrix = _project_route_fixture(tmp_path)
+    duplicate = tmp_path / "duplicate.tex"
+    duplicate.write_text(candidate.read_text(encoding="utf-8"), encoding="utf-8")
+    assert check_manuscript_claim_inputs(
+        [candidate, duplicate],
+        matrix_path=matrix,
+        reference_audit_path=REFERENCE_AUDIT,
+    )
 
 
 def test_published_context_route_can_bypass_one_phase2_violation(tmp_path):

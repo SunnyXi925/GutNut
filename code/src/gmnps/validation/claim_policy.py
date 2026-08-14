@@ -26,6 +26,7 @@ _TRUSTED_REGISTRY_RELATIVE = Path("code/src/configs/claim_policy_registry.json")
 _TRUSTED_DECISION_PATH = _REPOSITORY_ROOT / _TRUSTED_DECISION_RELATIVE
 _TRUSTED_POLICY_PATH = _REPOSITORY_ROOT / _TRUSTED_POLICY_RELATIVE
 _TRUSTED_POLICY_REGISTRY_PATH = _REPOSITORY_ROOT / _TRUSTED_REGISTRY_RELATIVE
+_CURRENT_BUNDLE_ID = "phase2-current-production-claim-bundle-v6"
 
 _FORBIDDEN_PATTERNS = (
     r"\bvalidat(?:e|es|ed|ing|ion)\b",
@@ -76,10 +77,17 @@ _DIRECT_SCOPED_SENTENCE = (
     "locked_attribute_gmnps had lower subject-held-out RMSE than fcs_microbiome."
 )
 _COMPUTATIONAL_POSITIVE_TEMPLATES = (
+    "The Gut Microbiome-informed Nutrient Profiling System (GMNPS) uses bounded "
+    "attribute-level calibration with locked inputs.",
     "The locked implementation recovered the programmed mapping in a correctly "
     "specified synthetic positive-control.",
     "Eligible observed participant-by-meal outcomes are unavailable in the audited data.",
     "The evidence gate implements a computational, fail-closed design.",
+)
+_EXACT_NEGATIVE_LIMITATION_TEMPLATES = (
+    "The framework provides an auditable basis for future empirical testing, but "
+    "GMNPS does not establish external validity.",
+    "No analysis evaluated clinical utility or dietary recommendations.",
 )
 _NEGATIVE_LIMITATION_RULE = "strict_direct_governance_v1"
 _DIRECT_NEGATIVE_CUE_PATTERN = (
@@ -144,6 +152,7 @@ _METHODS_INFRASTRUCTURE_PATTERNS = (
     rf"\A{_METHODS_ACTOR}\s+source\s+hash\s+"
     r"(?:supports|enables)\s+reproducible\s+artifact\s+verification\.?\Z",
 )
+_METHODS_INFRASTRUCTURE_EXACT_IDENTIFIERS = ("attribute-gmnps-v1",)
 _METHODS_FORBIDDEN_SEMANTICS_PATTERN = (
     r"\b(?:outcomes?|performance|validat\w*|validity|guid\w*|recommend\w*|"
     r"predict\w*|forecast\w*|stratif\w*|responses?|rmse|mae|auroc|superior|"
@@ -200,7 +209,7 @@ def _build_claim_policy_payload(
     if direct:
         positive_templates.append(_DIRECT_SCOPED_SENTENCE)
     payload: dict[str, object] = {
-        "schema_version": "claim-policy-v5",
+        "schema_version": "claim-policy-v6",
         "tier": outcome.tier,
         "source_state": outcome.source_state,
         "allowed_claims": list(outcome.allowed_claims),
@@ -220,10 +229,16 @@ def _build_claim_policy_payload(
         "negative_inversion_patterns": list(_NEGATION_INVERSION_PATTERNS),
         "subject_default_deny": _SUBJECT_DEFAULT_DENY,
         "methods_infrastructure_patterns": list(_METHODS_INFRASTRUCTURE_PATTERNS),
+        "methods_infrastructure_exact_identifiers": list(
+            _METHODS_INFRASTRUCTURE_EXACT_IDENTIFIERS
+        ),
         "methods_forbidden_semantics_pattern": _METHODS_FORBIDDEN_SEMANTICS_PATTERN,
         "direct_scope_whitelist": [_DIRECT_SCOPED_SENTENCE] if direct else [],
         "positive_claim_templates": positive_templates,
         "negative_limitation_sentences_allowed": True,
+        "exact_negative_limitation_templates": list(
+            _EXACT_NEGATIVE_LIMITATION_TEMPLATES
+        ),
         "scope": "Phase 3 manuscript and build inputs",
         "phase3_must_consume": True,
         "authorization": (
@@ -297,11 +312,31 @@ def build_claim_policy_from_evidence_gate(
         if not isinstance(paths, EvidenceGateArtifactPaths):
             raise TypeError("claim policy production builder accepts only gate paths")
     outcome = evaluate_evidence_gate(paths)
-    return _write_claim_artifacts(
+    generated = _write_claim_artifacts(
         _TRUSTED_DECISION_PATH.parent,
         outcome,
         production_authorized=True,
     )
+    policy_raw = generated["policy"].read_bytes()
+    decision_raw = generated["decision"].read_bytes()
+    registry = {
+        "schema_version": "claim-policy-registry-v1",
+        "approved_bundles": [
+            {
+                "bundle_id": _CURRENT_BUNDLE_ID,
+                "tier": outcome.tier,
+                "source_state": outcome.source_state,
+                "decision_path": _TRUSTED_DECISION_RELATIVE.as_posix(),
+                "policy_path": _TRUSTED_POLICY_RELATIVE.as_posix(),
+                "decision_sha256": sha256(decision_raw).hexdigest(),
+                "policy_sha256": sha256(policy_raw).hexdigest(),
+            }
+        ],
+    }
+    _TRUSTED_POLICY_REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _TRUSTED_POLICY_REGISTRY_PATH.write_bytes(_json_bytes(registry))
+    generated["registry"] = _TRUSTED_POLICY_REGISTRY_PATH
+    return generated
 
 
 def _read_regular_bytes(path: Path, label: str) -> bytes:
@@ -409,7 +444,7 @@ def _validate_bound_bundle() -> dict[str, object]:
     )
     if decision.get("schema_version") != "evidence-gate-decision-v2":
         raise ValueError("gate decision schema version is invalid")
-    if policy.get("schema_version") != "claim-policy-v5":
+    if policy.get("schema_version") != "claim-policy-v6":
         raise ValueError("claim policy schema version is invalid")
     if decision.get("authorization") != "production_path_only_evidence_gate" or policy.get(
         "authorization"
@@ -447,6 +482,10 @@ def _validate_bound_bundle() -> dict[str, object]:
         _METHODS_INFRASTRUCTURE_PATTERNS
     ):
         raise ValueError("claim policy Methods infrastructure patterns are invalid")
+    if policy.get("methods_infrastructure_exact_identifiers") != list(
+        _METHODS_INFRASTRUCTURE_EXACT_IDENTIFIERS
+    ):
+        raise ValueError("claim policy Methods exact identifiers are invalid")
     if (
         policy.get("methods_forbidden_semantics_pattern")
         != _METHODS_FORBIDDEN_SEMANTICS_PATTERN
@@ -468,6 +507,10 @@ def _validate_bound_bundle() -> dict[str, object]:
         raise ValueError("claim policy positive_claim_templates is invalid")
     if policy.get("negative_limitation_sentences_allowed") is not True:
         raise ValueError("claim policy negative-limitation rule is invalid")
+    if policy.get("exact_negative_limitation_templates") != list(
+        _EXACT_NEGATIVE_LIMITATION_TEMPLATES
+    ):
+        raise ValueError("claim policy exact negative limitations are invalid")
     _validate_registry(decision_raw, policy_raw, decision, policy)
     return policy
 
@@ -492,12 +535,20 @@ def _pattern_matches(
 
 def _is_methods_infrastructure_sentence(
     sentence: str,
+    policy: dict[str, object],
 ) -> bool:
+    exact_identifier_sentences = {
+        rf"The frozen specification is \texttt{{{identifier}}}."
+        for identifier in policy.get("methods_infrastructure_exact_identifiers", [])
+    }
     return (
         _METHODS_FORBIDDEN_SEMANTICS.search(sentence) is None
-        and any(
-            re.fullmatch(pattern, sentence, flags=re.IGNORECASE) is not None
-            for pattern in _METHODS_INFRASTRUCTURE_PATTERNS
+        and (
+            sentence in exact_identifier_sentences
+            or any(
+                re.fullmatch(pattern, sentence, flags=re.IGNORECASE) is not None
+                for pattern in _METHODS_INFRASTRUCTURE_PATTERNS
+            )
         )
     )
 
@@ -596,6 +647,8 @@ def check_claim_inputs(
         for sentence in _sentences(text):
             if _is_exact_positive_template(sentence, policy):
                 continue
+            if sentence in policy.get("exact_negative_limitation_templates", []):
+                continue
             forbidden_matches = _pattern_matches(forbidden_patterns, sentence)
             assertion_matches = _pattern_matches(assertion_patterns, sentence)
             if _is_negative_limitation_sentence(
@@ -612,7 +665,7 @@ def check_claim_inputs(
             subject_matches = _pattern_matches(subject_patterns, sentence)
             if not subject_matches:
                 continue
-            if _is_methods_infrastructure_sentence(sentence):
+            if _is_methods_infrastructure_sentence(sentence, policy):
                 continue
             violations.append(
                 ClaimViolation(path=path, pattern=subject_matches[0][0])

@@ -7,6 +7,12 @@ tier. The manuscript remains a computational-feasibility package: published
 sources supply narrow field context only and do not authorize GMNPS empirical,
 clinical, dietary-guidance, or external-validity claims.
 
+The failed-review repair restores the six-sentence abstract contract, routes
+`INT-04` and `INT-05` only through an exact matrix-backed locked-method check,
+brings every visible submission TeX file to zero claim violations, and limits
+the submission bibliography to cited records. Independent re-review remains
+pending; Task 3 is not marked review-complete.
+
 The strict `reference_audit.csv` contains exactly four direct-support rows:
 `INT-01/labonte2018nutrientprofiles`,
 `INT-02/scarborough2007developing`, `INT-03/zeevi2015personalized`, and
@@ -21,7 +27,7 @@ inventory row appears in that file.
 | ABS-01 / INT-01 | published field context | Labonte 2018 directly supports food-level nutritional-quality assessment for public-health applications. |
 | ABS-02 / INT-03 | published field context | Zeevi 2015 directly supports substantial inter-individual postprandial glycaemic-response variation. |
 | INT-02 | published field context | Scarborough 2007 directly supports systematic, explicit, transparent, purpose-specific nutrient-profile rules; it does not support cross-setting stability. |
-| INT-04 / INT-05 | GMNPS project definition | The shared reference/separate bounded calibration and native-attribute recomposition statements are locked method definitions, with no literature citation. |
+| INT-04 / INT-05 | GMNPS project definition | The exact GMNPS shared-reference/separate-calibration and native-attribute-recomposition sentences are locked method definitions, with no literature citation. Their route requires exact matrix fields, one marker, one physical sentence and existing locked-specification/configuration sources. |
 | INT-06 | published field context | Zeevi 2015 directly supports microbiome features as candidate inputs to personalized dietary-response models, not clinical utility or GMNPS validation. |
 
 ## Citation-Purpose Matrix
@@ -63,19 +69,23 @@ inventory row appears in that file.
 - Renamed the misleading `adams2020digitaltwins` record to
   `gkouskou2020digitaltwins`, reconciled `asnicar2026gut`, and removed the
   duplicate `title` field from `wang2023gmmad`.
+- Reduced the submission bibliography to the 12 keys cited by the visible main
+  and Supplementary roots. The broader citation-purpose inventory remains in
+  this report rather than as orphaned BibTeX records.
 
 ## Verification
 
-- Focused: `.venv/bin/python -m pytest code/src/tests/test_manuscript_claim_gate.py -q` -> `114 passed`.
-- Full: `.venv/bin/python -m pytest -q` -> `835 passed, 1 warning` in 172.50s.
-- Static checks: exact audit rows; no duplicate BibTeX keys or fields; 42 DOI
-  values well formed; all 12 visible citation keys resolve; no
-  `PENDING_TASK3`; no `vanCalster2019calibration` or
-  `mozaffarian2021foodcompass` citation route remains.
-- The main manuscript claim gate passes. Running it across every visible TeX
-  file retains three pre-existing denials in `supplementary_methods.tex` for
-  `GMNPS`, `method`-family wording, and `scores/findings/results/analysis`.
-  They are outside Task 3's literature exception and unchanged here.
+- Focused claim-policy/manuscript/reference tests:
+  `.venv/bin/python -m pytest code/src/tests/test_manuscript_claim_gate.py code/src/tests/test_evidence_gate.py -q`
+  -> `229 passed, 1 warning`.
+- Full: `.venv/bin/python -m pytest -q` -> `867 passed, 1 warning` in 178.41s.
+- Exact visible-TeX assertion: six files, zero violations.
+- Static checks: exact four-row audit; 12 defined BibTeX keys equal 12 visible
+  cited keys; no duplicate keys or fields; 12 DOI values well formed; no
+  pending reference placeholders; no Van Calster or corrected Food Compass
+  personalization route; `git diff --check` passed.
+- The policy, decision and registry were regenerated together by
+  `build_claim_policy_from_evidence_gate`; no digest was hand-edited.
 - No TeX engine was available, so no compilation was run; no engine was
   installed for this task.
 
@@ -85,5 +95,7 @@ inventory row appears in that file.
   the verification cut-off, not a completed Scite or Retraction Watch sweep.
 - Semantic Scholar was rate-limited during sidecar research; Wastyk metadata
   was independently checked through Crossref and PubMed.
+- The NumPy 2.4.6 / SciPy 1.13.1 declared-version mismatch still emits one test
+  warning.
 - GMNPS still has no eligible observed participant-by-meal outcome analysis,
   clinical utility evidence, dietary-guidance evidence, or external validity.

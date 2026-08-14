@@ -26,10 +26,12 @@ _MATRIX_COLUMNS = {
     "allowed_wording",
     "evidence_tier",
     "evidence_role",
+    "evidence_family",
     "data_class",
     "claim_scope",
     "status",
     "citation_keys",
+    "source_path",
 }
 _REFERENCE_AUDIT_COLUMNS = {
     "claim_id",
@@ -46,7 +48,25 @@ _PUBLISHED_ROUTE = {
     "claim_scope": "published_field_context",
     "status": "supported",
 }
+_PROJECT_METHOD_CLAIM_IDS = frozenset({"INT-04", "INT-05"})
+_PROJECT_METHOD_ROUTE = {
+    "section": "Introduction",
+    "claim_scope": "gmnps_project",
+    "evidence_tier": "locked_method_definition",
+    "evidence_role": "method_definition_or_invariant",
+    "evidence_family": "locked_attribute_level_method",
+    "data_class": "computational_method",
+    "status": "supported",
+    "citation_keys": "not_applicable",
+}
+_LOCKED_METHOD_SOURCES = frozenset(
+    {
+        "docs/methods/attribute_level_gmnps_spec.md",
+        "code/src/configs/attribute_gmnps.yaml",
+    }
+)
 _MARKER = re.compile(r"[ \t]*%[ \t]+CLAIM_ID:[ \t]*(INT-\d{2})[ \t]*")
+_MARKER_TOKEN = re.compile(r"%[ \t]+CLAIM_ID:[ \t]*(INT-\d{2})")
 _CITATION = re.compile(
     r"\\(?:auto|paren|text)?cite[tp]?"
     r"(?:\s*\[[^\[\]]*\]){0,2}\s*\{([^{}]+)\}"
@@ -68,6 +88,7 @@ _DOI_IDENTIFIER = re.compile(r"doi:10\.\d{4,9}/[-._;()/:A-Za-z0-9]+")
 _PMID_IDENTIFIER = re.compile(r"pmid:\d+")
 _PMCID_IDENTIFIER = re.compile(r"pmcid:PMC\d+")
 _ROUTE_VIOLATION = "manuscript_published_context_route"
+_PROJECT_METHOD_ROUTE_VIOLATION = "manuscript_locked_project_method_route"
 
 
 @dataclass(frozen=True)
@@ -228,6 +249,51 @@ def _route_citation_keys(
     return citation_keys
 
 
+def _repository_source_paths_are_locked_method_sources(value: str) -> bool:
+    sources = tuple(source.strip() for source in value.split("|") if source.strip())
+    if not sources or not _LOCKED_METHOD_SOURCES.intersection(sources):
+        return False
+    repository_root = _REPOSITORY_ROOT.resolve()
+    for source in sources:
+        if source.startswith("EXTERNAL_BLOCKER:"):
+            return False
+        relative = Path(source)
+        if relative.is_absolute():
+            return False
+        candidate = (_REPOSITORY_ROOT / relative).resolve()
+        try:
+            candidate.relative_to(repository_root)
+        except ValueError:
+            return False
+        if not candidate.is_file():
+            return False
+    return True
+
+
+def _is_project_method_route(
+    block: _ClaimBlock,
+    *,
+    row: dict[str, str] | None,
+    marker_count: int,
+) -> bool:
+    if row is None or marker_count != 1:
+        return False
+    if any(
+        row[field].strip() != expected
+        for field, expected in _PROJECT_METHOD_ROUTE.items()
+    ):
+        return False
+    sentences = _sentences(block.body)
+    if (
+        len(sentences) != 1
+        or sentences[0] != block.body.strip()
+        or _CITATION.search(block.body) is not None
+        or block.body.strip() != row["allowed_wording"].strip()
+    ):
+        return False
+    return _repository_source_paths_are_locked_method_sources(row["source_path"])
+
+
 def _sanitized_policy_violations(
     documents: tuple[tuple[Path, str, set[int]], ...],
 ) -> tuple[ClaimViolation, ...]:
@@ -269,12 +335,23 @@ def check_manuscript_claim_inputs(
         label="reference audit",
     )
     paths = tuple(Path(value) for value in input_paths)
+    loaded_documents = [
+        (path, path.read_text(encoding="utf-8")) for path in paths
+    ]
+    global_marker_counts: dict[str, int] = {}
+    for _, text in loaded_documents:
+        for marker in _MARKER_TOKEN.finditer(text):
+            claim_id = marker.group(1)
+            global_marker_counts[claim_id] = (
+                global_marker_counts.get(claim_id, 0) + 1
+            )
+
     documents: list[tuple[Path, str, set[int]]] = []
     route_failures: list[ClaimViolation] = []
     requested_pairs: list[tuple[str, str]] = []
     structurally_eligible: list[tuple[int, _ClaimBlock]] = []
-    for path in paths:
-        text = path.read_text(encoding="utf-8")
+    project_method_eligible: list[tuple[int, _ClaimBlock]] = []
+    for path, text in loaded_documents:
         blocks = _claim_blocks(text)
         marker_counts = {
             claim_id: sum(block.claim_id == claim_id for block in blocks)
@@ -284,6 +361,21 @@ def check_manuscript_claim_inputs(
         documents.append((path, text, set()))
         for block in blocks:
             row = matrix.get(block.claim_id)
+            if block.claim_id in _PROJECT_METHOD_CLAIM_IDS:
+                if not _is_project_method_route(
+                    block,
+                    row=row,
+                    marker_count=global_marker_counts[block.claim_id],
+                ):
+                    route_failures.append(
+                        ClaimViolation(
+                            path=path,
+                            pattern=_PROJECT_METHOD_ROUTE_VIOLATION,
+                        )
+                    )
+                    continue
+                project_method_eligible.append((document_index, block))
+                continue
             published_candidate = row is None or (
                 row["section"].strip() == "Introduction"
                 and (
@@ -316,6 +408,9 @@ def check_manuscript_claim_inputs(
             ClaimViolation(path=documents[index][0], pattern=_ROUTE_VIOLATION)
             for index, _ in structurally_eligible
         )
+
+    for document_index, block in project_method_eligible:
+        documents[document_index][2].add(block.line_index)
 
     return _sanitized_policy_violations(tuple(documents)) + tuple(route_failures)
 
