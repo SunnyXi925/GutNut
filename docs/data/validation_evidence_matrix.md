@@ -65,24 +65,28 @@ CLI accepts input files only: it loads the fixed decision/policy paths and verif
 exact hashes against `code/src/configs/claim_policy_registry.json`. Arbitrary decision
 or policy paths cannot authorize a claim. The production policy builder reruns the
 path-only evidence gate; an in-memory outcome can create testing-only bytes but cannot
-create an authorized bundle. Claim-bearing sentences are checked individually. The
-checker recognizes both the fixed forbidden families and subject-plus-assertion
-combinations covering GMNPS/models/frameworks/approaches/personalization/scores and
-scientific prediction, superiority, improvement, generalization, validation,
-accuracy, establishment, demonstration, support, enablement, guidance,
-recommendation, association, recovery or response assertions. Every supplied
-plain-text input is scanned, so section labelling cannot bypass enforcement. A narrow
-Methods exception is limited to support/enable statements about hashes, manifests or
-artifacts that contain no scientific outcome object.
+create an authorized bundle. Claim-bearing sentences are checked individually. Any
+sentence matching GMNPS, model, framework, approach, method, system, platform,
+algorithm, implementation, personalization, personalized score,
+microbiome-informed score, score, finding, result or analysis subjects is denied by
+default; classification no longer depends on also finding an assertion-vocabulary
+term. Every supplied plain-text input is scanned, so section labelling cannot bypass
+enforcement. The only Methods exception is a full-sentence match to an enumerated,
+anchored infrastructure template for `implemented as`, `computes`, `loads`,
+`verifies`, `hash-binds`, `uses bounded attribute calibration`, or reproducible
+source-hash artifact verification. These templates cannot contain outcome,
+performance, validation, guidance, prediction, forecasting, stratification or related
+scientific semantics.
 
 At the current computational tier, only exact templates for the correctly specified
 synthetic programmed mapping, audited outcome unavailability and the computational
 fail-closed design are eligible. An explicit negative limitation is permitted only
-when its cue is bound to the specific forbidden/assertion match within the same local
+when its cue is bound to every specific forbidden/assertion match within one local
 clause and at most six words; punctuation, contrast and a new coordinated predicate
 end that scope. Thus `does not establish external validity` is allowed, but
 `Although external validation was not performed, external validity is established.`
-is rejected. Unrecognized positive subject-plus-assertion claims fail closed.
+is rejected. Every other subject-bearing sentence fails closed, including claims that
+use previously unseen verbs such as `yields`, `achieves` or `stratifies`.
 
 Even at a future direct tier, generic external-validity, clinical, causal, guidance
 and recommendation wording remains forbidden. The sole additional positive template
@@ -95,6 +99,6 @@ Current approved claim-control hashes:
 
 | Artifact | SHA-256 |
 | --- | --- |
-| `claim_policy.json` | `43b9781f19f99d1bc84210e0f0f53784a54ded6cc3b230a9678ed5cd97eaf7cc` |
-| `current_gate_decision.json` | `e2ae3020bfcea4b208d1ac3afd50987d8b2f943632df31afa306c05e929e18eb` |
-| `claim_policy_registry.json` | `4b15b40cb58f21f0cdded7c02d609195b8cd970fc31a9109a7a091719c4c862c` |
+| `claim_policy.json` | `0e29b08359d3a335db05c613540149640127842e133bb8e582f920428645a7d5` |
+| `current_gate_decision.json` | `da0739f4df4896ff54b03cef3ba8600218ad9acb2d0286b30579f220a48ec085` |
+| `claim_policy_registry.json` | `90bb3828d1f62e160d3cc90309da4520b85f453f2eb03401ca7cfba6004a1311` |

@@ -574,3 +574,53 @@ The current approved hashes are:
 The full suite exceeds the 683-test baseline by 11 regression cases and has no
 failures. The sole warning remains the pre-existing NumPy 2.4.6 / SciPy 1.13.1
 declared-version mismatch.
+
+## Default-deny claim-policy Major closure (2026-08-14)
+
+### Enforcement correction
+
+**DONE.** This section supersedes the subject-plus-assertion rule immediately
+above. The fixed policy is now `claim-policy-v4`. A sentence that matches a
+claim subject is denied by default; an assertion-vocabulary match is no longer
+required to classify it as a claim. Consequently, all of the following fail
+closed at the current tier:
+
+```text
+GMNPS yields lower RMSE than Food Compass.
+GMNPS achieves superior glycaemic forecasting.
+GMNPS stratifies individuals by glycaemic excursion.
+```
+
+Only three subject-bearing sentence classes can pass: an exact tier-authorized
+positive template; a single-clause negative limitation whose cue is locally
+bound to every concrete assertion/forbidden match; or an enumerated
+infrastructure Methods template. The Methods templates are anchored full-sentence
+forms for `implemented as`, `computes`, `loads`, `verifies`, `hash-binds`, `uses
+bounded attribute calibration`, and the existing source-hash artifact-verification
+form. They reject outcome, performance, validation, guidance, prediction,
+forecasting, stratification and related scientific semantics. Section labels do
+not alter enforcement.
+
+The regenerated production bundle remains fail closed:
+
+```text
+tier=computational_feasibility
+source_state=absent_real_validation_artifacts
+```
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `claim_policy.json` | `0e29b08359d3a335db05c613540149640127842e133bb8e582f920428645a7d5` |
+| `current_gate_decision.json` | `da0739f4df4896ff54b03cef3ba8600218ad9acb2d0286b30579f220a48ec085` |
+| `claim_policy_registry.json` | `90bb3828d1f62e160d3cc90309da4520b85f453f2eb03401ca7cfba6004a1311` |
+
+### Verification
+
+| Scope | Result | Time |
+| --- | ---: | ---: |
+| Focused `test_evidence_gate.py` | 71 passed, 1 warning | 13.20 s |
+| Full `code/src/tests` | 709 passed, 1 warning | 181.91 s |
+
+The full suite exceeds the 694-test baseline by 15 regression cases and has no
+failures. The warning is the unchanged NumPy 2.4.6 / SciPy 1.13.1 declared-version
+mismatch.

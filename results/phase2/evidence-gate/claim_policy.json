@@ -60,17 +60,28 @@
     "\\bcausal\\w*\\b",
     "\\bprecision[- ]ready\\b"
   ],
+  "methods_forbidden_semantics_pattern": "\\b(?:outcomes?|performance|validat\\w*|validity|guid\\w*|recommend\\w*|predict\\w*|forecast\\w*|stratif\\w*|responses?|rmse|mae|auroc|superior|better|lower|improv\\w*|achiev\\w*|yield\\w*|glycaem\\w*|glucos\\w*|triglyceride\\w*|postprandial|metabolic|clinical\\w*|biological\\w*|causal\\w*|external|cohort|participant|patient|individual|personal(?:i[sz]ed|i[sz]ation)|microbiome|nutrition|health|dietary|food\\s+compass)\\b",
+  "methods_infrastructure_patterns": [
+    "\\A(?:the\\s+)?(?:GMNPS(?:\\s+(?:model|framework|approach|method|system|platform|algorithm|implementation))?|model|framework|approach|method|system|platform|algorithm|implementation|evidence\\s+gate)\\s+(?:is\\s+)?implemented\\s+as\\s+(?:an?\\s+)?(?:(?:locked|deterministic|computational|fail-closed|bounded|attribute-level|repository-local|path-only)\\s+){0,4}(?:pipeline|workflow|procedure|implementation|scoring\\s+pipeline|evidence\\s+gate|software\\s+component)\\.?\\Z",
+    "\\A(?:the\\s+)?(?:GMNPS(?:\\s+(?:model|framework|approach|method|system|platform|algorithm|implementation))?|model|framework|approach|method|system|platform|algorithm|implementation|evidence\\s+gate)\\s+computes\\s+(?:bounded\\s+)?(?:attribute(?:-level)?|component|domain|GMNPS)\\s+scores?(?:\\s+from\\s+(?:locked|verified|repository-local)\\s+(?:inputs|configuration|artifacts))?\\.?\\Z",
+    "\\A(?:the\\s+)?(?:GMNPS(?:\\s+(?:model|framework|approach|method|system|platform|algorithm|implementation))?|model|framework|approach|method|system|platform|algorithm|implementation|evidence\\s+gate)\\s+loads\\s+(?:the\\s+)?(?:(?:fixed|locked|verified|registry-bound|repository-local|trusted)\\s+)?(?:inputs|configuration|registry|manifest|artifacts?|source\\s+files?)\\.?\\Z",
+    "\\A(?:the\\s+)?(?:GMNPS(?:\\s+(?:model|framework|approach|method|system|platform|algorithm|implementation))?|model|framework|approach|method|system|platform|algorithm|implementation|evidence\\s+gate)\\s+verifies\\s+(?:the\\s+)?(?:(?:fixed|locked|trusted|source|artifact)\\s+)?(?:sha-?256\\s+)?(?:hashes|digests|checksums|manifests|registries|artifacts|configuration|file\\s+paths|inputs)\\.?\\Z",
+    "\\A(?:the\\s+)?(?:GMNPS(?:\\s+(?:model|framework|approach|method|system|platform|algorithm|implementation))?|model|framework|approach|method|system|platform|algorithm|implementation|evidence\\s+gate)\\s+hash-binds\\s+(?:its\\s+|the\\s+)?(?:artifacts|outputs|claim\\s+policy|configuration|source\\s+files?)\\s+to\\s+(?:its\\s+|the\\s+|their\\s+)?(?:sha-?256\\s+)?(?:digests|hashes|source\\s+manifest|registry|configuration|gate\\s+decision)\\.?\\Z",
+    "\\A(?:the\\s+)?(?:GMNPS(?:\\s+(?:model|framework|approach|method|system|platform|algorithm|implementation))?|model|framework|approach|method|system|platform|algorithm|implementation|evidence\\s+gate)\\s+uses\\s+bounded\\s+attribute(?:-level)?\\s+calibration(?:\\s+with\\s+locked\\s+(?:inputs|configuration))?\\.?\\Z",
+    "\\A(?:the\\s+)?(?:GMNPS(?:\\s+(?:model|framework|approach|method|system|platform|algorithm|implementation))?|model|framework|approach|method|system|platform|algorithm|implementation|evidence\\s+gate)\\s+source\\s+hash\\s+(?:supports|enables)\\s+reproducible\\s+artifact\\s+verification\\.?\\Z"
+  ],
   "negative_cue_max_words": 6,
   "negative_limitation_sentences_allowed": true,
-  "payload_sha256": "5c33cdf2dd30a322203439dbe57f2d0baf0b6b38e862585278b92d511825668d",
+  "payload_sha256": "1f6dabc2901b20094c691868fd7df0b382fc0f502a9ae3656abd59badaac70c3",
   "phase3_must_consume": true,
   "positive_claim_templates": [
     "The locked implementation recovered the programmed mapping in a correctly specified synthetic positive-control.",
     "Eligible observed participant-by-meal outcomes are unavailable in the audited data.",
     "The evidence gate implements a computational, fail-closed design."
   ],
-  "schema_version": "claim-policy-v3",
+  "schema_version": "claim-policy-v4",
   "scope": "Phase 3 manuscript and build inputs",
   "source_state": "absent_real_validation_artifacts",
+  "subject_default_deny": true,
   "tier": "computational_feasibility"
 }

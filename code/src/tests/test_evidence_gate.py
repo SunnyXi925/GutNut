@@ -1086,6 +1086,24 @@ def test_unlisted_subject_assertion_claims_fail_closed(
 @pytest.mark.parametrize(
     "sentence",
     [
+        "GMNPS yields lower RMSE than Food Compass.",
+        "GMNPS achieves superior glycaemic forecasting.",
+        "GMNPS stratifies individuals by glycaemic excursion.",
+        "The GMNPS method is transparent.",
+    ],
+)
+def test_subject_sentences_default_deny_without_assertion_vocabulary(
+    tmp_path, monkeypatch, sentence
+):
+    _activate_claim_bundle(tmp_path, monkeypatch, evaluate_evidence_gate())
+    claim = tmp_path / "claim.txt"
+    claim.write_text(sentence)
+    assert check_claim_inputs([claim])
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
         (
             "Although external validation was not performed, external validity "
             "is established."
@@ -1125,6 +1143,45 @@ def test_computational_tier_accepts_only_exact_safe_methods_and_limitations(
         "The GMNPS model source hash supports reproducible artifact verification."
     )
     assert check_claim_inputs([safe]) == ()
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "The GMNPS model is implemented as a deterministic scoring pipeline.",
+        "GMNPS computes attribute-level scores from locked inputs.",
+        "The GMNPS implementation loads the fixed registry.",
+        "The GMNPS implementation verifies artifact hashes.",
+        "The evidence gate hash-binds the claim policy to the gate decision.",
+        "The GMNPS method uses bounded attribute calibration.",
+        "The GMNPS model source hash supports reproducible artifact verification.",
+    ],
+)
+def test_enumerated_methods_infrastructure_templates_are_allowed(
+    tmp_path, monkeypatch, sentence
+):
+    _activate_claim_bundle(tmp_path, monkeypatch, evaluate_evidence_gate())
+    methods = tmp_path / "methods.txt"
+    methods.write_text(sentence)
+    assert check_claim_inputs([methods]) == ()
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "GMNPS computes glycaemic outcomes.",
+        "The GMNPS model is implemented as a validation pipeline.",
+        "The GMNPS implementation verifies superior performance.",
+        "The GMNPS method uses bounded attribute calibration for dietary guidance.",
+    ],
+)
+def test_methods_templates_cannot_carry_scientific_claim_semantics(
+    tmp_path, monkeypatch, sentence
+):
+    _activate_claim_bundle(tmp_path, monkeypatch, evaluate_evidence_gate())
+    methods = tmp_path / "methods.txt"
+    methods.write_text(sentence)
+    assert check_claim_inputs([methods])
 
 
 def test_negative_limitation_sentence_is_allowed_by_current_policy(tmp_path):
