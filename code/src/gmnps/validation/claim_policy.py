@@ -70,7 +70,6 @@ _ASSERTION_PATTERNS = (
     r"\brecover(?:s|ed|ing|y)?\b",
     r"\bresponses?\b",
 )
-_NEGATIVE_CUE_MAX_WORDS = 6
 _SUBJECT_DEFAULT_DENY = True
 _DIRECT_SCOPED_SENTENCE = (
     "For the locked primary endpoints glucose_iAUC_2h and tg_6h_rise, "
@@ -82,23 +81,37 @@ _COMPUTATIONAL_POSITIVE_TEMPLATES = (
     "Eligible observed participant-by-meal outcomes are unavailable in the audited data.",
     "The evidence gate implements a computational, fail-closed design.",
 )
-_PRECEDING_NEGATIVE_CUE = re.compile(
-    r"\b(?:does|do|did|is|are|was|were|has|have|had|can|could|will|would)\s+not\b"
-    r"|\bcannot\b|\bcan't\b|\bno\s+evidence\s+of\b"
-    r"|\bremains?\s+unvalidated\b",
-    flags=re.IGNORECASE,
+_NEGATIVE_LIMITATION_RULE = "strict_direct_governance_v1"
+_DIRECT_NEGATIVE_CUE_PATTERN = (
+    r"(?:\b(?:does|do|did|is|are|was|were|has|have|had|can|could|will|would)"
+    r"\s+not|\bcannot|\bcan't|\bno\s+evidence(?:\s+(?:of|for))?)\s*\Z"
 )
-_FOLLOWING_NEGATIVE_CUE = re.compile(
-    r"\b(?:is|are|was|were|has|have|had)\s+not\s+"
+_NEGATIVE_NOMINAL_TAIL_PATTERN = (
+    r"(?:\s+(?:validity|validation|evidence|claim|claims|performance|effect|"
+    r"effects|response|responses|utility|readiness|association|consistency)){0,2}"
+)
+_NEGATIVE_PASSIVE_LINK_PATTERN = (
+    rf"\A{_NEGATIVE_NOMINAL_TAIL_PATTERN}\s+"
+    r"(?:is|are|was|were|has|have|had)\s+not(?:\s+been)?\s*\Z"
+)
+_NEGATIVE_PASSIVE_PATTERN = (
+    rf"\A{_NEGATIVE_NOMINAL_TAIL_PATTERN}\s+"
+    r"(?:is|are|was|were|has|have|had)\s+not(?:\s+been)?\s+"
     r"(?:established|demonstrated|shown|supported|assessed|evaluated|performed|"
-    r"available|validated)\b|\bremains?\s+unvalidated\b",
-    flags=re.IGNORECASE,
+    r"available|validated)\b"
+)
+_REMAINS_UNVALIDATED_PATTERN = (
+    r"\A[^.!?,;:]+\bremains?\s+unvalidated\.?\Z"
+)
+_NEGATION_INVERSION_PATTERNS = (
+    r"\bnot\s+fail(?:s|ed|ing)?\s+to\b",
+    r"\b(?:cannot|can't)\s+fail(?:s|ed|ing)?\s+to\b",
+    r"\bnot\s+only\b",
 )
 _LOCAL_CLAUSE_BOUNDARY = re.compile(
     r"[,;:]|\b(?:but|however|yet|although|though|whereas|while)\b",
     flags=re.IGNORECASE,
 )
-_WORD = re.compile(r"\b[\w'-]+\b")
 _METHODS_ACTOR = (
     r"(?:the\s+)?(?:GMNPS(?:\s+(?:model|framework|approach|method|system|"
     r"platform|algorithm|implementation))?|model|framework|approach|method|"
@@ -187,7 +200,7 @@ def _build_claim_policy_payload(
     if direct:
         positive_templates.append(_DIRECT_SCOPED_SENTENCE)
     payload: dict[str, object] = {
-        "schema_version": "claim-policy-v4",
+        "schema_version": "claim-policy-v5",
         "tier": outcome.tier,
         "source_state": outcome.source_state,
         "allowed_claims": list(outcome.allowed_claims),
@@ -195,7 +208,16 @@ def _build_claim_policy_payload(
         "forbidden_patterns": list(_FORBIDDEN_PATTERNS),
         "claim_subject_patterns": list(_CLAIM_SUBJECT_PATTERNS),
         "assertion_patterns": list(_ASSERTION_PATTERNS),
-        "negative_cue_max_words": _NEGATIVE_CUE_MAX_WORDS,
+        "negative_limitation_rule": _NEGATIVE_LIMITATION_RULE,
+        "negative_limitation_direct_cue_pattern": _DIRECT_NEGATIVE_CUE_PATTERN,
+        "negative_limitation_passive_link_pattern": (
+            _NEGATIVE_PASSIVE_LINK_PATTERN
+        ),
+        "negative_limitation_passive_pattern": _NEGATIVE_PASSIVE_PATTERN,
+        "negative_limitation_remains_unvalidated_pattern": (
+            _REMAINS_UNVALIDATED_PATTERN
+        ),
+        "negative_inversion_patterns": list(_NEGATION_INVERSION_PATTERNS),
         "subject_default_deny": _SUBJECT_DEFAULT_DENY,
         "methods_infrastructure_patterns": list(_METHODS_INFRASTRUCTURE_PATTERNS),
         "methods_forbidden_semantics_pattern": _METHODS_FORBIDDEN_SEMANTICS_PATTERN,
@@ -387,7 +409,7 @@ def _validate_bound_bundle() -> dict[str, object]:
     )
     if decision.get("schema_version") != "evidence-gate-decision-v2":
         raise ValueError("gate decision schema version is invalid")
-    if policy.get("schema_version") != "claim-policy-v4":
+    if policy.get("schema_version") != "claim-policy-v5":
         raise ValueError("claim policy schema version is invalid")
     if decision.get("authorization") != "production_path_only_evidence_gate" or policy.get(
         "authorization"
@@ -407,8 +429,18 @@ def _validate_bound_bundle() -> dict[str, object]:
         raise ValueError("claim policy claim_subject_patterns is invalid")
     if policy.get("assertion_patterns") != list(_ASSERTION_PATTERNS):
         raise ValueError("claim policy assertion_patterns is invalid")
-    if policy.get("negative_cue_max_words") != _NEGATIVE_CUE_MAX_WORDS:
-        raise ValueError("claim policy negative-cue window is invalid")
+    expected_negative_policy = {
+        "negative_limitation_rule": _NEGATIVE_LIMITATION_RULE,
+        "negative_limitation_direct_cue_pattern": _DIRECT_NEGATIVE_CUE_PATTERN,
+        "negative_limitation_passive_link_pattern": _NEGATIVE_PASSIVE_LINK_PATTERN,
+        "negative_limitation_passive_pattern": _NEGATIVE_PASSIVE_PATTERN,
+        "negative_limitation_remains_unvalidated_pattern": (
+            _REMAINS_UNVALIDATED_PATTERN
+        ),
+        "negative_inversion_patterns": list(_NEGATION_INVERSION_PATTERNS),
+    }
+    if any(policy.get(key) != value for key, value in expected_negative_policy.items()):
+        raise ValueError("claim policy negative-limitation rule is invalid")
     if policy.get("subject_default_deny") is not _SUBJECT_DEFAULT_DENY:
         raise ValueError("claim policy subject-default-deny rule is invalid")
     if policy.get("methods_infrastructure_patterns") != list(
@@ -448,45 +480,6 @@ def _sentences(text: str) -> tuple[str, ...]:
     )
 
 
-def _bounded_words(text: str, *, from_end: bool) -> str:
-    words = list(_WORD.finditer(text))
-    selected = (
-        words[-_NEGATIVE_CUE_MAX_WORDS :]
-        if from_end
-        else words[:_NEGATIVE_CUE_MAX_WORDS]
-    )
-    if not selected:
-        return ""
-    return text[selected[0].start() : selected[-1].end()]
-
-
-def _is_negative_limitation(sentence: str, match: re.Match[str]) -> bool:
-    boundaries = list(_LOCAL_CLAUSE_BOUNDARY.finditer(sentence))
-    clause_start = max(
-        (boundary.end() for boundary in boundaries if boundary.end() <= match.start()),
-        default=0,
-    )
-    clause_end = min(
-        (boundary.start() for boundary in boundaries if boundary.start() >= match.end()),
-        default=len(sentence),
-    )
-    preceding = _bounded_words(
-        sentence[clause_start : match.start()], from_end=True
-    )
-    following = _bounded_words(
-        sentence[match.end() : clause_end], from_end=False
-    )
-    preceding_cue = _PRECEDING_NEGATIVE_CUE.search(preceding)
-    if preceding_cue is not None and _NEGATION_SCOPE_BREAK.search(
-        preceding[preceding_cue.end() :]
-    ) is None:
-        return True
-    following_cue = _FOLLOWING_NEGATIVE_CUE.search(following)
-    return following_cue is not None and _NEGATION_SCOPE_BREAK.search(
-        following[following_cue.end() :]
-    ) is None
-
-
 def _pattern_matches(
     patterns: Iterable[str], sentence: str
 ) -> list[tuple[str, re.Match[str]]]:
@@ -511,11 +504,72 @@ def _is_methods_infrastructure_sentence(
 
 def _is_negative_limitation_sentence(
     sentence: str,
-    matches: list[tuple[str, re.Match[str]]],
+    forbidden_matches: list[tuple[str, re.Match[str]]],
+    assertion_matches: list[tuple[str, re.Match[str]]],
 ) -> bool:
-    if not matches or _LOCAL_CLAUSE_BOUNDARY.search(sentence) is not None:
+    if (
+        _LOCAL_CLAUSE_BOUNDARY.search(sentence) is not None
+        or _NEGATION_SCOPE_BREAK.search(sentence) is not None
+        or any(
+            re.search(pattern, sentence, flags=re.IGNORECASE) is not None
+            for pattern in _NEGATION_INVERSION_PATTERNS
+        )
+    ):
         return False
-    return all(_is_negative_limitation(sentence, match) for _, match in matches)
+    matches = [
+        ("forbidden", pattern, match) for pattern, match in forbidden_matches
+    ] + [
+        ("assertion", pattern, match) for pattern, match in assertion_matches
+    ]
+    if not matches:
+        return (
+            re.fullmatch(
+                _REMAINS_UNVALIDATED_PATTERN,
+                sentence,
+                flags=re.IGNORECASE,
+            )
+            is not None
+        )
+
+    def overlaps(left: re.Match[str], right: re.Match[str]) -> bool:
+        return left.start() < right.end() and right.start() < left.end()
+
+    for _, _, anchor in matches:
+        if re.search(
+            _DIRECT_NEGATIVE_CUE_PATTERN,
+            sentence[: anchor.start()],
+            flags=re.IGNORECASE,
+        ) is None:
+            continue
+        governed = True
+        for kind, _, current in matches:
+            if overlaps(anchor, current):
+                continue
+            if current.start() >= anchor.end():
+                if kind == "assertion":
+                    governed = False
+                    break
+                continue
+            if current.end() <= anchor.start() and re.fullmatch(
+                _NEGATIVE_PASSIVE_LINK_PATTERN,
+                sentence[current.end() : anchor.start()],
+                flags=re.IGNORECASE,
+            ) is not None:
+                continue
+            governed = False
+            break
+        if governed:
+            return True
+
+    return all(
+        re.search(
+            _NEGATIVE_PASSIVE_PATTERN,
+            sentence[match.end() :],
+            flags=re.IGNORECASE,
+        )
+        is not None
+        for _, _, match in matches
+    )
 
 
 def _is_exact_positive_template(sentence: str, policy: dict[str, object]) -> bool:
@@ -543,22 +597,20 @@ def check_claim_inputs(
             if _is_exact_positive_template(sentence, policy):
                 continue
             forbidden_matches = _pattern_matches(forbidden_patterns, sentence)
-            unnegated_forbidden = [
-                pattern
-                for pattern, match in forbidden_matches
-                if not _is_negative_limitation(sentence, match)
-            ]
-            if unnegated_forbidden:
+            assertion_matches = _pattern_matches(assertion_patterns, sentence)
+            if _is_negative_limitation_sentence(
+                sentence,
+                forbidden_matches,
+                assertion_matches,
+            ):
+                continue
+            if forbidden_matches:
                 violations.append(
-                    ClaimViolation(path=path, pattern=unnegated_forbidden[0])
+                    ClaimViolation(path=path, pattern=forbidden_matches[0][0])
                 )
                 continue
             subject_matches = _pattern_matches(subject_patterns, sentence)
-            assertion_matches = _pattern_matches(assertion_patterns, sentence)
             if not subject_matches:
-                continue
-            claim_matches = forbidden_matches + assertion_matches
-            if _is_negative_limitation_sentence(sentence, claim_matches):
                 continue
             if _is_methods_infrastructure_sentence(sentence):
                 continue

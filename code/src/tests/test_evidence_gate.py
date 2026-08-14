@@ -1129,6 +1129,46 @@ def test_negative_cues_do_not_exempt_later_positive_claims(
     assert check_claim_inputs([claim])
 
 
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "The GMNPS model does not fail to outperform Food Compass.",
+        "The GMNPS model does not fail to predict glycaemic response.",
+        "The GMNPS model cannot fail to outperform Food Compass.",
+        "The GMNPS model cannot fail to predict glycaemic response.",
+        "The GMNPS model does not only outperform Food Compass.",
+        "The GMNPS model not only predicts but also outperforms Food Compass.",
+        "The GMNPS model does not appear to outperform Food Compass.",
+        "The GMNPS model does not seem to predict glycaemic response.",
+    ],
+)
+def test_inverted_or_indirect_negation_cannot_bypass_claim_gate(
+    tmp_path, monkeypatch, sentence
+):
+    _activate_claim_bundle(tmp_path, monkeypatch, evaluate_evidence_gate())
+    claim = tmp_path / "claim.txt"
+    claim.write_text(sentence)
+    assert check_claim_inputs([claim])
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "GMNPS does not establish external validity.",
+        "No evidence supports clinical validity.",
+        "No evidence of clinical validity is available.",
+        "External validation was not performed.",
+    ],
+)
+def test_strict_negative_limitation_templates_remain_allowed(
+    tmp_path, monkeypatch, sentence
+):
+    _activate_claim_bundle(tmp_path, monkeypatch, evaluate_evidence_gate())
+    claim = tmp_path / "claim.txt"
+    claim.write_text(sentence)
+    assert check_claim_inputs([claim]) == ()
+
+
 def test_computational_tier_accepts_only_exact_safe_methods_and_limitations(
     tmp_path, monkeypatch
 ):

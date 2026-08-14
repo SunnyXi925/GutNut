@@ -624,3 +624,48 @@ source_state=absent_real_validation_artifacts
 The full suite exceeds the 694-test baseline by 15 regression cases and has no
 failures. The warning is the unchanged NumPy 2.4.6 / SciPy 1.13.1 declared-version
 mismatch.
+
+## Inverted-negation claim-policy closure (2026-08-14)
+
+### Enforcement correction
+
+**DONE.** This section supersedes all earlier negative-cue window descriptions.
+The fixed policy is now `claim-policy-v5`. The negative-limitation exception uses
+the policy-bound `strict_direct_governance_v1` rule: a negative cue must directly
+introduce the allowed assertion or forbidden predicate. Controlled passive
+limitations remain available only when a forbidden nominal subject is linked to
+an immediately negated limitation participle. Punctuation, contrast and
+coordination terminate the strict template.
+
+The checker rejects negation inversion and double-negation forms before applying
+the limitation exception. This includes `not fail to`, `does not fail to`,
+`cannot fail to` and `not only`, for both superiority and prediction assertions.
+Indirect forms such as `does not appear to outperform` and `does not seem to
+predict` also fail because the cue does not directly govern the claim predicate.
+The ordinary limitations `GMNPS does not establish external validity.` and `No
+evidence supports clinical validity.` remain allowed.
+
+Subject default deny and the enumerated, anchored Methods infrastructure exception
+are unchanged. The regenerated production bundle remains fail closed:
+
+```text
+tier=computational_feasibility
+source_state=absent_real_validation_artifacts
+```
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `claim_policy.json` | `ee52cf97d34c8867b854560054477bb179aef03116559d27cfa2205d3e64da12` |
+| `current_gate_decision.json` | `046db853916b254004c3cebc3e00688cb81e2151928c88521561461efb4ed705` |
+| `claim_policy_registry.json` | `8f6feb7e32c581eef060ed8cbfa659298db357d63006a00155999c9ffd84d264` |
+
+### Verification
+
+| Scope | Result | Time |
+| --- | ---: | ---: |
+| Focused `test_evidence_gate.py` | 83 passed, 1 warning | 13.60 s |
+| Full `code/src/tests` | 721 passed, 1 warning | 172.51 s |
+
+The full suite exceeds the 709-test baseline by 12 regression cases and has no
+failures. The warning is the unchanged NumPy 2.4.6 / SciPy 1.13.1
+declared-version mismatch.

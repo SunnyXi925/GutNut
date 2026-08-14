@@ -81,9 +81,15 @@ scientific semantics.
 At the current computational tier, only exact templates for the correctly specified
 synthetic programmed mapping, audited outcome unavailability and the computational
 fail-closed design are eligible. An explicit negative limitation is permitted only
-when its cue is bound to every specific forbidden/assertion match within one local
-clause and at most six words; punctuation, contrast and a new coordinated predicate
-end that scope. Thus `does not establish external validity` is allowed, but
+under the policy-bound `strict_direct_governance_v1` templates. The negative cue
+must directly introduce the allowed assertion or forbidden predicate; a controlled
+passive limitation may bind a forbidden nominal subject to an immediately negated
+limitation participle. Punctuation, contrast and coordination end the template.
+Negation inversion and double-negation forms including `not fail to`, `cannot fail
+to` and `not only` are rejected before a limitation exception can apply. Thus
+`GMNPS does not establish external validity.` and `No evidence supports clinical
+validity.` are allowed, while `The GMNPS model does not fail to outperform Food
+Compass.` and
 `Although external validation was not performed, external validity is established.`
 is rejected. Every other subject-bearing sentence fails closed, including claims that
 use previously unseen verbs such as `yields`, `achieves` or `stratifies`.
@@ -99,6 +105,6 @@ Current approved claim-control hashes:
 
 | Artifact | SHA-256 |
 | --- | --- |
-| `claim_policy.json` | `0e29b08359d3a335db05c613540149640127842e133bb8e582f920428645a7d5` |
-| `current_gate_decision.json` | `da0739f4df4896ff54b03cef3ba8600218ad9acb2d0286b30579f220a48ec085` |
-| `claim_policy_registry.json` | `90bb3828d1f62e160d3cc90309da4520b85f453f2eb03401ca7cfba6004a1311` |
+| `claim_policy.json` | `ee52cf97d34c8867b854560054477bb179aef03116559d27cfa2205d3e64da12` |
+| `current_gate_decision.json` | `046db853916b254004c3cebc3e00688cb81e2151928c88521561461efb4ed705` |
+| `claim_policy_registry.json` | `8f6feb7e32c581eef060ed8cbfa659298db357d63006a00155999c9ffd84d264` |
