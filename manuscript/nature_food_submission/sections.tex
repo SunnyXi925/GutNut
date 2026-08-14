@@ -48,6 +48,27 @@ value equal their corresponding baselines to the locked numerical tolerance.
 This identity and the two caps are designed computational invariants rather than
 observations of population preservation.
 
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figure_1_attribute_calibration.pdf}
+\caption{\textbf{Bounded calibration acts on native nutrient-profile attributes.}
+\textbf{a}, Person-level normalized nutrient calibration inputs are combined
+with food-specific exposures and reviewed nutrient-to-attribute allocations to
+define an attribute response. \textbf{b}, The response changes each baseline
+attribute point within its published native range, with movement bounded to
+20\% of that range in the locked primary mode. \textbf{c}, Personalized native
+points are reaggregated within six selected Food Compass 2.0 domains using
+published applicability and weighting rules, including dynamic top-$k$
+selection; a food-specific fixed residual retains contributions outside those
+recomputed domains. \textbf{d}, The recomposed value is returned to the shared
+1--100 scale and constrained to within 12 points of the Food Compass 2.0
+anchor, with no population or per-food centring. Every panel is
+conceptual; none contains observed or synthetic data. The bounds are
+computational design properties and provide no evidence of population
+preservation or response validity.}
+\label{fig:attribute_calibration}
+\end{figure*}
+
 \subsection*{A fail-closed audit fixed the evidence tier at computational feasibility}
 
 The evidence gate implements a computational, fail-closed design. It authorizes
@@ -96,8 +117,9 @@ information to characterize inter-individual responses
 \cite{zeevi2015personalized,berry2020postprandial,asnicar2021microbiome}.
 The present contribution addresses a different problem: how an individual
 calibration layer can remain legible inside a shared nutrient-profile reference.
-The correctly specified synthetic positive-control, summarized in
-Supplementary Table S2, shows that the locked code
+The correctly specified synthetic positive-control, shown in Supplementary
+Fig.~\ref{fig:supp_synthetic_positive_control} and summarized in Supplementary
+Table~\ref{tab:supp_synthetic_positive_control}, shows that the locked code
 recovers a mapping programmed into its own data-generating process and loses
 that recovery after random or Sattolo-deranged assignment. Because generator
 and implementation share the mapping, this evidence diagnoses implementation
