@@ -778,6 +778,15 @@ def test_locked_project_method_route_requires_one_marker_across_all_inputs(tmp_p
         " It improves outcomes.",
         "\nIt improves outcomes.",
         "\nIt improves\noutcomes.",
+        "\nIt improves % formatting note\noutcomes.",
+        "\nIt improves\n% formatting note\noutcomes.",
+        "\nIt improves\n\\label{claim:x}\noutcomes.",
+        "\nIt improves\n\\index{claim assertion}\noutcomes.",
+        "\nIt improves\n\\phantomsection\noutcomes.",
+        "\nIt impro% formatting note\nves outcomes.",
+        "\nIt impro\\label{claim:x}ves outcomes.",
+        "\nIt impro\\index{claim assertion}ves outcomes.",
+        "\nIt impro\\phantomsection ves outcomes.",
         "\nThis improves prediction performance.",
         "\nThat improves response validity.",
         "\nThese improve outcomes.",
@@ -809,6 +818,15 @@ def test_locked_project_route_cannot_authorize_appended_empirical_assertions(
         " It improves outcomes.",
         "\nIt improves outcomes.",
         "\nIt improves\noutcomes.",
+        "\nIt improves % formatting note\noutcomes.",
+        "\nIt improves\n% formatting note\noutcomes.",
+        "\nIt improves\n\\label{claim:x}\noutcomes.",
+        "\nIt improves\n\\index{claim assertion}\noutcomes.",
+        "\nIt improves\n\\phantomsection\noutcomes.",
+        "\nIt impro% formatting note\nves outcomes.",
+        "\nIt impro\\label{claim:x}ves outcomes.",
+        "\nIt impro\\index{claim assertion}ves outcomes.",
+        "\nIt impro\\phantomsection ves outcomes.",
     ],
 )
 def test_manuscript_wrapper_rejects_assertions_after_exact_identifier(
@@ -833,7 +851,11 @@ def test_locked_project_route_preserves_benign_following_lines(tmp_path):
     candidate.write_text(
         candidate.read_text(encoding="utf-8")
         + "This response is stored\nin the manifest.\n"
-        + "Performance was not evaluated.\n",
+        + "Performance was not evaluated.\n"
+        + "This does not improve % formatting note\noutcomes.\n"
+        + "This response is stored\n\\label{manifest:x}\nin the manifest.\n"
+        + r"The threshold is 20\%." "\n"
+        + "Performance\n\\section*{Methods}\nimproves.\n",
         encoding="utf-8",
     )
     assert check_manuscript_claim_inputs(

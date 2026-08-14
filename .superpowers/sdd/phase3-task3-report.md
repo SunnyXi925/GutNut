@@ -22,11 +22,19 @@ allowed. Approved manuscript and reference content is unchanged.
 
 The third failed-review repair closes physical line wrapping as a remaining
 route around that rule. Ordinary single newlines inside prose paragraphs are
-normalized before semantic sentence evaluation, while blank lines, comments,
-common LaTeX structure, display mathematics and table rows remain boundaries.
+normalized before semantic sentence evaluation, while blank lines, common
+LaTeX structure, display mathematics and table rows remain boundaries.
 The already-approved wrapped technical and limitation sentences are bound as
 exact non-empirical templates; empirical extensions and near matches remain
 default-denied. Independent re-review remains pending.
+
+The fourth failed-review repair builds an explicit TeX semantic view before
+the default-deny scan. Unescaped comments and the allowlisted zero-width
+commands `\label`, `\index` and `\phantomsection` no longer split rendered
+assertions; escaped `\%` and visible commands remain in the view. Actual
+paragraph, structural and display boundaries are preserved, and the wrapper's
+exact one-physical-line requirement is unchanged. Independent re-review
+remains pending.
 
 The strict `reference_audit.csv` contains exactly four direct-support rows:
 `INT-01/labonte2018nutrientprofiles`,
@@ -92,14 +100,16 @@ inventory row appears in that file.
 
 - Focused claim-policy/manuscript/reference tests:
   `.venv/bin/python -m pytest code/src/tests/test_manuscript_claim_gate.py code/src/tests/test_evidence_gate.py -q`
-  -> `261 passed, 1 warning` in 12.75s.
-- Full: `.venv/bin/python -m pytest -q` -> `899 passed, 1 warning` in 172.34s.
+  -> `301 passed, 1 warning` in 14.14s.
+- Full: `.venv/bin/python -m pytest -q` -> `939 passed, 1 warning` in 172.26s.
 - Exact visible-TeX assertion: six files, zero violations.
+- Direct static semantic-view check: eight comment/zero-width adversarial cases,
+  eight rejected.
 - Static checks: exact four-row audit; 12 defined BibTeX keys equal 12 visible
   cited keys; no duplicate keys or fields; 12 DOI values well formed; no
   pending reference placeholders; no Van Calster or corrected Food Compass
   personalization route; approved manuscript/reference content has no diff
-  from `f09aa56`; `git diff --check` passed.
+  from `46b1c06`; `git diff --check` passed.
 - The policy, decision and registry were regenerated together by
   `build_claim_policy_from_evidence_gate`; no digest was hand-edited.
 - No TeX engine was available, so no compilation was run; no engine was

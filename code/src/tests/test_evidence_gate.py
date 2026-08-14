@@ -1257,8 +1257,20 @@ def test_exact_methods_and_limitation_allowances_reject_near_matches_and_extensi
         r"The frozen specification is \texttt{attribute-gmnps-v1}. It improves outcomes.",
         "The frozen specification is \\texttt{attribute-gmnps-v1}.\nIt improves outcomes.",
         "The frozen specification is \\texttt{attribute-gmnps-v1}.\nIt improves\noutcomes.",
+        "The frozen specification is \\texttt{attribute-gmnps-v1}.\nIt improves % formatting note\noutcomes.",
+        "The frozen specification is \\texttt{attribute-gmnps-v1}.\nIt improves\n\\label{claim:x}\noutcomes.",
         "It improves outcomes.",
         "It improves\noutcomes.",
+        "It improves % formatting note\noutcomes.",
+        "It improves\n% formatting note\noutcomes.",
+        "It improves\n\\label{claim:x}\noutcomes.",
+        "It improves\n\\index{claim assertion}\noutcomes.",
+        "It improves\n\\phantomsection\noutcomes.",
+        "It impro% formatting note\nves outcomes.",
+        "It impro\\label{claim:x}ves outcomes.",
+        "It impro\\index{claim assertion}ves outcomes.",
+        "It impro\\phantomsection ves outcomes.",
+        r"The threshold is 20\% and it improves" "\noutcomes.",
         "This improves prediction performance.",
         "That improves response accuracy.",
         "These improve outcomes.",
@@ -1296,6 +1308,34 @@ def test_anaphoric_rule_preserves_negative_and_non_empirical_prose(
         "\nThis response is recorded\nin the manifest."
     )
     assert check_claim_inputs([candidate]) == ()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "This does not improve % formatting note\noutcomes.",
+        "This response is stored\n% formatting note\nin the manifest.",
+        "This response is stored\n\\label{manifest:x}\nin the manifest.",
+        "This response is stored\n\\index{manifest}\nin the manifest.",
+        "This response is stored\n\\phantomsection\nin the manifest.",
+        r"The threshold is 20\%" "\nand is recorded.",
+        "Performance\n\nimproves.",
+        "Performance\n\\section*{Methods}\nimproves.",
+        "Performance\n\\[\nx = 1\n\\]\nimproves.",
+    ],
+)
+def test_tex_semantic_view_preserves_benign_controls(tmp_path, monkeypatch, text):
+    _activate_claim_bundle(tmp_path, monkeypatch, evaluate_evidence_gate())
+    candidate = tmp_path / "benign-tex.txt"
+    candidate.write_text(text)
+    assert check_claim_inputs([candidate]) == ()
+
+
+def test_tex_semantic_view_preserves_visible_command_arguments(tmp_path, monkeypatch):
+    _activate_claim_bundle(tmp_path, monkeypatch, evaluate_evidence_gate())
+    candidate = tmp_path / "visible-command.txt"
+    candidate.write_text(r"The \href{urn:example}{model} is deterministic.")
+    assert check_claim_inputs([candidate])
 
 
 def test_exact_wrapped_non_empirical_allowances_reject_empirical_extensions(

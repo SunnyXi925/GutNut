@@ -1,11 +1,11 @@
 {
   "approved_bundles": [
     {
-      "bundle_id": "phase2-current-production-claim-bundle-v8",
+      "bundle_id": "phase2-current-production-claim-bundle-v9",
       "decision_path": "results/phase2/evidence-gate/current_gate_decision.json",
-      "decision_sha256": "05c23f5437ab168013ae4bb3bf5f65e347b42cf7747361a215590fc9c40ed6b2",
+      "decision_sha256": "73046867e5449dcb77ad1fa47a55d8308b90f396741c7d6ad0bfe9f61e863461",
       "policy_path": "results/phase2/evidence-gate/claim_policy.json",
-      "policy_sha256": "559cd88dc4ff1b217f2fa2e00df3201e94df2f3380cf0a903977ea233ef4f7f4",
+      "policy_sha256": "d9073d26bd70cb22c29c95b59bd728342b4e9675b6f4d3d9ff8d537025e19249",
       "source_state": "absent_real_validation_artifacts",
       "tier": "computational_feasibility"
     }

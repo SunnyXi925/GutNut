@@ -26,7 +26,7 @@ _TRUSTED_REGISTRY_RELATIVE = Path("code/src/configs/claim_policy_registry.json")
 _TRUSTED_DECISION_PATH = _REPOSITORY_ROOT / _TRUSTED_DECISION_RELATIVE
 _TRUSTED_POLICY_PATH = _REPOSITORY_ROOT / _TRUSTED_POLICY_RELATIVE
 _TRUSTED_POLICY_REGISTRY_PATH = _REPOSITORY_ROOT / _TRUSTED_REGISTRY_RELATIVE
-_CURRENT_BUNDLE_ID = "phase2-current-production-claim-bundle-v8"
+_CURRENT_BUNDLE_ID = "phase2-current-production-claim-bundle-v9"
 
 _FORBIDDEN_PATTERNS = (
     r"\bvalidat(?:e|es|ed|ing|ion)\b",
@@ -92,7 +92,9 @@ _EMPIRICAL_TARGET_PATTERN = (
     r"\b(?:outcomes?|performance|predictions?|responses?|validity|accuracy|"
     r"rmse|auroc)\b"
 )
-_SEMANTIC_LINE_WRAP_RULE = "ordinary_single_newline_paragraph_wrap_v1"
+_TEX_SEMANTIC_VIEW_RULE = "explicit_tex_semantic_view_v1"
+_ZERO_WIDTH_BRACED_COMMANDS = frozenset({"index", "label"})
+_ZERO_WIDTH_BARE_COMMANDS = frozenset({"phantomsection"})
 _LATEX_STRUCTURAL_COMMANDS = frozenset(
     {
         "abstract",
@@ -110,7 +112,6 @@ _LATEX_STRUCTURAL_COMMANDS = frozenset(
         "include",
         "input",
         "keywords",
-        "label",
         "maketitle",
         "midrule",
         "newpage",
@@ -126,7 +127,6 @@ _LATEX_STRUCTURAL_COMMANDS = frozenset(
         "usepackage",
     }
 )
-_UNESCAPED_COMMENT = re.compile(r"(?<!\\)%")
 _SUBJECT_DEFAULT_DENY = True
 _DIRECT_SCOPED_SENTENCE = (
     "For the locked primary endpoints glucose_iAUC_2h and tg_6h_rise, "
@@ -340,7 +340,7 @@ def _build_claim_policy_payload(
     if direct:
         positive_templates.append(_DIRECT_SCOPED_SENTENCE)
     payload: dict[str, object] = {
-        "schema_version": "claim-policy-v8",
+        "schema_version": "claim-policy-v9",
         "tier": outcome.tier,
         "source_state": outcome.source_state,
         "allowed_claims": list(outcome.allowed_claims),
@@ -351,7 +351,7 @@ def _build_claim_policy_payload(
         "positive_assertion_patterns": list(_POSITIVE_ASSERTION_PATTERNS),
         "anaphoric_subject_pattern": _ANAPHORIC_SUBJECT_PATTERN,
         "empirical_target_pattern": _EMPIRICAL_TARGET_PATTERN,
-        "semantic_line_wrap_rule": _SEMANTIC_LINE_WRAP_RULE,
+        "tex_semantic_view_rule": _TEX_SEMANTIC_VIEW_RULE,
         "negative_limitation_rule": _NEGATIVE_LIMITATION_RULE,
         "negative_limitation_direct_cue_pattern": _DIRECT_NEGATIVE_CUE_PATTERN,
         "negative_limitation_passive_link_pattern": (
@@ -580,7 +580,7 @@ def _validate_bound_bundle() -> dict[str, object]:
     )
     if decision.get("schema_version") != "evidence-gate-decision-v2":
         raise ValueError("gate decision schema version is invalid")
-    if policy.get("schema_version") != "claim-policy-v8":
+    if policy.get("schema_version") != "claim-policy-v9":
         raise ValueError("claim policy schema version is invalid")
     if decision.get("authorization") != "production_path_only_evidence_gate" or policy.get(
         "authorization"
@@ -608,8 +608,8 @@ def _validate_bound_bundle() -> dict[str, object]:
         raise ValueError("claim policy anaphoric-subject rule is invalid")
     if policy.get("empirical_target_pattern") != _EMPIRICAL_TARGET_PATTERN:
         raise ValueError("claim policy empirical-target rule is invalid")
-    if policy.get("semantic_line_wrap_rule") != _SEMANTIC_LINE_WRAP_RULE:
-        raise ValueError("claim policy semantic line-wrap rule is invalid")
+    if policy.get("tex_semantic_view_rule") != _TEX_SEMANTIC_VIEW_RULE:
+        raise ValueError("claim policy TeX semantic-view rule is invalid")
     expected_negative_policy = {
         "negative_limitation_rule": _NEGATIVE_LIMITATION_RULE,
         "negative_limitation_direct_cue_pattern": _DIRECT_NEGATIVE_CUE_PATTERN,
@@ -665,12 +665,72 @@ def _validate_bound_bundle() -> dict[str, object]:
     return policy
 
 
+def _strip_unescaped_tex_comment(line: str) -> tuple[str, bool]:
+    for index, character in enumerate(line):
+        if character != "%":
+            continue
+        backslashes = 0
+        cursor = index - 1
+        while cursor >= 0 and line[cursor] == "\\":
+            backslashes += 1
+            cursor -= 1
+        if backslashes % 2 == 0:
+            return line[:index], True
+    return line, False
+
+
+def _balanced_group_end(text: str, start: int) -> int | None:
+    if start >= len(text) or text[start] != "{":
+        return None
+    depth = 0
+    index = start
+    while index < len(text):
+        if text[index] == "\\":
+            index += 2
+            continue
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return index + 1
+        index += 1
+    return None
+
+
+def _remove_zero_width_tex_commands(line: str) -> str:
+    rendered: list[str] = []
+    index = 0
+    while index < len(line):
+        command = re.match(r"\\([A-Za-z]+)", line[index:])
+        if command is None:
+            rendered.append(line[index])
+            index += 1
+            continue
+        name = command.group(1)
+        command_end = index + command.end()
+        if name in _ZERO_WIDTH_BARE_COMMANDS:
+            index = command_end
+            while index < len(line) and line[index].isspace():
+                index += 1
+            continue
+        if name in _ZERO_WIDTH_BRACED_COMMANDS:
+            argument_start = command_end
+            while argument_start < len(line) and line[argument_start].isspace():
+                argument_start += 1
+            argument_end = _balanced_group_end(line, argument_start)
+            if argument_end is not None:
+                index = argument_end
+                continue
+        rendered.append(line[index:command_end])
+        index = command_end
+    return "".join(rendered)
+
+
 def _is_semantic_line_boundary(line: str) -> bool:
     stripped = line.strip()
     if (
         not stripped
-        or stripped.startswith("%")
-        or _UNESCAPED_COMMENT.search(line) is not None
         or stripped in {r"\[", r"\]", "$$"}
         or stripped.endswith(r"\\")
     ):
@@ -679,32 +739,46 @@ def _is_semantic_line_boundary(line: str) -> bool:
     return command is not None and command.group(1) in _LATEX_STRUCTURAL_COMMANDS
 
 
-def _normalize_semantic_line_wraps(text: str) -> str:
-    normalized: list[str] = []
+def _build_tex_semantic_view(text: str) -> str:
+    semantic: list[str] = []
     prose_run: list[str] = []
+    pending_separator = ""
 
     def flush_prose_run() -> None:
+        nonlocal pending_separator
         if prose_run:
-            normalized.append(" ".join(prose_run))
+            semantic.append(re.sub(r"\s+", " ", "".join(prose_run)).strip())
             prose_run.clear()
+        pending_separator = ""
 
-    for line in text.splitlines():
-        if _is_semantic_line_boundary(line):
+    for raw_line in text.splitlines():
+        if not raw_line.strip():
             flush_prose_run()
-            normalized.append(line)
+            semantic.append("")
+            continue
+        uncommented_line, comment_suppresses_newline = (
+            _strip_unescaped_tex_comment(raw_line)
+        )
+        visible_line = _remove_zero_width_tex_commands(
+            uncommented_line
+        )
+        if visible_line.strip() and _is_semantic_line_boundary(visible_line):
+            flush_prose_run()
+            semantic.append(visible_line)
         else:
-            prose_run.append(line.strip())
+            prose_run.extend((pending_separator, visible_line))
+            pending_separator = "" if comment_suppresses_newline else " "
     flush_prose_run()
-    return "\n".join(normalized)
+    return "\n".join(semantic)
 
 
-def _sentences(text: str, *, semantic_line_wrap_rule: str) -> tuple[str, ...]:
-    if semantic_line_wrap_rule != _SEMANTIC_LINE_WRAP_RULE:
-        raise ValueError("unsupported semantic line-wrap rule")
-    normalized = _normalize_semantic_line_wraps(text)
+def _sentences(text: str, *, tex_semantic_view_rule: str) -> tuple[str, ...]:
+    if tex_semantic_view_rule != _TEX_SEMANTIC_VIEW_RULE:
+        raise ValueError("unsupported TeX semantic-view rule")
+    semantic_text = _build_tex_semantic_view(text)
     return tuple(
         match.group(0).strip()
-        for match in re.finditer(r"[^.!?\n]+(?:[.!?]+|$)", normalized)
+        for match in re.finditer(r"[^.!?\n]+(?:[.!?]+|$)", semantic_text)
         if match.group(0).strip()
     )
 
@@ -841,7 +915,7 @@ def check_claim_inputs(
         text = path.read_text(encoding="utf-8")
         for sentence in _sentences(
             text,
-            semantic_line_wrap_rule=str(policy["semantic_line_wrap_rule"]),
+            tex_semantic_view_rule=str(policy["tex_semantic_view_rule"]),
         ):
             if _is_exact_positive_template(sentence, policy):
                 continue
