@@ -5,6 +5,7 @@
     "audited_data_unavailable",
     "fail_closed_computational_design"
   ],
+  "anaphoric_subject_pattern": "\\A(?:it|this|that|these|those|they)\\b",
   "assertion_patterns": [
     "\\bpredict(?:s|ed|ing)?\\b|\\bprediction\\b",
     "\\boutperform(?:s|ed|ing)?\\b",
@@ -32,6 +33,7 @@
     "\\b(?:scores?|findings|results|analysis)\\b"
   ],
   "direct_scope_whitelist": [],
+  "empirical_target_pattern": "\\b(?:outcomes?|performance|predictions?|responses?|validity|accuracy|rmse|auroc)\\b",
   "exact_negative_limitation_templates": [
     "The framework provides an auditable basis for future empirical testing, but GMNPS does not establish external validity.",
     "No analysis evaluated clinical utility or dietary recommendations."
@@ -88,15 +90,31 @@
   "negative_limitation_remains_unvalidated_pattern": "\\A[^.!?,;:]+\\bremains?\\s+unvalidated\\.?\\Z",
   "negative_limitation_rule": "strict_direct_governance_v1",
   "negative_limitation_sentences_allowed": true,
-  "payload_sha256": "91e0d6502ee6769b03815249b898501d228daf8c93e8eb55e929b5280609d27d",
+  "payload_sha256": "578ffed2166ca52c490092e7089ed3ea94516a26a195ad29e7ff0dd0e108d690",
   "phase3_must_consume": true,
+  "positive_assertion_patterns": [
+    "\\bpredict(?:s|ed|ing)\\b",
+    "\\boutperform(?:s|ed|ing)?\\b",
+    "\\bimprov(?:e|es|ed|ing|ement|ements)\\b",
+    "\\bgenerali[sz](?:e|es|ed|ing)\\b",
+    "\\bvalidat(?:e|es|ed|ing)\\b",
+    "\\baccur(?:ate|ately)\\b",
+    "\\bestablish(?:es|ed|ing)?\\b",
+    "\\bdemonstrat(?:e|es|ed|ing)\\b",
+    "\\bsupport(?:s|ed|ing)?\\b",
+    "\\benabl(?:e|es|ed|ing)\\b",
+    "\\bguid(?:e|es|ed|ing)\\b",
+    "\\brecommend(?:s|ed|ing)?\\b",
+    "\\bassociate(?:s|d|ing)?\\b",
+    "\\brecover(?:s|ed|ing)?\\b"
+  ],
   "positive_claim_templates": [
     "The Gut Microbiome-informed Nutrient Profiling System (GMNPS) uses bounded attribute-level calibration with locked inputs.",
     "The locked implementation recovered the programmed mapping in a correctly specified synthetic positive-control.",
     "Eligible observed participant-by-meal outcomes are unavailable in the audited data.",
     "The evidence gate implements a computational, fail-closed design."
   ],
-  "schema_version": "claim-policy-v6",
+  "schema_version": "claim-policy-v7",
   "scope": "Phase 3 manuscript and build inputs",
   "source_state": "absent_real_validation_artifacts",
   "subject_default_deny": true,

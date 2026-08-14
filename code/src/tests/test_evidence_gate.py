@@ -1251,6 +1251,47 @@ def test_exact_methods_and_limitation_allowances_reject_near_matches_and_extensi
     assert check_claim_inputs([candidate])
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        r"The frozen specification is \texttt{attribute-gmnps-v1}. It improves outcomes.",
+        "The frozen specification is \\texttt{attribute-gmnps-v1}.\nIt improves outcomes.",
+        "It improves outcomes.",
+        "This improves prediction performance.",
+        "That improves response accuracy.",
+        "These improve outcomes.",
+        "Those improve outcomes.",
+        "They improve outcomes.",
+        "Performance improves.",
+        "Prediction accuracy improves.",
+        "Improves RMSE performance.",
+        "Predicts AUROC performance.",
+    ],
+)
+def test_allowed_policy_sentences_cannot_authorize_appended_empirical_assertions(
+    tmp_path, monkeypatch, text
+):
+    _activate_claim_bundle(tmp_path, monkeypatch, evaluate_evidence_gate())
+    candidate = tmp_path / "appended-assertion.txt"
+    candidate.write_text(text)
+    assert check_claim_inputs([candidate])
+
+
+def test_anaphoric_rule_preserves_negative_and_non_empirical_prose(
+    tmp_path, monkeypatch
+):
+    _activate_claim_bundle(tmp_path, monkeypatch, evaluate_evidence_gate())
+    candidate = tmp_path / "benign.txt"
+    candidate.write_text(
+        r"The frozen specification is \texttt{attribute-gmnps-v1}."
+        "\nThis response is stored in the manifest."
+        "\nPerformance was not evaluated."
+        "\nThis does not improve outcomes."
+        "\nThey record the configuration digest."
+    )
+    assert check_claim_inputs([candidate]) == ()
+
+
 def test_negative_limitation_sentence_is_allowed_by_current_policy(tmp_path):
     negative = tmp_path / "negative.txt"
     positive = tmp_path / "positive.txt"

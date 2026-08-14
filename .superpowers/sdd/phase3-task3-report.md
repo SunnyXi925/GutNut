@@ -13,6 +13,13 @@ brings every visible submission TeX file to zero claim violations, and limits
 the submission bibliography to cited records. Independent re-review remains
 pending; Task 3 is not marked review-complete.
 
+The second failed-review repair closes the remaining continuation bypass. An
+exact allowed template, identifier or matrix-routed method sentence cannot
+authorize a following positive empirical assertion: sentence-initial
+anaphoric subjects and subjectless assertion-plus-target clauses are denied.
+Exact negative limitations and ordinary non-empirical technical prose remain
+allowed. Approved manuscript and reference content is unchanged.
+
 The strict `reference_audit.csv` contains exactly four direct-support rows:
 `INT-01/labonte2018nutrientprofiles`,
 `INT-02/scarborough2007developing`, `INT-03/zeevi2015personalized`, and
@@ -77,8 +84,8 @@ inventory row appears in that file.
 
 - Focused claim-policy/manuscript/reference tests:
   `.venv/bin/python -m pytest code/src/tests/test_manuscript_claim_gate.py code/src/tests/test_evidence_gate.py -q`
-  -> `229 passed, 1 warning`.
-- Full: `.venv/bin/python -m pytest -q` -> `867 passed, 1 warning` in 178.41s.
+  -> `254 passed, 1 warning`.
+- Full: `.venv/bin/python -m pytest -q` -> `892 passed, 1 warning` in 172.99s.
 - Exact visible-TeX assertion: six files, zero violations.
 - Static checks: exact four-row audit; 12 defined BibTeX keys equal 12 visible
   cited keys; no duplicate keys or fields; 12 DOI values well formed; no

@@ -16,7 +16,7 @@
     "analysis status path is missing"
   ],
   "claim_policy_file": "claim_policy.json",
-  "claim_policy_file_sha256": "bc7c560fbb0f298c9a98d58973e4eec0d65dc9883d28eb76d02264f4e71d56ef",
+  "claim_policy_file_sha256": "8bc5bc50557b7c0026e49879d2a65f787b91ec5abeedd4d948daffa036e0c692",
   "forbidden_claims": [
     "transforms_postprandial_response",
     "precision_ready",
@@ -31,7 +31,7 @@
   "gate_version": "direct-response-evidence-gate-v4",
   "manuscript_checked_or_revised": false,
   "passed": false,
-  "payload_sha256": "8086b53c3489b43fa86b41da5cc9b26a255889c96ea9b6ee3f8c2fba937d2c7a",
+  "payload_sha256": "8f48ecd2f221f8ab43fe4ed6e259ebffb34cff0570cfd5091ed472c05bd6c60d",
   "schema_version": "evidence-gate-decision-v2",
   "source_state": "absent_real_validation_artifacts",
   "tier": "computational_feasibility"

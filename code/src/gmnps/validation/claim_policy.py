@@ -26,7 +26,7 @@ _TRUSTED_REGISTRY_RELATIVE = Path("code/src/configs/claim_policy_registry.json")
 _TRUSTED_DECISION_PATH = _REPOSITORY_ROOT / _TRUSTED_DECISION_RELATIVE
 _TRUSTED_POLICY_PATH = _REPOSITORY_ROOT / _TRUSTED_POLICY_RELATIVE
 _TRUSTED_POLICY_REGISTRY_PATH = _REPOSITORY_ROOT / _TRUSTED_REGISTRY_RELATIVE
-_CURRENT_BUNDLE_ID = "phase2-current-production-claim-bundle-v6"
+_CURRENT_BUNDLE_ID = "phase2-current-production-claim-bundle-v7"
 
 _FORBIDDEN_PATTERNS = (
     r"\bvalidat(?:e|es|ed|ing|ion)\b",
@@ -70,6 +70,27 @@ _ASSERTION_PATTERNS = (
     r"\bassociate(?:s|d|ing)?\b|\bassociation(?:s)?\b",
     r"\brecover(?:s|ed|ing|y)?\b",
     r"\bresponses?\b",
+)
+_POSITIVE_ASSERTION_PATTERNS = (
+    r"\bpredict(?:s|ed|ing)\b",
+    r"\boutperform(?:s|ed|ing)?\b",
+    r"\bimprov(?:e|es|ed|ing|ement|ements)\b",
+    r"\bgenerali[sz](?:e|es|ed|ing)\b",
+    r"\bvalidat(?:e|es|ed|ing)\b",
+    r"\baccur(?:ate|ately)\b",
+    r"\bestablish(?:es|ed|ing)?\b",
+    r"\bdemonstrat(?:e|es|ed|ing)\b",
+    r"\bsupport(?:s|ed|ing)?\b",
+    r"\benabl(?:e|es|ed|ing)\b",
+    r"\bguid(?:e|es|ed|ing)\b",
+    r"\brecommend(?:s|ed|ing)?\b",
+    r"\bassociate(?:s|d|ing)?\b",
+    r"\brecover(?:s|ed|ing)?\b",
+)
+_ANAPHORIC_SUBJECT_PATTERN = r"\A(?:it|this|that|these|those|they)\b"
+_EMPIRICAL_TARGET_PATTERN = (
+    r"\b(?:outcomes?|performance|predictions?|responses?|validity|accuracy|"
+    r"rmse|auroc)\b"
 )
 _SUBJECT_DEFAULT_DENY = True
 _DIRECT_SCOPED_SENTENCE = (
@@ -209,7 +230,7 @@ def _build_claim_policy_payload(
     if direct:
         positive_templates.append(_DIRECT_SCOPED_SENTENCE)
     payload: dict[str, object] = {
-        "schema_version": "claim-policy-v6",
+        "schema_version": "claim-policy-v7",
         "tier": outcome.tier,
         "source_state": outcome.source_state,
         "allowed_claims": list(outcome.allowed_claims),
@@ -217,6 +238,9 @@ def _build_claim_policy_payload(
         "forbidden_patterns": list(_FORBIDDEN_PATTERNS),
         "claim_subject_patterns": list(_CLAIM_SUBJECT_PATTERNS),
         "assertion_patterns": list(_ASSERTION_PATTERNS),
+        "positive_assertion_patterns": list(_POSITIVE_ASSERTION_PATTERNS),
+        "anaphoric_subject_pattern": _ANAPHORIC_SUBJECT_PATTERN,
+        "empirical_target_pattern": _EMPIRICAL_TARGET_PATTERN,
         "negative_limitation_rule": _NEGATIVE_LIMITATION_RULE,
         "negative_limitation_direct_cue_pattern": _DIRECT_NEGATIVE_CUE_PATTERN,
         "negative_limitation_passive_link_pattern": (
@@ -444,7 +468,7 @@ def _validate_bound_bundle() -> dict[str, object]:
     )
     if decision.get("schema_version") != "evidence-gate-decision-v2":
         raise ValueError("gate decision schema version is invalid")
-    if policy.get("schema_version") != "claim-policy-v6":
+    if policy.get("schema_version") != "claim-policy-v7":
         raise ValueError("claim policy schema version is invalid")
     if decision.get("authorization") != "production_path_only_evidence_gate" or policy.get(
         "authorization"
@@ -464,6 +488,14 @@ def _validate_bound_bundle() -> dict[str, object]:
         raise ValueError("claim policy claim_subject_patterns is invalid")
     if policy.get("assertion_patterns") != list(_ASSERTION_PATTERNS):
         raise ValueError("claim policy assertion_patterns is invalid")
+    if policy.get("positive_assertion_patterns") != list(
+        _POSITIVE_ASSERTION_PATTERNS
+    ):
+        raise ValueError("claim policy positive_assertion_patterns is invalid")
+    if policy.get("anaphoric_subject_pattern") != _ANAPHORIC_SUBJECT_PATTERN:
+        raise ValueError("claim policy anaphoric-subject rule is invalid")
+    if policy.get("empirical_target_pattern") != _EMPIRICAL_TARGET_PATTERN:
+        raise ValueError("claim policy empirical-target rule is invalid")
     expected_negative_policy = {
         "negative_limitation_rule": _NEGATIVE_LIMITATION_RULE,
         "negative_limitation_direct_cue_pattern": _DIRECT_NEGATIVE_CUE_PATTERN,
@@ -640,6 +672,7 @@ def check_claim_inputs(
     forbidden_patterns = policy["forbidden_patterns"]
     subject_patterns = policy["claim_subject_patterns"]
     assertion_patterns = policy["assertion_patterns"]
+    positive_assertion_patterns = policy["positive_assertion_patterns"]
     violations: list[ClaimViolation] = []
     for value in input_paths:
         path = Path(value)
@@ -657,6 +690,37 @@ def check_claim_inputs(
                 assertion_matches,
             ):
                 continue
+            positive_assertion_matches = _pattern_matches(
+                positive_assertion_patterns,
+                sentence,
+            )
+            if positive_assertion_matches:
+                anaphoric_subject = re.search(
+                    str(policy["anaphoric_subject_pattern"]),
+                    sentence,
+                    flags=re.IGNORECASE,
+                )
+                empirical_target = re.search(
+                    str(policy["empirical_target_pattern"]),
+                    sentence,
+                    flags=re.IGNORECASE,
+                )
+                if anaphoric_subject is not None:
+                    violations.append(
+                        ClaimViolation(
+                            path=path,
+                            pattern=str(policy["anaphoric_subject_pattern"]),
+                        )
+                    )
+                    continue
+                if empirical_target is not None:
+                    violations.append(
+                        ClaimViolation(
+                            path=path,
+                            pattern=str(policy["empirical_target_pattern"]),
+                        )
+                    )
+                    continue
             if forbidden_matches:
                 violations.append(
                     ClaimViolation(path=path, pattern=forbidden_matches[0][0])
