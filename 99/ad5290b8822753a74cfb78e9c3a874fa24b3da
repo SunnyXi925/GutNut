@@ -1,0 +1,40 @@
+code/src/gmnps/validation/claim_policy.py
+  s_4d75bbbcc79dac::t_49838daeb5e243 47-73,84,86-97,100-108,110-114,161,167-169,358,374-379,408-419,421-422,426,430-435,445-465,474-476,493-495,501-507,509-520,522,524,527-530
+  s_4d75bbbcc79dac::t_8e4ad0cf1f1f1f 109,466-473
+  s_4d75bbbcc79dac::t_9f1f1c0d257666 117-118,436-444
+  s_4d75bbbcc79dac::t_8363383edf0104 115-116
+code/src/configs/claim_policy_registry.json
+  s_4d75bbbcc79dac::t_6ea239eafc6de4 4,6,8
+.superpowers/sdd/phase2-task5-report.md
+  s_4d75bbbcc79dac::t_cd2a3cf364deb0 528-576
+.superpowers/sdd/phase2-task2-report.md
+  s_4d75bbbcc79dac::t_cd2a3cf364deb0 318-322
+results/phase2/evidence-gate/claim_policy.json
+  s_4d75bbbcc79dac::t_c0a9337a5143a3 8-24,26-33,63,65,72
+docs/data/validation_evidence_matrix.md
+  s_4d75bbbcc79dac::t_cd2a3cf364deb0 68-100
+code/src/tests/test_evidence_gate.py
+  s_4d75bbbcc79dac::t_8e4ad0cf1f1f1f 1071-1074
+  s_4d75bbbcc79dac::t_9f1f1c0d257666 1101-1102
+  s_4d75bbbcc79dac::t_a7e410761e886a 1057-1070,1075-1100,1103-1113,1124-1125
+results/phase2/evidence-gate/current_gate_decision.json
+  s_4d75bbbcc79dac::t_c0a9337a5143a3 19,34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "99ad5290b8822753a74cfb78e9c3a874fa24b3da",
+  "prompts": {},
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 2,
+      "accepted_lines": 2
+    }
+  }
+}
