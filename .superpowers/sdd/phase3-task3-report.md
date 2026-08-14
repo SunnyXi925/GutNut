@@ -20,6 +20,14 @@ anaphoric subjects and subjectless assertion-plus-target clauses are denied.
 Exact negative limitations and ordinary non-empirical technical prose remain
 allowed. Approved manuscript and reference content is unchanged.
 
+The third failed-review repair closes physical line wrapping as a remaining
+route around that rule. Ordinary single newlines inside prose paragraphs are
+normalized before semantic sentence evaluation, while blank lines, comments,
+common LaTeX structure, display mathematics and table rows remain boundaries.
+The already-approved wrapped technical and limitation sentences are bound as
+exact non-empirical templates; empirical extensions and near matches remain
+default-denied. Independent re-review remains pending.
+
 The strict `reference_audit.csv` contains exactly four direct-support rows:
 `INT-01/labonte2018nutrientprofiles`,
 `INT-02/scarborough2007developing`, `INT-03/zeevi2015personalized`, and
@@ -84,13 +92,14 @@ inventory row appears in that file.
 
 - Focused claim-policy/manuscript/reference tests:
   `.venv/bin/python -m pytest code/src/tests/test_manuscript_claim_gate.py code/src/tests/test_evidence_gate.py -q`
-  -> `254 passed, 1 warning`.
-- Full: `.venv/bin/python -m pytest -q` -> `892 passed, 1 warning` in 172.99s.
+  -> `261 passed, 1 warning` in 12.75s.
+- Full: `.venv/bin/python -m pytest -q` -> `899 passed, 1 warning` in 172.34s.
 - Exact visible-TeX assertion: six files, zero violations.
 - Static checks: exact four-row audit; 12 defined BibTeX keys equal 12 visible
   cited keys; no duplicate keys or fields; 12 DOI values well formed; no
   pending reference placeholders; no Van Calster or corrected Food Compass
-  personalization route; `git diff --check` passed.
+  personalization route; approved manuscript/reference content has no diff
+  from `f09aa56`; `git diff --check` passed.
 - The policy, decision and registry were regenerated together by
   `build_claim_policy_from_evidence_gate`; no digest was hand-edited.
 - No TeX engine was available, so no compilation was run; no engine was

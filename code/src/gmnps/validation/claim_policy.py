@@ -26,7 +26,7 @@ _TRUSTED_REGISTRY_RELATIVE = Path("code/src/configs/claim_policy_registry.json")
 _TRUSTED_DECISION_PATH = _REPOSITORY_ROOT / _TRUSTED_DECISION_RELATIVE
 _TRUSTED_POLICY_PATH = _REPOSITORY_ROOT / _TRUSTED_POLICY_RELATIVE
 _TRUSTED_POLICY_REGISTRY_PATH = _REPOSITORY_ROOT / _TRUSTED_REGISTRY_RELATIVE
-_CURRENT_BUNDLE_ID = "phase2-current-production-claim-bundle-v7"
+_CURRENT_BUNDLE_ID = "phase2-current-production-claim-bundle-v8"
 
 _FORBIDDEN_PATTERNS = (
     r"\bvalidat(?:e|es|ed|ing|ion)\b",
@@ -92,6 +92,41 @@ _EMPIRICAL_TARGET_PATTERN = (
     r"\b(?:outcomes?|performance|predictions?|responses?|validity|accuracy|"
     r"rmse|auroc)\b"
 )
+_SEMANTIC_LINE_WRAP_RULE = "ordinary_single_newline_paragraph_wrap_v1"
+_LATEX_STRUCTURAL_COMMANDS = frozenset(
+    {
+        "abstract",
+        "author",
+        "backmatter",
+        "begin",
+        "bibliography",
+        "bottomrule",
+        "caption",
+        "centering",
+        "clearpage",
+        "documentclass",
+        "end",
+        "graphicspath",
+        "include",
+        "input",
+        "keywords",
+        "label",
+        "maketitle",
+        "midrule",
+        "newpage",
+        "raggedbottom",
+        "renewcommand",
+        "section",
+        "setcounter",
+        "subsection",
+        "subsubsection",
+        "title",
+        "toprule",
+        "unnumbered",
+        "usepackage",
+    }
+)
+_UNESCAPED_COMMENT = re.compile(r"(?<!\\)%")
 _SUBJECT_DEFAULT_DENY = True
 _DIRECT_SCOPED_SENTENCE = (
     "For the locked primary endpoints glucose_iAUC_2h and tg_6h_rise, "
@@ -104,6 +139,81 @@ _COMPUTATIONAL_POSITIVE_TEMPLATES = (
     "specified synthetic positive-control.",
     "Eligible observed participant-by-meal outcomes are unavailable in the audited data.",
     "The evidence gate implements a computational, fail-closed design.",
+)
+_EXACT_NON_EMPIRICAL_TEMPLATES = (
+    "The microbiome is used here as a feature source rather than a causal "
+    "mechanism or a sufficient basis for dietary decisions.",
+    "The prespecified evidence chain separates method establishment, evidence "
+    "authorization, data availability, a correctly specified synthetic "
+    "positive-control and the boundary on empirical interpretation.",
+    "The current decision did not pass because the required real validation "
+    "artifacts were absent.",
+    "This content review does not establish outcome validity or superiority of "
+    "the revised channel assignment.",
+    r"The 20\% native-attribute cap, \(\pm 12\)-point final cap, absence of score "
+    "centring and exact zero-response identity are safety properties of the design.",
+    "Because generator and implementation share the mapping, this evidence "
+    "diagnoses implementation fidelity but not biological misspecification or "
+    "real-world response prediction.",
+    "It supports content review of four nutrient-channel decisions, but it does "
+    "not establish outcome validity, external validity, readiness for clinical "
+    "use or superiority of an expert-revised mask.",
+    "Eligible observed participant-by-meal outcomes, a trusted production food "
+    "run and registry-bound supporting analyses are absent, so the main "
+    "quantitative evidence needed for response validity, population behaviour "
+    "and generalization cannot be assembled.",
+    "A future empirical programme should preserve the frozen method while adding "
+    "a trusted production food bundle, eligible observed outcomes and held-out "
+    "analyses whose splits, inference units, intervals, multiplicity control, "
+    "leakage checks and provenance are fixed before outcome inspection.",
+    "Clinical deployment would additionally require prospective safety "
+    "assessment, decision-curve analysis and reporting appropriate to high-risk "
+    r"prediction tools \cite{collins2015tripod,wolff2019probast,collins2024tripodAi}.",
+    "The locked method version was fixed before validation access and separated "
+    "development-only normalization from later scoring inputs.",
+    "Available external feedback informed revisions concerning carbohydrate, "
+    "zinc, copper and vitamin A as retinol activity equivalents.",
+    "The evidence gate requires path-bound artifacts, a valid run-level method "
+    "lock, disjoint development and test subjects, eligible observed outcomes "
+    "and the prespecified subject-held-out comparisons before any direct-response "
+    "claim can be authorized.",
+    "The locked implementation, evidence-gate code and audit scripts are "
+    "maintained in the project repository.",
+    r"Its primary method is \texttt{attribute\_recomposition}, its primary mapping "
+    r"is \texttt{expert\_reviewed\_attribute\_mapping\_v1}, and its recomposition "
+    r"rule is \texttt{native\_domain\_fixed\_residual\_v1}.",
+    "Mapping roles, allocation weights, attribute rules, temperatures, cap modes, "
+    "domain membership and score centring were locked before outcome access.",
+    "The nutrient order, medians, scales, scale-source methods, development fit "
+    "count, SHA-256 of sorted development identifiers, method version and "
+    "normalization temperature are immutable normalization state.",
+    "Held-out or later scoring participants are transformed with this state and "
+    "are never appended to the development fit.",
+    "The trusted registry snapshot must have the fixed schema, registry version "
+    "and SHA-256 digest algorithm and must contain the single approved artifact "
+    "entry bound to the run.",
+    "Hash-bound external C1 workbooks contained available item-level feedback; "
+    "available comments informed the treatment of carbohydrate, zinc, copper and "
+    "vitamin A as retinol activity equivalents.",
+    "For future direct-response analysis, the complete frozen predictor "
+    "opportunity universe is split before outcomes are joined.",
+    "Food-held-out, meal-held-out and cohort-held-out modes are secondary and "
+    "descriptive unless valid multiway or cohort-cluster inference is implemented.",
+    r"\item population food analysis: a trusted rectangular production person-food "
+    "panel, with food as the analysis and inference unit for population summaries; "
+    r"\item direct response: participant-meal observations with family/twin connected "
+    "components as the inferential unit; "
+    r"\item GMrepo: independent people or connected components within cohort; "
+    r"\item ZOE aggregate ranks: one source-bound food/rank-table unit; and "
+    r"\item knowledge paths: one registry-bound adjudicated path unit.",
+    "No blocked analysis was replaced by a test fixture, synthetic output or "
+    "placeholder statistic.",
+    "Because the generator uses the programmed mapping and domain aggregation "
+    "evaluated by the implementation, these findings test numerical and "
+    "assignment fidelity under correct specification.",
+    "No eligible observed participant-by-meal outcome artifact, run-level "
+    "method-lock instance, paired metric table, prediction table, split audit or "
+    "analysis-status artifact was available.",
 )
 _EXACT_NEGATIVE_LIMITATION_TEMPLATES = (
     "The framework provides an auditable basis for future empirical testing, but "
@@ -230,7 +340,7 @@ def _build_claim_policy_payload(
     if direct:
         positive_templates.append(_DIRECT_SCOPED_SENTENCE)
     payload: dict[str, object] = {
-        "schema_version": "claim-policy-v7",
+        "schema_version": "claim-policy-v8",
         "tier": outcome.tier,
         "source_state": outcome.source_state,
         "allowed_claims": list(outcome.allowed_claims),
@@ -241,6 +351,7 @@ def _build_claim_policy_payload(
         "positive_assertion_patterns": list(_POSITIVE_ASSERTION_PATTERNS),
         "anaphoric_subject_pattern": _ANAPHORIC_SUBJECT_PATTERN,
         "empirical_target_pattern": _EMPIRICAL_TARGET_PATTERN,
+        "semantic_line_wrap_rule": _SEMANTIC_LINE_WRAP_RULE,
         "negative_limitation_rule": _NEGATIVE_LIMITATION_RULE,
         "negative_limitation_direct_cue_pattern": _DIRECT_NEGATIVE_CUE_PATTERN,
         "negative_limitation_passive_link_pattern": (
@@ -259,6 +370,7 @@ def _build_claim_policy_payload(
         "methods_forbidden_semantics_pattern": _METHODS_FORBIDDEN_SEMANTICS_PATTERN,
         "direct_scope_whitelist": [_DIRECT_SCOPED_SENTENCE] if direct else [],
         "positive_claim_templates": positive_templates,
+        "exact_non_empirical_templates": list(_EXACT_NON_EMPIRICAL_TEMPLATES),
         "negative_limitation_sentences_allowed": True,
         "exact_negative_limitation_templates": list(
             _EXACT_NEGATIVE_LIMITATION_TEMPLATES
@@ -468,7 +580,7 @@ def _validate_bound_bundle() -> dict[str, object]:
     )
     if decision.get("schema_version") != "evidence-gate-decision-v2":
         raise ValueError("gate decision schema version is invalid")
-    if policy.get("schema_version") != "claim-policy-v7":
+    if policy.get("schema_version") != "claim-policy-v8":
         raise ValueError("claim policy schema version is invalid")
     if decision.get("authorization") != "production_path_only_evidence_gate" or policy.get(
         "authorization"
@@ -496,6 +608,8 @@ def _validate_bound_bundle() -> dict[str, object]:
         raise ValueError("claim policy anaphoric-subject rule is invalid")
     if policy.get("empirical_target_pattern") != _EMPIRICAL_TARGET_PATTERN:
         raise ValueError("claim policy empirical-target rule is invalid")
+    if policy.get("semantic_line_wrap_rule") != _SEMANTIC_LINE_WRAP_RULE:
+        raise ValueError("claim policy semantic line-wrap rule is invalid")
     expected_negative_policy = {
         "negative_limitation_rule": _NEGATIVE_LIMITATION_RULE,
         "negative_limitation_direct_cue_pattern": _DIRECT_NEGATIVE_CUE_PATTERN,
@@ -537,6 +651,10 @@ def _validate_bound_bundle() -> dict[str, object]:
         expected_templates.append(_DIRECT_SCOPED_SENTENCE)
     if policy.get("positive_claim_templates") != expected_templates:
         raise ValueError("claim policy positive_claim_templates is invalid")
+    if policy.get("exact_non_empirical_templates") != list(
+        _EXACT_NON_EMPIRICAL_TEMPLATES
+    ):
+        raise ValueError("claim policy exact non-empirical templates are invalid")
     if policy.get("negative_limitation_sentences_allowed") is not True:
         raise ValueError("claim policy negative-limitation rule is invalid")
     if policy.get("exact_negative_limitation_templates") != list(
@@ -547,10 +665,46 @@ def _validate_bound_bundle() -> dict[str, object]:
     return policy
 
 
-def _sentences(text: str) -> tuple[str, ...]:
+def _is_semantic_line_boundary(line: str) -> bool:
+    stripped = line.strip()
+    if (
+        not stripped
+        or stripped.startswith("%")
+        or _UNESCAPED_COMMENT.search(line) is not None
+        or stripped in {r"\[", r"\]", "$$"}
+        or stripped.endswith(r"\\")
+    ):
+        return True
+    command = re.match(r"\\([A-Za-z]+)\*?", stripped)
+    return command is not None and command.group(1) in _LATEX_STRUCTURAL_COMMANDS
+
+
+def _normalize_semantic_line_wraps(text: str) -> str:
+    normalized: list[str] = []
+    prose_run: list[str] = []
+
+    def flush_prose_run() -> None:
+        if prose_run:
+            normalized.append(" ".join(prose_run))
+            prose_run.clear()
+
+    for line in text.splitlines():
+        if _is_semantic_line_boundary(line):
+            flush_prose_run()
+            normalized.append(line)
+        else:
+            prose_run.append(line.strip())
+    flush_prose_run()
+    return "\n".join(normalized)
+
+
+def _sentences(text: str, *, semantic_line_wrap_rule: str) -> tuple[str, ...]:
+    if semantic_line_wrap_rule != _SEMANTIC_LINE_WRAP_RULE:
+        raise ValueError("unsupported semantic line-wrap rule")
+    normalized = _normalize_semantic_line_wraps(text)
     return tuple(
         match.group(0).strip()
-        for match in re.finditer(r"[^.!?\n]+(?:[.!?]+|$)", text)
+        for match in re.finditer(r"[^.!?\n]+(?:[.!?]+|$)", normalized)
         if match.group(0).strip()
     )
 
@@ -663,6 +817,14 @@ def _is_exact_positive_template(sentence: str, policy: dict[str, object]) -> boo
     }
 
 
+def _is_exact_non_empirical_template(
+    sentence: str,
+    policy: dict[str, object],
+) -> bool:
+    normalized = re.sub(r"\s+", " ", sentence).strip()
+    return normalized in policy.get("exact_non_empirical_templates", [])
+
+
 def check_claim_inputs(
     input_paths: Iterable[str | Path],
 ) -> tuple[ClaimViolation, ...]:
@@ -677,8 +839,13 @@ def check_claim_inputs(
     for value in input_paths:
         path = Path(value)
         text = path.read_text(encoding="utf-8")
-        for sentence in _sentences(text):
+        for sentence in _sentences(
+            text,
+            semantic_line_wrap_rule=str(policy["semantic_line_wrap_rule"]),
+        ):
             if _is_exact_positive_template(sentence, policy):
+                continue
+            if _is_exact_non_empirical_template(sentence, policy):
                 continue
             if sentence in policy.get("exact_negative_limitation_templates", []):
                 continue

@@ -777,12 +777,14 @@ def test_locked_project_method_route_requires_one_marker_across_all_inputs(tmp_p
     [
         " It improves outcomes.",
         "\nIt improves outcomes.",
+        "\nIt improves\noutcomes.",
         "\nThis improves prediction performance.",
         "\nThat improves response validity.",
         "\nThese improve outcomes.",
         "\nThose improve outcomes.",
         "\nThey improve outcomes.",
         "\nPerformance improves.",
+        "\nPerformance\nimproves.",
         "\nPrediction accuracy improves.",
     ],
 )
@@ -801,15 +803,22 @@ def test_locked_project_route_cannot_authorize_appended_empirical_assertions(
     )
 
 
-@pytest.mark.parametrize("separator", [" ", "\n"])
+@pytest.mark.parametrize(
+    "continuation",
+    [
+        " It improves outcomes.",
+        "\nIt improves outcomes.",
+        "\nIt improves\noutcomes.",
+    ],
+)
 def test_manuscript_wrapper_rejects_assertions_after_exact_identifier(
-    tmp_path, separator
+    tmp_path, continuation
 ):
     candidate, matrix = _project_route_fixture(tmp_path)
     candidate.write_text(
         r"The frozen specification is \texttt{attribute-gmnps-v1}."
-        + separator
-        + "It improves outcomes.\n",
+        + continuation
+        + "\n",
         encoding="utf-8",
     )
     assert check_manuscript_claim_inputs(
@@ -823,7 +832,7 @@ def test_locked_project_route_preserves_benign_following_lines(tmp_path):
     candidate, matrix = _project_route_fixture(tmp_path)
     candidate.write_text(
         candidate.read_text(encoding="utf-8")
-        + "This response is stored in the manifest.\n"
+        + "This response is stored\nin the manifest.\n"
         + "Performance was not evaluated.\n",
         encoding="utf-8",
     )

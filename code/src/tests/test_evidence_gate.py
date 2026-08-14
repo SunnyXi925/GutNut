@@ -1256,13 +1256,16 @@ def test_exact_methods_and_limitation_allowances_reject_near_matches_and_extensi
     [
         r"The frozen specification is \texttt{attribute-gmnps-v1}. It improves outcomes.",
         "The frozen specification is \\texttt{attribute-gmnps-v1}.\nIt improves outcomes.",
+        "The frozen specification is \\texttt{attribute-gmnps-v1}.\nIt improves\noutcomes.",
         "It improves outcomes.",
+        "It improves\noutcomes.",
         "This improves prediction performance.",
         "That improves response accuracy.",
         "These improve outcomes.",
         "Those improve outcomes.",
         "They improve outcomes.",
         "Performance improves.",
+        "Performance\nimproves.",
         "Prediction accuracy improves.",
         "Improves RMSE performance.",
         "Predicts AUROC performance.",
@@ -1284,12 +1287,33 @@ def test_anaphoric_rule_preserves_negative_and_non_empirical_prose(
     candidate = tmp_path / "benign.txt"
     candidate.write_text(
         r"The frozen specification is \texttt{attribute-gmnps-v1}."
-        "\nThis response is stored in the manifest."
+        "\nThis response is stored\nin the manifest."
         "\nPerformance was not evaluated."
-        "\nThis does not improve outcomes."
+        "\nThis does not improve\noutcomes."
         "\nThey record the configuration digest."
+        "\n% This improves\noutcomes."
+        "\n\\section*{Methods}"
+        "\nThis response is recorded\nin the manifest."
     )
     assert check_claim_inputs([candidate]) == ()
+
+
+def test_exact_wrapped_non_empirical_allowances_reject_empirical_extensions(
+    tmp_path, monkeypatch
+):
+    _activate_claim_bundle(tmp_path, monkeypatch, evaluate_evidence_gate())
+    candidate = tmp_path / "exact-non-empirical.txt"
+    candidate.write_text(
+        "The locked implementation, evidence-gate code and audit scripts are\n"
+        "maintained in the project repository."
+    )
+    assert check_claim_inputs([candidate]) == ()
+
+    candidate.write_text(
+        "The locked implementation, evidence-gate code and audit scripts are\n"
+        "maintained in the project repository and improves outcomes."
+    )
+    assert check_claim_inputs([candidate])
 
 
 def test_negative_limitation_sentence_is_allowed_by_current_policy(tmp_path):
