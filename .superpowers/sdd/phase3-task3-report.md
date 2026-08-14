@@ -36,6 +36,16 @@ paragraph, structural and display boundaries are preserved, and the wrapper's
 exact one-physical-line requirement is unchanged. Independent re-review
 remains pending.
 
+The fifth failed-review repair replaces line-local command removal with a
+whole-text balanced TeX parser. After comments are stripped, allowlisted
+`\label` and `\index` commands consume whitespace and nested balanced arguments
+across physical lines, while `\phantomsection` consumes its ignored trailing
+whitespace. Command-only lines retain rendered continuity rather than becoming
+paragraph boundaries; malformed allowlisted commands fail closed. Escaped
+percent and visible command arguments remain visible to the scanner, and the
+wrapper's physical routed-claim rule is unchanged. Independent re-review
+remains pending.
+
 The strict `reference_audit.csv` contains exactly four direct-support rows:
 `INT-01/labonte2018nutrientprofiles`,
 `INT-02/scarborough2007developing`, `INT-03/zeevi2015personalized`, and
@@ -100,16 +110,16 @@ inventory row appears in that file.
 
 - Focused claim-policy/manuscript/reference tests:
   `.venv/bin/python -m pytest code/src/tests/test_manuscript_claim_gate.py code/src/tests/test_evidence_gate.py -q`
-  -> `301 passed, 1 warning` in 14.14s.
-- Full: `.venv/bin/python -m pytest -q` -> `939 passed, 1 warning` in 172.26s.
+  -> `320 passed, 1 warning` in 13.90s.
+- Full: `.venv/bin/python -m pytest -q` -> `958 passed, 1 warning` in 173.20s.
 - Exact visible-TeX assertion: six files, zero violations.
-- Direct static semantic-view check: eight comment/zero-width adversarial cases,
-  eight rejected.
+- Direct static semantic-view check: 14 comment/zero-width, multiline and
+  malformed-command adversarial cases, 14 rejected.
 - Static checks: exact four-row audit; 12 defined BibTeX keys equal 12 visible
   cited keys; no duplicate keys or fields; 12 DOI values well formed; no
   pending reference placeholders; no Van Calster or corrected Food Compass
   personalization route; approved manuscript/reference content has no diff
-  from `46b1c06`; `git diff --check` passed.
+  from `0b27ad1`; `git diff --check` passed.
 - The policy, decision and registry were regenerated together by
   `build_claim_policy_from_evidence_gate`; no digest was hand-edited.
 - No TeX engine was available, so no compilation was run; no engine was

@@ -787,6 +787,9 @@ def test_locked_project_method_route_requires_one_marker_across_all_inputs(tmp_p
         "\nIt impro\\label{claim:x}ves outcomes.",
         "\nIt impro\\index{claim assertion}ves outcomes.",
         "\nIt impro\\phantomsection ves outcomes.",
+        "\nIt impro\\label\n{claim:x}ves outcomes.",
+        "\nIt impro\\index\n{claim assertion}ves outcomes.",
+        "\nIt impro\\phantomsection\nves outcomes.",
         "\nThis improves prediction performance.",
         "\nThat improves response validity.",
         "\nThese improve outcomes.",
@@ -827,6 +830,9 @@ def test_locked_project_route_cannot_authorize_appended_empirical_assertions(
         "\nIt impro\\label{claim:x}ves outcomes.",
         "\nIt impro\\index{claim assertion}ves outcomes.",
         "\nIt impro\\phantomsection ves outcomes.",
+        "\nIt impro\\label\n{claim:x}ves outcomes.",
+        "\nIt impro\\index\n{claim assertion}ves outcomes.",
+        "\nIt impro\\phantomsection\nves outcomes.",
     ],
 )
 def test_manuscript_wrapper_rejects_assertions_after_exact_identifier(
@@ -854,6 +860,7 @@ def test_locked_project_route_preserves_benign_following_lines(tmp_path):
         + "Performance was not evaluated.\n"
         + "This does not improve % formatting note\noutcomes.\n"
         + "This response is stored\n\\label{manifest:x}\nin the manifest.\n"
+        + "This response is stored \\index\n{manifest {nested}}\nin the manifest.\n"
         + r"The threshold is 20\%." "\n"
         + "Performance\n\\section*{Methods}\nimproves.\n",
         encoding="utf-8",
@@ -863,6 +870,20 @@ def test_locked_project_route_preserves_benign_following_lines(tmp_path):
         matrix_path=matrix,
         reference_audit_path=REFERENCE_AUDIT,
     ) == ()
+
+
+def test_manuscript_wrapper_rejects_malformed_zero_width_commands(tmp_path):
+    candidate, matrix = _project_route_fixture(tmp_path)
+    candidate.write_text(
+        candidate.read_text(encoding="utf-8").rstrip("\n")
+        + "\nIt impro\\label\n{claim:xves outcomes.\n",
+        encoding="utf-8",
+    )
+    assert check_manuscript_claim_inputs(
+        [candidate],
+        matrix_path=matrix,
+        reference_audit_path=REFERENCE_AUDIT,
+    )
 
 
 def test_published_context_route_can_bypass_one_phase2_violation(tmp_path):

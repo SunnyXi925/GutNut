@@ -1259,6 +1259,9 @@ def test_exact_methods_and_limitation_allowances_reject_near_matches_and_extensi
         "The frozen specification is \\texttt{attribute-gmnps-v1}.\nIt improves\noutcomes.",
         "The frozen specification is \\texttt{attribute-gmnps-v1}.\nIt improves % formatting note\noutcomes.",
         "The frozen specification is \\texttt{attribute-gmnps-v1}.\nIt improves\n\\label{claim:x}\noutcomes.",
+        "The frozen specification is \\texttt{attribute-gmnps-v1}.\nIt impro\\label\n{claim:x}ves outcomes.",
+        "The frozen specification is \\texttt{attribute-gmnps-v1}.\nIt impro\\index\n{claim assertion}ves outcomes.",
+        "The frozen specification is \\texttt{attribute-gmnps-v1}.\nIt impro\\phantomsection\nves outcomes.",
         "It improves outcomes.",
         "It improves\noutcomes.",
         "It improves % formatting note\noutcomes.",
@@ -1270,6 +1273,9 @@ def test_exact_methods_and_limitation_allowances_reject_near_matches_and_extensi
         "It impro\\label{claim:x}ves outcomes.",
         "It impro\\index{claim assertion}ves outcomes.",
         "It impro\\phantomsection ves outcomes.",
+        "It impro\\label\n{claim:x}ves outcomes.",
+        "It impro\\index\n{claim assertion}ves outcomes.",
+        "It impro\\phantomsection\nves outcomes.",
         r"The threshold is 20\% and it improves" "\noutcomes.",
         "This improves prediction performance.",
         "That improves response accuracy.",
@@ -1336,6 +1342,47 @@ def test_tex_semantic_view_preserves_visible_command_arguments(tmp_path, monkeyp
     candidate = tmp_path / "visible-command.txt"
     candidate.write_text(r"The \href{urn:example}{model} is deterministic.")
     assert check_claim_inputs([candidate])
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (
+            "This response is stored \\label\n{manifest:{nested}}\nin the manifest.",
+            "This response is stored in the manifest.",
+        ),
+        (
+            "This response is stored \\index\n{manifest {nested}}\nin the manifest.",
+            "This response is stored in the manifest.",
+        ),
+        (
+            "This response is stored \\phantomsection\nin the manifest.",
+            "This response is stored in the manifest.",
+        ),
+        (r"The threshold is 20\% and is recorded.", r"The threshold is 20\% and is recorded."),
+    ],
+)
+def test_tex_semantic_view_parses_whole_text_zero_width_commands(text, expected):
+    assert policy_module._build_tex_semantic_view(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "It impro\\label\n{claim:xves outcomes.",
+        "It impro\\index\nclaim assertion}ves outcomes.",
+    ],
+)
+def test_tex_semantic_view_fails_closed_for_malformed_zero_width_commands(
+    tmp_path, monkeypatch, text
+):
+    _activate_claim_bundle(tmp_path, monkeypatch, evaluate_evidence_gate())
+    candidate = tmp_path / "malformed-tex.txt"
+    candidate.write_text(text)
+    violations = check_claim_inputs([candidate])
+    assert [item.pattern for item in violations] == [
+        "malformed_zero_width_tex_command"
+    ]
 
 
 def test_exact_wrapped_non_empirical_allowances_reject_empirical_extensions(

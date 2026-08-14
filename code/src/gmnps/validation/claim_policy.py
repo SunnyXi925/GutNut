@@ -26,7 +26,7 @@ _TRUSTED_REGISTRY_RELATIVE = Path("code/src/configs/claim_policy_registry.json")
 _TRUSTED_DECISION_PATH = _REPOSITORY_ROOT / _TRUSTED_DECISION_RELATIVE
 _TRUSTED_POLICY_PATH = _REPOSITORY_ROOT / _TRUSTED_POLICY_RELATIVE
 _TRUSTED_POLICY_REGISTRY_PATH = _REPOSITORY_ROOT / _TRUSTED_REGISTRY_RELATIVE
-_CURRENT_BUNDLE_ID = "phase2-current-production-claim-bundle-v9"
+_CURRENT_BUNDLE_ID = "phase2-current-production-claim-bundle-v10"
 
 _FORBIDDEN_PATTERNS = (
     r"\bvalidat(?:e|es|ed|ing|ion)\b",
@@ -92,9 +92,11 @@ _EMPIRICAL_TARGET_PATTERN = (
     r"\b(?:outcomes?|performance|predictions?|responses?|validity|accuracy|"
     r"rmse|auroc)\b"
 )
-_TEX_SEMANTIC_VIEW_RULE = "explicit_tex_semantic_view_v1"
+_TEX_SEMANTIC_VIEW_RULE = "explicit_tex_semantic_view_v2"
 _ZERO_WIDTH_BRACED_COMMANDS = frozenset({"index", "label"})
 _ZERO_WIDTH_BARE_COMMANDS = frozenset({"phantomsection"})
+_MALFORMED_ZERO_WIDTH_COMMAND_PATTERN = "malformed_zero_width_tex_command"
+_ZERO_WIDTH_PLACEHOLDER = "\x00"
 _LATEX_STRUCTURAL_COMMANDS = frozenset(
     {
         "abstract",
@@ -307,6 +309,10 @@ _DIGEST = re.compile(r"[0-9a-f]{64}")
 class ClaimViolation:
     path: Path
     pattern: str
+
+
+class _MalformedZeroWidthTexCommand(ValueError):
+    """An allowlisted command could not be safely removed from rendered text."""
 
 
 def canonical_payload_sha256(payload: dict[str, object]) -> str:
@@ -665,18 +671,30 @@ def _validate_bound_bundle() -> dict[str, object]:
     return policy
 
 
-def _strip_unescaped_tex_comment(line: str) -> tuple[str, bool]:
-    for index, character in enumerate(line):
-        if character != "%":
+def _strip_unescaped_tex_comments(text: str) -> str:
+    """Remove TeX comments and their line endings before semantic parsing."""
+
+    rendered: list[str] = []
+    index = 0
+    while index < len(text):
+        if text[index] != "%":
+            rendered.append(text[index])
+            index += 1
             continue
         backslashes = 0
         cursor = index - 1
-        while cursor >= 0 and line[cursor] == "\\":
+        while cursor >= 0 and text[cursor] == "\\":
             backslashes += 1
             cursor -= 1
-        if backslashes % 2 == 0:
-            return line[:index], True
-    return line, False
+        if backslashes % 2:
+            rendered.append(text[index])
+            index += 1
+            continue
+        newline = text.find("\n", index)
+        if newline == -1:
+            break
+        index = newline + 1
+    return "".join(rendered)
 
 
 def _balanced_group_end(text: str, start: int) -> int | None:
@@ -698,31 +716,36 @@ def _balanced_group_end(text: str, start: int) -> int | None:
     return None
 
 
-def _remove_zero_width_tex_commands(line: str) -> str:
+def _remove_zero_width_tex_commands(text: str) -> str:
+    """Remove only allowlisted zero-width commands across the complete source."""
+
     rendered: list[str] = []
     index = 0
-    while index < len(line):
-        command = re.match(r"\\([A-Za-z]+)", line[index:])
+    while index < len(text):
+        command = re.match(r"\\([A-Za-z]+)", text[index:])
         if command is None:
-            rendered.append(line[index])
+            rendered.append(text[index])
             index += 1
             continue
         name = command.group(1)
         command_end = index + command.end()
         if name in _ZERO_WIDTH_BARE_COMMANDS:
+            rendered.append(_ZERO_WIDTH_PLACEHOLDER)
             index = command_end
-            while index < len(line) and line[index].isspace():
+            while index < len(text) and text[index].isspace():
                 index += 1
             continue
         if name in _ZERO_WIDTH_BRACED_COMMANDS:
             argument_start = command_end
-            while argument_start < len(line) and line[argument_start].isspace():
+            while argument_start < len(text) and text[argument_start].isspace():
                 argument_start += 1
-            argument_end = _balanced_group_end(line, argument_start)
-            if argument_end is not None:
-                index = argument_end
-                continue
-        rendered.append(line[index:command_end])
+            argument_end = _balanced_group_end(text, argument_start)
+            if argument_end is None:
+                raise _MalformedZeroWidthTexCommand(name)
+            rendered.append(_ZERO_WIDTH_PLACEHOLDER)
+            index = argument_end
+            continue
+        rendered.append(text[index:command_end])
         index = command_end
     return "".join(rendered)
 
@@ -740,6 +763,9 @@ def _is_semantic_line_boundary(line: str) -> bool:
 
 
 def _build_tex_semantic_view(text: str) -> str:
+    visible_text = _remove_zero_width_tex_commands(
+        _strip_unescaped_tex_comments(text)
+    )
     semantic: list[str] = []
     prose_run: list[str] = []
     pending_separator = ""
@@ -751,23 +777,22 @@ def _build_tex_semantic_view(text: str) -> str:
             prose_run.clear()
         pending_separator = ""
 
-    for raw_line in text.splitlines():
-        if not raw_line.strip():
+    for visible_line in visible_text.splitlines():
+        line_without_zero_width_commands = visible_line.replace(
+            _ZERO_WIDTH_PLACEHOLDER, ""
+        )
+        if not line_without_zero_width_commands.strip():
+            if _ZERO_WIDTH_PLACEHOLDER in visible_line:
+                continue
             flush_prose_run()
             semantic.append("")
             continue
-        uncommented_line, comment_suppresses_newline = (
-            _strip_unescaped_tex_comment(raw_line)
-        )
-        visible_line = _remove_zero_width_tex_commands(
-            uncommented_line
-        )
-        if visible_line.strip() and _is_semantic_line_boundary(visible_line):
+        if _is_semantic_line_boundary(line_without_zero_width_commands):
             flush_prose_run()
-            semantic.append(visible_line)
+            semantic.append(line_without_zero_width_commands)
         else:
-            prose_run.extend((pending_separator, visible_line))
-            pending_separator = "" if comment_suppresses_newline else " "
+            prose_run.extend((pending_separator, line_without_zero_width_commands))
+            pending_separator = " "
     flush_prose_run()
     return "\n".join(semantic)
 
@@ -913,10 +938,17 @@ def check_claim_inputs(
     for value in input_paths:
         path = Path(value)
         text = path.read_text(encoding="utf-8")
-        for sentence in _sentences(
-            text,
-            tex_semantic_view_rule=str(policy["tex_semantic_view_rule"]),
-        ):
+        try:
+            sentences = _sentences(
+                text,
+                tex_semantic_view_rule=str(policy["tex_semantic_view_rule"]),
+            )
+        except _MalformedZeroWidthTexCommand:
+            violations.append(
+                ClaimViolation(path=path, pattern=_MALFORMED_ZERO_WIDTH_COMMAND_PATTERN)
+            )
+            continue
+        for sentence in sentences:
             if _is_exact_positive_template(sentence, policy):
                 continue
             if _is_exact_non_empirical_template(sentence, policy):

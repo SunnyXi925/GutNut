@@ -118,7 +118,7 @@
   "negative_limitation_remains_unvalidated_pattern": "\\A[^.!?,;:]+\\bremains?\\s+unvalidated\\.?\\Z",
   "negative_limitation_rule": "strict_direct_governance_v1",
   "negative_limitation_sentences_allowed": true,
-  "payload_sha256": "c87d0ab31bca4741db3e37d9cf427f4e1974dcec2ce98e326bc658e7167bcbb1",
+  "payload_sha256": "b8cab2dec9da4f7989da7cc0db949c073035d42efef9b4ee9be956f63a9b8ca6",
   "phase3_must_consume": true,
   "positive_assertion_patterns": [
     "\\bpredict(?:s|ed|ing)\\b",
@@ -146,6 +146,6 @@
   "scope": "Phase 3 manuscript and build inputs",
   "source_state": "absent_real_validation_artifacts",
   "subject_default_deny": true,
-  "tex_semantic_view_rule": "explicit_tex_semantic_view_v1",
+  "tex_semantic_view_rule": "explicit_tex_semantic_view_v2",
   "tier": "computational_feasibility"
 }
