@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 from tempfile import TemporaryDirectory
 from typing import Iterable
+from urllib.parse import urlsplit
 
 from gmnps.validation.claim_policy import ClaimViolation, check_claim_inputs
 
@@ -45,21 +46,24 @@ _PUBLISHED_ROUTE = {
     "claim_scope": "published_field_context",
     "status": "supported",
 }
-_MARKER = re.compile(
-    r"(?m)^[ \t]*%[ \t]+CLAIM_ID:[ \t]*(INT-\d{2})[ \t]*$"
-)
+_MARKER = re.compile(r"[ \t]*%[ \t]+CLAIM_ID:[ \t]*(INT-\d{2})[ \t]*")
 _CITATION = re.compile(
     r"\\(?:auto|paren|text)?cite[tp]?"
     r"(?:\s*\[[^\[\]]*\]){0,2}\s*\{([^{}]+)\}"
 )
 _PROJECT_LANGUAGE = re.compile(
-    r"\b(?:GMNPS|we|our|this\s+study|present\s+study|current\s+analysis)\b",
+    r"\b(?:GMNPS|we|our|this\s+study|present\s+study|current\s+analysis|"
+    r"this\s+(?:work|paper|article)|here\s+we|"
+    r"(?:introduced|presented|reported|developed|proposed)\s+here)\b",
     flags=re.IGNORECASE,
 )
-_PLACEHOLDER_IDENTIFIER = re.compile(
-    r"(?:pending|unknown|none|n/?a|not[_ -]?applicable|tbd)",
+_PENDING_IDENTIFIER = re.compile(
+    r"(?:pending|unknown|none|n/?a|not[_ -]?applicable|tbd|todo|placeholder)",
     flags=re.IGNORECASE,
 )
+_DOI_IDENTIFIER = re.compile(r"doi:10\.\d{4,9}/[-._;()/:A-Za-z0-9]+")
+_PMID_IDENTIFIER = re.compile(r"pmid:\d+")
+_PMCID_IDENTIFIER = re.compile(r"pmcid:PMC\d+")
 _ROUTE_VIOLATION = "manuscript_published_context_route"
 
 
@@ -67,6 +71,7 @@ _ROUTE_VIOLATION = "manuscript_published_context_route"
 class _ClaimBlock:
     claim_id: str
     body: str
+    line_index: int
 
 
 def _read_csv(
@@ -103,14 +108,22 @@ def _matrix_rows(path: Path) -> dict[str, dict[str, str]]:
 
 
 def _claim_blocks(text: str) -> tuple[_ClaimBlock, ...]:
-    markers = tuple(_MARKER.finditer(text))
     blocks: list[_ClaimBlock] = []
-    for index, marker in enumerate(markers):
-        end = markers[index + 1].start() if index + 1 < len(markers) else len(text)
+    lines = text.splitlines()
+    for marker_index, line in enumerate(lines):
+        marker = _MARKER.fullmatch(line)
+        if marker is None:
+            continue
+        claim_line_index = marker_index + 1
         blocks.append(
             _ClaimBlock(
                 claim_id=marker.group(1),
-                body=text[marker.end() : end].strip(),
+                body=(
+                    lines[claim_line_index].strip()
+                    if claim_line_index < len(lines)
+                    else ""
+                ),
+                line_index=claim_line_index,
             )
         )
     return tuple(blocks)
@@ -143,80 +156,100 @@ def _claim_text_and_citations(body: str) -> tuple[str, tuple[str, ...]] | None:
     return prose, tuple(citations)
 
 
-def _has_verified_references(
-    claim_id: str,
-    citation_keys: tuple[str, ...],
+def _is_stable_identifier(value: str) -> bool:
+    if not value or _PENDING_IDENTIFIER.search(value):
+        return False
+    if (
+        _DOI_IDENTIFIER.fullmatch(value)
+        or _PMID_IDENTIFIER.fullmatch(value)
+        or _PMCID_IDENTIFIER.fullmatch(value)
+    ):
+        return True
+    if not value.startswith("url:https://") or re.search(r"\s", value):
+        return False
+    parsed = urlsplit(value.removeprefix("url:"))
+    return (
+        parsed.scheme == "https"
+        and bool(parsed.hostname)
+        and parsed.username is None
+        and parsed.password is None
+    )
+
+
+def _reference_audit_is_exact(
+    requested_pairs: tuple[tuple[str, str], ...],
     audit_rows: list[dict[str, str]],
 ) -> bool:
-    for citation_key in citation_keys:
-        matches = [
-            row
-            for row in audit_rows
-            if row["claim_id"].strip() == claim_id
-            and row["citation_key"].strip() == citation_key
-        ]
-        if len(matches) != 1:
-            return False
-        row = matches[0]
-        identifier = row["stable_identifier"].strip()
-        if (
-            row["verification_status"].strip() != "verified"
-            or not row["support_role"].strip()
-            or not identifier
-            or _PLACEHOLDER_IDENTIFIER.fullmatch(identifier)
-            or row["retraction_status"].strip() != "clear"
-        ):
-            return False
-    return True
+    if len(requested_pairs) != len(set(requested_pairs)):
+        return False
+    observed_pairs = tuple(
+        (row["claim_id"].strip(), row["citation_key"].strip())
+        for row in audit_rows
+    )
+    if (
+        len(observed_pairs) != len(set(observed_pairs))
+        or set(observed_pairs) != set(requested_pairs)
+    ):
+        return False
+    return all(
+        row["support_role"].strip() == "direct_claim_support"
+        and row["verification_status"].strip() == "verified"
+        and _is_stable_identifier(row["stable_identifier"].strip())
+        and row["retraction_status"].strip() == "clear"
+        for row in audit_rows
+    )
 
 
-def _is_route_eligible(
+def _route_citation_keys(
     block: _ClaimBlock,
     *,
     row: dict[str, str] | None,
     marker_count: int,
-    audit_rows: list[dict[str, str]],
-) -> bool:
+) -> tuple[str, ...] | None:
     if row is None or marker_count != 1 or row["section"].strip() != "Introduction":
-        return False
+        return None
     if any(row[field].strip() != expected for field, expected in _PUBLISHED_ROUTE.items()):
-        return False
+        return None
     parsed = _claim_text_and_citations(block.body)
     if parsed is None:
-        return False
+        return None
     prose, citation_keys = parsed
     expected_keys = _matrix_citation_keys(row["citation_keys"])
-    return (
+    if not (
         prose == row["allowed_wording"].strip()
         and citation_keys == expected_keys
         and len(citation_keys) == len(set(citation_keys))
         and _PROJECT_LANGUAGE.search(prose) is None
-        and _has_verified_references(
-            block.claim_id,
-            citation_keys,
-            audit_rows,
-        )
-    )
+    ):
+        return None
+    return citation_keys
 
 
-def _isolated_violations(body: str) -> tuple[ClaimViolation, ...]:
+def _sanitized_policy_violations(
+    documents: tuple[tuple[Path, str, set[int]], ...],
+) -> tuple[ClaimViolation, ...]:
     with TemporaryDirectory(prefix="gmnps-manuscript-claim-") as directory:
-        path = Path(directory) / "claim.txt"
-        path.write_text(body, encoding="utf-8")
-        return check_claim_inputs([path])
-
-
-def _remove_matching_violation(
-    violations: list[ClaimViolation],
-    *,
-    path: Path,
-    pattern: str,
-) -> bool:
-    for index, violation in enumerate(violations):
-        if violation.path == path and violation.pattern == pattern:
-            del violations[index]
-            return True
-    return False
+        temporary_paths: list[Path] = []
+        original_paths: dict[Path, Path] = {}
+        for index, (original_path, text, removed_lines) in enumerate(documents):
+            lines = text.splitlines(keepends=True)
+            for line_index in removed_lines:
+                if line_index >= len(lines):
+                    continue
+                if lines[line_index].endswith("\r\n"):
+                    lines[line_index] = "\r\n"
+                elif lines[line_index].endswith("\n"):
+                    lines[line_index] = "\n"
+                else:
+                    lines[line_index] = ""
+            temporary_path = Path(directory) / f"{index:04d}-{original_path.name}"
+            temporary_path.write_text("".join(lines), encoding="utf-8")
+            temporary_paths.append(temporary_path)
+            original_paths[temporary_path] = original_path
+        return tuple(
+            ClaimViolation(path=original_paths[item.path], pattern=item.pattern)
+            for item in check_claim_inputs(temporary_paths)
+        )
 
 
 def check_manuscript_claim_inputs(
@@ -233,14 +266,19 @@ def check_manuscript_claim_inputs(
         label="reference audit",
     )
     paths = tuple(Path(value) for value in input_paths)
-    violations = list(check_claim_inputs(paths))
-
+    documents: list[tuple[Path, str, set[int]]] = []
+    route_failures: list[ClaimViolation] = []
+    requested_pairs: list[tuple[str, str]] = []
+    structurally_eligible: list[tuple[int, _ClaimBlock]] = []
     for path in paths:
-        blocks = _claim_blocks(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+        blocks = _claim_blocks(text)
         marker_counts = {
             claim_id: sum(block.claim_id == claim_id for block in blocks)
             for claim_id in {block.claim_id for block in blocks}
         }
+        document_index = len(documents)
+        documents.append((path, text, set()))
         for block in blocks:
             row = matrix.get(block.claim_id)
             published_candidate = row is None or (
@@ -252,23 +290,31 @@ def check_manuscript_claim_inputs(
             )
             if not published_candidate:
                 continue
-            if not _is_route_eligible(
+            citation_keys = _route_citation_keys(
                 block,
                 row=row,
                 marker_count=marker_counts[block.claim_id],
-                audit_rows=audit_rows,
-            ):
-                violations.append(ClaimViolation(path=path, pattern=_ROUTE_VIOLATION))
-                continue
-            underlying = _isolated_violations(block.body)
-            if len(underlying) == 1:
-                _remove_matching_violation(
-                    violations,
-                    path=path,
-                    pattern=underlying[0].pattern,
+            )
+            if citation_keys is None:
+                route_failures.append(
+                    ClaimViolation(path=path, pattern=_ROUTE_VIOLATION)
                 )
+                continue
+            requested_pairs.extend(
+                (block.claim_id, citation_key) for citation_key in citation_keys
+            )
+            structurally_eligible.append((document_index, block))
 
-    return tuple(violations)
+    if _reference_audit_is_exact(tuple(requested_pairs), audit_rows):
+        for document_index, block in structurally_eligible:
+            documents[document_index][2].add(block.line_index)
+    else:
+        route_failures.extend(
+            ClaimViolation(path=documents[index][0], pattern=_ROUTE_VIOLATION)
+            for index, _ in structurally_eligible
+        )
+
+    return _sanitized_policy_violations(tuple(documents)) + tuple(route_failures)
 
 
 __all__ = ["check_manuscript_claim_inputs"]

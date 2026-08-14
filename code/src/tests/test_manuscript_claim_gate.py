@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from collections import Counter
 from pathlib import Path
 import re
 
@@ -13,6 +14,9 @@ from gmnps.validation.manuscript_claim_gate import check_manuscript_claim_inputs
 ROOT = Path(__file__).resolve().parents[3]
 MATRIX = ROOT / "manuscript/nature_food_submission/claim_evidence_matrix.csv"
 OUTLINE = ROOT / "manuscript/nature_food_submission/narrative_outline.md"
+EXPERT_ITEM_AUDIT = (
+    ROOT / "manuscript/nature_food_submission/expert_review_item_audit.csv"
+)
 
 REQUIRED_COLUMNS = {
     "claim_id",
@@ -107,13 +111,13 @@ def _normalized_claim(text: str) -> str:
 
 
 def _assert_assertion_key_rules(rows: list[dict[str, str]]) -> None:
-    seen_locations: set[tuple[str, str, str]] = set()
+    seen_sections: set[tuple[str, str]] = set()
     key_families: dict[str, tuple[str, str]] = {}
     text_keys: dict[str, str] = {}
     for row in rows:
-        location = (row["assertion_key"], row["section"], row["paragraph_id"])
-        assert location not in seen_locations, location
-        seen_locations.add(location)
+        section = (row["assertion_key"], row["section"])
+        assert section not in seen_sections, section
+        seen_sections.add(section)
 
         family = (row["claim_scope"], row["evidence_family"])
         assert key_families.setdefault(row["assertion_key"], family) == family
@@ -178,9 +182,9 @@ def _route_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
             {
                 "claim_id": "INT-01",
                 "citation_key": "Smith2025",
-                "support_role": "field_context",
+                "support_role": "direct_claim_support",
                 "verification_status": "verified",
-                "stable_identifier": "doi:10.1000/example",
+                "stable_identifier": "doi:10.1038/s41586-025-01234-5",
                 "retraction_status": "clear",
             }
         ],
@@ -224,7 +228,7 @@ def test_assertion_keys_obey_identity_and_evidence_family_rules():
     _assert_assertion_key_rules(_rows())
 
 
-@pytest.mark.parametrize("broken_rule", ["location", "family", "canonical"])
+@pytest.mark.parametrize("broken_rule", ["section", "family", "canonical"])
 def test_assertion_key_rules_reject_negative_fixtures(broken_rule):
     rows = [
         {
@@ -244,9 +248,9 @@ def test_assertion_key_rules_reject_negative_fixtures(broken_rule):
             "canonical_claim": "A Results restatement.",
         },
     ]
-    if broken_rule == "location":
+    if broken_rule == "section":
         rows[1]["section"] = "Abstract"
-        rows[1]["paragraph_id"] = "ABS-S1"
+        rows[1]["paragraph_id"] = "ABS-S2"
     elif broken_rule == "family":
         rows[1]["evidence_family"] = "family-b"
     else:
@@ -268,6 +272,15 @@ def test_claim_scopes_and_literature_citation_state_are_explicit():
     assert all(row["claim_scope"] == "published_field_context" for row in literature)
     assert all(row["status"] == "conditional" for row in literature)
     assert all(row["citation_keys"] == "PENDING_TASK3" for row in literature)
+
+
+def test_int08_is_one_current_evidence_tier_assertion():
+    row = next(row for row in _rows() if row["claim_id"] == "INT-08")
+    assert row["assertion_key"] == "current_evidence_tier"
+    assert row["canonical_claim"] == "The current evidence tier is computational feasibility."
+    joined = " ".join(row.values()).casefold()
+    assert "production" not in joined
+    assert "eligible observed participant-by-meal outcomes" not in joined
 
 
 def test_evidence_tier_role_and_status_combinations_are_legal():
@@ -339,8 +352,48 @@ def test_expert_claims_respect_the_audited_boundary():
     joined = " ".join(" ".join(row.values()) for row in expert).casefold()
     for prohibited in ("97.2%", "two requests", "six experts", "6 experts"):
         assert prohibited not in joined
-    assert all("expert_review_audit.md" in row["source_path"] for row in expert)
+    assert all("expert_review_item_audit.csv" in row["source_path"] for row in expert)
     assert all("content review" in row["allowed_wording"].casefold() for row in expert)
+
+
+def test_expert_item_audit_is_hash_bound_and_has_correct_distributions():
+    assert EXPERT_ITEM_AUDIT.is_file()
+    with EXPERT_ITEM_AUDIT.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    assert len(rows) == 90
+    assert set(rows[0]) == {
+        "workbook_id",
+        "source_sha256",
+        "nutrient",
+        "assignment_rating",
+        "evidence_rating",
+        "comment_present",
+    }
+    assert Counter(row["assignment_rating"] for row in rows) == {
+        "reasonable": 86,
+        "needs_clarification": 1,
+        "unreasonable": 3,
+    }
+    assert Counter(row["evidence_rating"] for row in rows) == {
+        "sufficient": 82,
+        "insufficient": 7,
+        "needs_clarification": 1,
+    }
+    expected_sources = {
+        "workbook_01": "28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c",
+        "workbook_02": "4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2",
+        "workbook_03": "bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052",
+    }
+    assert {row["source_sha256"] for row in rows} == set(expected_sources.values())
+    assert Counter(row["source_sha256"] for row in rows) == {
+        digest: 30 for digest in expected_sources.values()
+    }
+    assert {row["workbook_id"] for row in rows} == set(expected_sources)
+    assert all(
+        row["source_sha256"] == expected_sources[row["workbook_id"]] for row in rows
+    )
+    assert {row["comment_present"] for row in rows} <= {"true", "false"}
+    assert all(len(row["source_sha256"]) == 64 for row in rows)
 
 
 def test_outline_has_required_architecture_and_terminology():
@@ -403,6 +456,47 @@ def test_published_context_route_can_bypass_one_phase2_violation(tmp_path):
     ) == ()
 
 
+def test_published_route_sanitizes_only_the_authorized_physical_line(tmp_path):
+    candidate, matrix, audit = _route_fixture(tmp_path)
+    project_claim = "A separate framework supports clinical dietary response prediction."
+    candidate.write_text(
+        project_claim
+        + "\n% CLAIM_ID: INT-01\n"
+        + "Microbiome-informed framework supports individualized dietary response "
+        "prediction \\cite{Smith2025}.\n",
+        encoding="utf-8",
+    )
+    expected_path = tmp_path / "project-only.tex"
+    expected_path.write_text(project_claim + "\n", encoding="utf-8")
+    expected_patterns = [item.pattern for item in check_claim_inputs([expected_path])]
+    observed = check_manuscript_claim_inputs(
+        [candidate], matrix_path=matrix, reference_audit_path=audit
+    )
+    assert [item.pattern for item in observed] == expected_patterns
+    assert all(item.path == candidate for item in observed)
+
+
+def test_last_introduction_marker_does_not_consume_following_results(tmp_path):
+    candidate, matrix, audit = _route_fixture(tmp_path)
+    results_claim = "Results validate clinical response prediction."
+    candidate.write_text(
+        "% CLAIM_ID: INT-01\n"
+        "Microbiome-informed framework supports individualized dietary response "
+        "prediction \\cite{Smith2025}.\n"
+        + results_claim
+        + "\n",
+        encoding="utf-8",
+    )
+    results_only = tmp_path / "results-only.tex"
+    results_only.write_text(results_claim + "\n", encoding="utf-8")
+    expected_patterns = [item.pattern for item in check_claim_inputs([results_only])]
+    observed = check_manuscript_claim_inputs(
+        [candidate], matrix_path=matrix, reference_audit_path=audit
+    )
+    assert [item.pattern for item in observed] == expected_patterns
+    assert all(item.path == candidate for item in observed)
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [
@@ -447,6 +541,37 @@ def test_published_context_route_rejects_inexact_claims(tmp_path, candidate_text
 
 
 @pytest.mark.parametrize(
+    "deictic_wording",
+    [
+        "The framework introduced here supports individualized dietary response prediction.",
+        "The framework presented here supports individualized dietary response prediction.",
+        "The framework reported here supports individualized dietary response prediction.",
+        "The framework developed here supports individualized dietary response prediction.",
+        "Here we describe a framework supporting individualized dietary response prediction.",
+        "This work describes a framework supporting individualized dietary response prediction.",
+        "This paper describes a framework supporting individualized dietary response prediction.",
+        "This article describes a framework supporting individualized dietary response prediction.",
+        "The framework proposed here supports individualized dietary response prediction.",
+    ],
+)
+def test_published_context_route_rejects_project_deixis(tmp_path, deictic_wording):
+    candidate, matrix, audit = _route_fixture(tmp_path)
+    with matrix.open(newline="", encoding="utf-8") as handle:
+        row = next(csv.DictReader(handle))
+    row["allowed_wording"] = deictic_wording
+    _write_csv(matrix, [row])
+    candidate.write_text(
+        "% CLAIM_ID: INT-01\n"
+        + deictic_wording.removesuffix(".")
+        + " \\cite{Smith2025}.\n",
+        encoding="utf-8",
+    )
+    assert check_manuscript_claim_inputs(
+        [candidate], matrix_path=matrix, reference_audit_path=audit
+    )
+
+
+@pytest.mark.parametrize(
     ("field", "value"),
     [
         ("verification_status", "pending"),
@@ -464,6 +589,78 @@ def test_published_context_route_requires_verified_reference_pairs(
         row = next(csv.DictReader(handle))
     row[field] = value
     _write_csv(audit, [row])
+    assert check_manuscript_claim_inputs(
+        [candidate], matrix_path=matrix, reference_audit_path=audit
+    )
+
+
+@pytest.mark.parametrize(
+    "identifier",
+    [
+        "doi:10.1038/s41586-025-01234-5",
+        "pmid:12345678",
+        "pmcid:PMC1234567",
+        "url:https://example.org/articles/stable-record",
+    ],
+)
+def test_published_context_route_accepts_explicit_stable_identifiers(
+    tmp_path, identifier
+):
+    candidate, matrix, audit = _route_fixture(tmp_path)
+    with audit.open(newline="", encoding="utf-8") as handle:
+        row = next(csv.DictReader(handle))
+    row["stable_identifier"] = identifier
+    _write_csv(audit, [row])
+    assert check_manuscript_claim_inputs(
+        [candidate], matrix_path=matrix, reference_audit_path=audit
+    ) == ()
+
+
+@pytest.mark.parametrize(
+    "identifier",
+    [
+        "10.1038/s41586-025-01234-5",
+        "doi:pending",
+        "doi:10.1038/PENDING_TASK3",
+        "pmid:not-a-number",
+        "pmcid:1234567",
+        "url:http://example.org/article",
+        "verified elsewhere",
+    ],
+)
+def test_published_context_route_rejects_non_stable_identifiers(
+    tmp_path, identifier
+):
+    candidate, matrix, audit = _route_fixture(tmp_path)
+    with audit.open(newline="", encoding="utf-8") as handle:
+        row = next(csv.DictReader(handle))
+    row["stable_identifier"] = identifier
+    _write_csv(audit, [row])
+    assert check_manuscript_claim_inputs(
+        [candidate], matrix_path=matrix, reference_audit_path=audit
+    )
+
+
+def test_published_context_route_requires_direct_claim_support(tmp_path):
+    candidate, matrix, audit = _route_fixture(tmp_path)
+    with audit.open(newline="", encoding="utf-8") as handle:
+        row = next(csv.DictReader(handle))
+    row["support_role"] = "field_context"
+    _write_csv(audit, [row])
+    assert check_manuscript_claim_inputs(
+        [candidate], matrix_path=matrix, reference_audit_path=audit
+    )
+
+
+@pytest.mark.parametrize("extra_kind", ["duplicate", "unrequested"])
+def test_published_context_route_rejects_non_exact_audit_rows(tmp_path, extra_kind):
+    candidate, matrix, audit = _route_fixture(tmp_path)
+    with audit.open(newline="", encoding="utf-8") as handle:
+        row = next(csv.DictReader(handle))
+    extra = dict(row)
+    if extra_kind == "unrequested":
+        extra["citation_key"] = "Unrequested2026"
+    _write_csv(audit, [row, extra])
     assert check_manuscript_claim_inputs(
         [candidate], matrix_path=matrix, reference_audit_path=audit
     )

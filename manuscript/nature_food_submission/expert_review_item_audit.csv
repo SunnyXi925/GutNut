@@ -1,0 +1,91 @@
+workbook_id,source_sha256,nutrient,assignment_rating,evidence_rating,comment_present
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,"膳食纤维 Fiber, total dietary (g)",reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,碳水化合物 Carbohydrate (g),reasonable,insufficient,true
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,"α-胡萝卜素 Carotene, alpha (mcg)",reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,"β-胡萝卜素 Carotene, beta (mcg)",reasonable,insufficient,true
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,"β-隐黄质 Cryptoxanthin, beta (mcg)",reasonable,insufficient,true
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,番茄红素 Lycopene (mcg),reasonable,insufficient,true
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,叶黄素+玉米黄质 Lutein + zeaxanthin (mcg),reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,维生素 C Vitamin C (mg),reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,"食物来源叶酸 Folate, food (mcg)",reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,镁 Magnesium (mg),reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,钾 Potassium (mg),reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,铜 Copper (mg),reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,锌 Zinc (mg),reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,维生素 K1 Vitamin K (phylloquinone) (mcg),reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,维生素 E Vitamin E (alpha-tocopherol) (mg),reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,总脂肪 Total Fat (g),reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,"总饱和脂肪酸 Fatty acids, total saturated (g)",reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,胆固醇 Cholesterol (mg),reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,视黄醇 Retinol (mcg),reasonable,sufficient,true
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,"维生素 A 活性当量 Vitamin A, RAE (mcg_RAE)",reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,丁酸 4:0 (g),reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,己酸 6:0 (g),reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,辛酸 8:0 (g),reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,癸酸 10:0 (g),reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,月桂酸 12:0 (g),reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,肉豆蔻酸 14:0 (g),reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,棕榈酸 16:0 (g),reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,硬脂酸 18:0 (g),reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,"总胆碱 Choline, total (mg)",reasonable,sufficient,false
+workbook_01,28b4a92a9b612d47c24d0ac0c6b4631f265c9cf7bb80b757e82820986c2efe3c,维生素 B12 Vitamin B-12 (mcg),reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,"膳食纤维 Fiber, total dietary (g)",reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,碳水化合物 Carbohydrate (g),needs_clarification,needs_clarification,true
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,"α-胡萝卜素 Carotene, alpha (mcg)",reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,"β-胡萝卜素 Carotene, beta (mcg)",reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,"β-隐黄质 Cryptoxanthin, beta (mcg)",reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,番茄红素 Lycopene (mcg),reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,叶黄素+玉米黄质 Lutein + zeaxanthin (mcg),reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,维生素 C Vitamin C (mg),reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,"食物来源叶酸 Folate, food (mcg)",reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,镁 Magnesium (mg),reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,钾 Potassium (mg),reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,铜 Copper (mg),unreasonable,insufficient,true
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,锌 Zinc (mg),unreasonable,insufficient,true
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,维生素 K1 Vitamin K (phylloquinone) (mcg),reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,维生素 E Vitamin E (alpha-tocopherol) (mg),reasonable,sufficient,true
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,总脂肪 Total Fat (g),reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,"总饱和脂肪酸 Fatty acids, total saturated (g)",reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,胆固醇 Cholesterol (mg),reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,视黄醇 Retinol (mcg),reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,"维生素 A 活性当量 Vitamin A, RAE (mcg_RAE)",unreasonable,insufficient,true
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,丁酸 4:0 (g),reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,己酸 6:0 (g),reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,辛酸 8:0 (g),reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,癸酸 10:0 (g),reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,月桂酸 12:0 (g),reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,肉豆蔻酸 14:0 (g),reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,棕榈酸 16:0 (g),reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,硬脂酸 18:0 (g),reasonable,sufficient,true
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,"总胆碱 Choline, total (mg)",reasonable,sufficient,false
+workbook_02,4875bc4e85f8c234d2db697c0dd716198971034ac30822b2b216ed16f2b190a2,维生素 B12 Vitamin B-12 (mcg),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,"膳食纤维 Fiber, total dietary (g)",reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,碳水化合物 Carbohydrate (g),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,"α-胡萝卜素 Carotene, alpha (mcg)",reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,"β-胡萝卜素 Carotene, beta (mcg)",reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,"β-隐黄质 Cryptoxanthin, beta (mcg)",reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,番茄红素 Lycopene (mcg),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,叶黄素+玉米黄质 Lutein + zeaxanthin (mcg),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,维生素 C Vitamin C (mg),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,"食物来源叶酸 Folate, food (mcg)",reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,镁 Magnesium (mg),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,钾 Potassium (mg),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,铜 Copper (mg),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,锌 Zinc (mg),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,维生素 K1 Vitamin K (phylloquinone) (mcg),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,维生素 E Vitamin E (alpha-tocopherol) (mg),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,总脂肪 Total Fat (g),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,"总饱和脂肪酸 Fatty acids, total saturated (g)",reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,胆固醇 Cholesterol (mg),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,视黄醇 Retinol (mcg),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,"维生素 A 活性当量 Vitamin A, RAE (mcg_RAE)",reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,丁酸 4:0 (g),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,己酸 6:0 (g),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,辛酸 8:0 (g),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,癸酸 10:0 (g),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,月桂酸 12:0 (g),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,肉豆蔻酸 14:0 (g),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,棕榈酸 16:0 (g),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,硬脂酸 18:0 (g),reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,"总胆碱 Choline, total (mg)",reasonable,sufficient,false
+workbook_03,bba1caac1f9bef7e80a41b706c0541c26c5cdd1e4542db62adf3233ed4f3a052,维生素 B12 Vitamin B-12 (mcg),reasonable,sufficient,false

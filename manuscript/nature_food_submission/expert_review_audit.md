@@ -21,10 +21,13 @@ E4 document contains no completed checkboxes or comments. They do not record a
 completed review outcome.
 
 Three external C1 round-two feedback workbooks are available. Across 90
-nutrient-assignment judgements, the assignment decisions comprise 86 `合理`, one
-`需补充说明`, and three `不合理`. The evidence ratings have the same 86/1/3
-distribution. The available comments support the documented revisions to
-carbohydrate, zinc, copper, and vitamin A RAE nutrient channels.
+nutrient-assignment judgements, the H-column assignment decisions comprise 86
+`合理`, one `需补充说明`, and three `不合理`. The I-column evidence ratings comprise
+82 `充分`, seven `不充分`, and one `需补充说明`. The hash-bound anonymous item
+records are in `expert_review_item_audit.csv`; its `workbook_id` values reveal
+neither filenames nor reviewer identities. The available comments support the
+documented revisions to carbohydrate, zinc, copper, and vitamin A RAE nutrient
+channels.
 
 ## Scientific boundary
 

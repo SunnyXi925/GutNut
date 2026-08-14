@@ -95,11 +95,11 @@ microbiome as a causal mechanism or complete basis for dietary decisions.
 ### INT-P4: study objective and evidence ladder
 
 Claim IDs: `INT-07`, `INT-08`. Preview only the locked method definition,
-audited feasibility state, one correctly specified synthetic positive-control,
-and available expert content feedback. The project objective and evidence
-boundary remain governed by the Phase 2 default-deny policy, not the published-
-context exception. Population, direct-response, GMrepo, ZOE, and knowledge-path
-slots remain blocked.
+then state only that the current evidence tier is computational feasibility.
+The project objective and evidence-tier statement remain governed by the Phase
+2 default-deny policy, not the published-context exception. Outcome and
+production-run availability remain separate Results claims; population,
+direct-response, GMrepo, ZOE, and knowledge-path slots remain blocked.
 
 ## Results
 
