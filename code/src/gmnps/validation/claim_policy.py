@@ -26,7 +26,7 @@ _TRUSTED_REGISTRY_RELATIVE = Path("code/src/configs/claim_policy_registry.json")
 _TRUSTED_DECISION_PATH = _REPOSITORY_ROOT / _TRUSTED_DECISION_RELATIVE
 _TRUSTED_POLICY_PATH = _REPOSITORY_ROOT / _TRUSTED_POLICY_RELATIVE
 _TRUSTED_POLICY_REGISTRY_PATH = _REPOSITORY_ROOT / _TRUSTED_REGISTRY_RELATIVE
-_CURRENT_BUNDLE_ID = "phase2-current-production-claim-bundle-v10"
+_CURRENT_BUNDLE_ID = "phase2-current-production-claim-bundle-v11"
 
 _FORBIDDEN_PATTERNS = (
     r"\bvalidat(?:e|es|ed|ing|ion)\b",
@@ -92,7 +92,7 @@ _EMPIRICAL_TARGET_PATTERN = (
     r"\b(?:outcomes?|performance|predictions?|responses?|validity|accuracy|"
     r"rmse|auroc)\b"
 )
-_TEX_SEMANTIC_VIEW_RULE = "explicit_tex_semantic_view_v2"
+_TEX_SEMANTIC_VIEW_RULE = "explicit_tex_semantic_view_v3"
 _ZERO_WIDTH_BRACED_COMMANDS = frozenset({"index", "label"})
 _ZERO_WIDTH_BARE_COMMANDS = frozenset({"phantomsection"})
 _MALFORMED_ZERO_WIDTH_COMMAND_PATTERN = "malformed_zero_width_tex_command"
@@ -716,6 +716,26 @@ def _balanced_group_end(text: str, start: int) -> int | None:
     return None
 
 
+def _braced_command_argument_start(text: str, start: int) -> int | None:
+    """Skip TeX argument whitespace without crossing a paragraph boundary."""
+
+    index = start
+    while index < len(text):
+        if text[index] in " \t\r":
+            index += 1
+            continue
+        if text[index] != "\n":
+            return index
+        index += 1
+        next_line = index
+        while next_line < len(text) and text[next_line] in " \t\r":
+            next_line += 1
+        if next_line < len(text) and text[next_line] == "\n":
+            return None
+        index = next_line
+    return index
+
+
 def _remove_zero_width_tex_commands(text: str) -> str:
     """Remove only allowlisted zero-width commands across the complete source."""
 
@@ -736,9 +756,9 @@ def _remove_zero_width_tex_commands(text: str) -> str:
                 index += 1
             continue
         if name in _ZERO_WIDTH_BRACED_COMMANDS:
-            argument_start = command_end
-            while argument_start < len(text) and text[argument_start].isspace():
-                argument_start += 1
+            argument_start = _braced_command_argument_start(text, command_end)
+            if argument_start is None:
+                raise _MalformedZeroWidthTexCommand(name)
             argument_end = _balanced_group_end(text, argument_start)
             if argument_end is None:
                 raise _MalformedZeroWidthTexCommand(name)

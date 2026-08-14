@@ -1276,6 +1276,8 @@ def test_exact_methods_and_limitation_allowances_reject_near_matches_and_extensi
         "It impro\\label\n{claim:x}ves outcomes.",
         "It impro\\index\n{claim assertion}ves outcomes.",
         "It impro\\phantomsection\nves outcomes.",
+        "The frozen specification is \\texttt{attribute-gmnps-v1}.\n\\label\n\n{It improves outcomes.}",
+        "The frozen specification is \\texttt{attribute-gmnps-v1}.\n\\index\n\n{It improves outcomes.}",
         r"The threshold is 20\% and it improves" "\noutcomes.",
         "This improves prediction performance.",
         "That improves response accuracy.",
@@ -1371,6 +1373,8 @@ def test_tex_semantic_view_parses_whole_text_zero_width_commands(text, expected)
     [
         "It impro\\label\n{claim:xves outcomes.",
         "It impro\\index\nclaim assertion}ves outcomes.",
+        "\\label\n\n{It improves outcomes.}",
+        "\\index\n\n{It improves outcomes.}",
     ],
 )
 def test_tex_semantic_view_fails_closed_for_malformed_zero_width_commands(

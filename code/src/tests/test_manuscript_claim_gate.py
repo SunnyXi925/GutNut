@@ -790,6 +790,8 @@ def test_locked_project_method_route_requires_one_marker_across_all_inputs(tmp_p
         "\nIt impro\\label\n{claim:x}ves outcomes.",
         "\nIt impro\\index\n{claim assertion}ves outcomes.",
         "\nIt impro\\phantomsection\nves outcomes.",
+        "\n\\label\n\n{It improves outcomes.}",
+        "\n\\index\n\n{It improves outcomes.}",
         "\nThis improves prediction performance.",
         "\nThat improves response validity.",
         "\nThese improve outcomes.",
@@ -833,6 +835,8 @@ def test_locked_project_route_cannot_authorize_appended_empirical_assertions(
         "\nIt impro\\label\n{claim:x}ves outcomes.",
         "\nIt impro\\index\n{claim assertion}ves outcomes.",
         "\nIt impro\\phantomsection\nves outcomes.",
+        "\n\\label\n\n{It improves outcomes.}",
+        "\n\\index\n\n{It improves outcomes.}",
     ],
 )
 def test_manuscript_wrapper_rejects_assertions_after_exact_identifier(

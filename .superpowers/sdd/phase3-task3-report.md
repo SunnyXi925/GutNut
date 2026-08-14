@@ -46,6 +46,13 @@ percent and visible command arguments remain visible to the scanner, and the
 wrapper's physical routed-claim rule is unchanged. Independent re-review
 remains pending.
 
+The sixth failed-review repair prevents the whole-text parser from crossing a
+blank-line paragraph boundary while seeking a `\label` or `\index` braced
+argument. Spaces, tabs and ordinary wrapped lines remain allowed before a
+balanced argument, but a paragraph-separated argument is malformed and fails
+closed without consuming its visible prose. Existing multiline, nested and
+benign controls remain unchanged. Independent re-review remains pending.
+
 The strict `reference_audit.csv` contains exactly four direct-support rows:
 `INT-01/labonte2018nutrientprofiles`,
 `INT-02/scarborough2007developing`, `INT-03/zeevi2015personalized`, and
@@ -110,16 +117,16 @@ inventory row appears in that file.
 
 - Focused claim-policy/manuscript/reference tests:
   `.venv/bin/python -m pytest code/src/tests/test_manuscript_claim_gate.py code/src/tests/test_evidence_gate.py -q`
-  -> `320 passed, 1 warning` in 13.90s.
-- Full: `.venv/bin/python -m pytest -q` -> `958 passed, 1 warning` in 173.20s.
+  -> `328 passed, 1 warning` in 15.16s.
+- Full: `.venv/bin/python -m pytest -q` -> `966 passed, 1 warning` in 177.83s.
 - Exact visible-TeX assertion: six files, zero violations.
-- Direct static semantic-view check: 14 comment/zero-width, multiline and
-  malformed-command adversarial cases, 14 rejected.
+- Direct static semantic-view check: 16 comment/zero-width, multiline,
+  malformed-command and paragraph-boundary adversarial cases, 16 rejected.
 - Static checks: exact four-row audit; 12 defined BibTeX keys equal 12 visible
   cited keys; no duplicate keys or fields; 12 DOI values well formed; no
   pending reference placeholders; no Van Calster or corrected Food Compass
   personalization route; approved manuscript/reference content has no diff
-  from `0b27ad1`; `git diff --check` passed.
+  from `e94562c`; `git diff --check` passed.
 - The policy, decision and registry were regenerated together by
   `build_claim_policy_from_evidence_gate`; no digest was hand-edited.
 - No TeX engine was available, so no compilation was run; no engine was
