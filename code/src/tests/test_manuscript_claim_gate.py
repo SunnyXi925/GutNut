@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import csv
-from difflib import SequenceMatcher
 from pathlib import Path
 import re
 
 import pytest
 
 from gmnps.validation.claim_policy import check_claim_inputs
+from gmnps.validation.manuscript_claim_gate import check_manuscript_claim_inputs
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -16,17 +16,21 @@ OUTLINE = ROOT / "manuscript/nature_food_submission/narrative_outline.md"
 
 REQUIRED_COLUMNS = {
     "claim_id",
+    "assertion_key",
     "section",
     "paragraph_id",
     "paragraph_job",
     "canonical_claim",
     "allowed_wording",
+    "claim_scope",
+    "citation_keys",
     "evidence_tier",
     "evidence_role",
     "evidence_family",
     "data_class",
     "dataset_or_artifact",
     "analysis_unit",
+    "inference_unit",
     "n_effective",
     "statistic_or_invariant",
     "figure_or_table",
@@ -51,8 +55,45 @@ LEGAL_COMBINATIONS = {
         "correctly_specified_synthetic_positive_control",
         "supported",
     ),
-    ("expert_content_validity", "expert_review_content_validity", "conditional"),
+    ("expert_content_validity", "expert_review_content_validity", "supported"),
     ("blocked_external_data", "future_external_empirical_test", "blocked"),
+}
+
+EXPECTED_CLAIM_MAP = {
+    "ABS-01": ("Abstract", "ABS-S1"),
+    "ABS-02": ("Abstract", "ABS-S2"),
+    "ABS-03": ("Abstract", "ABS-S3"),
+    "ABS-04": ("Abstract", "ABS-S4"),
+    "ABS-05": ("Abstract", "ABS-S5"),
+    "ABS-06": ("Abstract", "ABS-S6"),
+    "INT-01": ("Introduction", "INT-P1"),
+    "INT-02": ("Introduction", "INT-P1"),
+    "INT-03": ("Introduction", "INT-P2"),
+    "INT-04": ("Introduction", "INT-P2"),
+    "INT-05": ("Introduction", "INT-P3"),
+    "INT-06": ("Introduction", "INT-P3"),
+    "INT-07": ("Introduction", "INT-P4"),
+    "INT-08": ("Introduction", "INT-P4"),
+    "RES-01": ("Results", "RES-P1"),
+    "RES-02": ("Results", "RES-P1"),
+    "RES-03": ("Results", "RES-P2"),
+    "RES-04": ("Results", "RES-P3"),
+    "RES-05": ("Results", "RES-P3"),
+    "RES-06": ("Results", "RES-P4"),
+    "RES-07": ("Results", "RES-P5"),
+    "RES-08": ("Results", "RES-P5"),
+    "RES-09": ("Results", "RES-P6"),
+    "RES-10": ("Results", "RES-P7"),
+    "RES-11": ("Results", "RES-P8"),
+    "RES-12": ("Results", "RES-P8"),
+    "RES-13": ("Results", "RES-P8"),
+    "RES-14": ("Results", "RES-P8"),
+    "DIS-01": ("Discussion", "DIS-P1"),
+    "DIS-02": ("Discussion", "DIS-P2"),
+    "DIS-03": ("Discussion", "DIS-P3"),
+    "DIS-04": ("Discussion", "DIS-P4"),
+    "DIS-05": ("Discussion", "DIS-P4"),
+    "DIS-06": ("Discussion", "DIS-P5"),
 }
 
 
@@ -61,27 +102,97 @@ def _rows() -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
-def _canonical_tokens(text: str) -> set[str]:
-    stop = {
-        "a",
-        "an",
-        "and",
-        "as",
-        "at",
-        "by",
-        "for",
-        "from",
-        "in",
-        "is",
-        "of",
-        "on",
-        "only",
-        "the",
-        "to",
-        "with",
-    }
-    tokens = re.findall(r"[a-z0-9]+", text.casefold())
-    return {token for token in tokens if token not in stop}
+def _normalized_claim(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", text.casefold()).strip()
+
+
+def _assert_assertion_key_rules(rows: list[dict[str, str]]) -> None:
+    seen_locations: set[tuple[str, str, str]] = set()
+    key_families: dict[str, tuple[str, str]] = {}
+    text_keys: dict[str, str] = {}
+    for row in rows:
+        location = (row["assertion_key"], row["section"], row["paragraph_id"])
+        assert location not in seen_locations, location
+        seen_locations.add(location)
+
+        family = (row["claim_scope"], row["evidence_family"])
+        assert key_families.setdefault(row["assertion_key"], family) == family
+
+        canonical = _normalized_claim(row["canonical_claim"])
+        assert text_keys.setdefault(canonical, row["assertion_key"]) == row[
+            "assertion_key"
+        ]
+
+
+def _outline_claim_map(text: str) -> dict[str, tuple[str, str]]:
+    section = ""
+    paragraph_id = ""
+    mapped: dict[str, tuple[str, str]] = {}
+    for line in text.splitlines():
+        section_match = re.fullmatch(r"## (Abstract|Introduction|Results|Discussion)", line)
+        if section_match:
+            section = section_match.group(1)
+            continue
+        paragraph_match = re.fullmatch(r"### ((?:ABS-S|INT-P|RES-P|DIS-P)\d+):.*", line)
+        if paragraph_match:
+            paragraph_id = paragraph_match.group(1)
+            continue
+        if not section or not paragraph_id:
+            continue
+        for claim_id in re.findall(r"\b(?:ABS|INT|RES|DIS)-\d{2}\b", line):
+            assert claim_id not in mapped, claim_id
+            mapped[claim_id] = (section, paragraph_id)
+    return mapped
+
+
+def _write_csv(path: Path, rows: list[dict[str, str]]) -> None:
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _route_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
+    wording = "Microbiome-informed framework supports individualized dietary response prediction."
+    matrix = tmp_path / "matrix.csv"
+    _write_csv(
+        matrix,
+        [
+            {
+                "claim_id": "INT-01",
+                "section": "Introduction",
+                "allowed_wording": wording,
+                "evidence_tier": "published_context",
+                "evidence_role": "literature_context",
+                "data_class": "published_literature_context",
+                "claim_scope": "published_field_context",
+                "status": "supported",
+                "citation_keys": "Smith2025",
+            }
+        ],
+    )
+    audit = tmp_path / "reference_audit.csv"
+    _write_csv(
+        audit,
+        [
+            {
+                "claim_id": "INT-01",
+                "citation_key": "Smith2025",
+                "support_role": "field_context",
+                "verification_status": "verified",
+                "stable_identifier": "doi:10.1000/example",
+                "retraction_status": "clear",
+            }
+        ],
+    )
+    candidate = tmp_path / "introduction.tex"
+    candidate.write_text(
+        "% CLAIM_ID: INT-01\n"
+        "Microbiome-informed framework supports individualized dietary response "
+        "prediction \\cite{Smith2025}.\n",
+        encoding="utf-8",
+    )
+    return candidate, matrix, audit
 
 
 def test_matrix_exists_and_has_complete_schema():
@@ -96,16 +207,67 @@ def test_matrix_exists_and_has_complete_schema():
             assert row[field].strip(), f"{row.get('claim_id', '<unknown>')} lacks {field}"
 
 
-def test_claim_ids_are_unique_and_all_planned_claims_are_covered_once():
+def test_claim_ids_and_matrix_paragraph_mapping_are_frozen():
     rows = _rows()
-    claim_ids = [row["claim_id"] for row in rows]
-    assert len(claim_ids) == len(set(claim_ids))
-    assert all(re.fullmatch(r"(?:ABS|RES|DIS)-\d{2}", value) for value in claim_ids)
-    assert {row["section"] for row in rows} == {"Abstract", "Results", "Discussion"}
+    observed = {
+        row["claim_id"]: (row["section"], row["paragraph_id"]) for row in rows
+    }
+    assert len(observed) == len(rows)
+    assert observed == EXPECTED_CLAIM_MAP
 
-    outline = OUTLINE.read_text(encoding="utf-8")
-    for claim_id in claim_ids:
-        assert len(re.findall(rf"\b{re.escape(claim_id)}\b", outline)) == 1
+
+def test_outline_paragraph_blocks_have_exact_frozen_claim_ids():
+    assert _outline_claim_map(OUTLINE.read_text(encoding="utf-8")) == EXPECTED_CLAIM_MAP
+
+
+def test_assertion_keys_obey_identity_and_evidence_family_rules():
+    _assert_assertion_key_rules(_rows())
+
+
+@pytest.mark.parametrize("broken_rule", ["location", "family", "canonical"])
+def test_assertion_key_rules_reject_negative_fixtures(broken_rule):
+    rows = [
+        {
+            "assertion_key": "shared",
+            "section": "Abstract",
+            "paragraph_id": "ABS-S1",
+            "claim_scope": "gmnps_project",
+            "evidence_family": "family-a",
+            "canonical_claim": "A locked method claim.",
+        },
+        {
+            "assertion_key": "shared",
+            "section": "Results",
+            "paragraph_id": "RES-P1",
+            "claim_scope": "gmnps_project",
+            "evidence_family": "family-a",
+            "canonical_claim": "A Results restatement.",
+        },
+    ]
+    if broken_rule == "location":
+        rows[1]["section"] = "Abstract"
+        rows[1]["paragraph_id"] = "ABS-S1"
+    elif broken_rule == "family":
+        rows[1]["evidence_family"] = "family-b"
+    else:
+        rows[1]["assertion_key"] = "different"
+        rows[1]["canonical_claim"] = " A LOCKED method claim! "
+    with pytest.raises(AssertionError):
+        _assert_assertion_key_rules(rows)
+
+
+def test_claim_scopes_and_literature_citation_state_are_explicit():
+    rows = _rows()
+    assert {row["claim_scope"] for row in rows} <= {
+        "published_field_context",
+        "gmnps_project",
+        "future_empirical",
+    }
+    literature = [row for row in rows if row["evidence_tier"] == "published_context"]
+    assert literature
+    assert all(row["claim_scope"] == "published_field_context" for row in literature)
+    assert all(row["status"] == "conditional" for row in literature)
+    assert all(row["citation_keys"] == "PENDING_TASK3" for row in literature)
 
 
 def test_evidence_tier_role_and_status_combinations_are_legal():
@@ -119,9 +281,26 @@ def test_blocked_claims_have_no_allowed_wording_or_main_figure():
     assert blocked
     for row in blocked:
         assert row["allowed_wording"] == ""
+        assert row["claim_scope"] == "future_empirical"
         assert row["evidence_tier"] == "blocked_external_data"
         assert row["figure_or_table"].startswith("blocked_external_data:")
         assert row["main_or_supplementary"] == "blocked_external_data"
+
+
+def test_blocked_analyses_have_distinct_rows_and_explicit_units():
+    rows = {row["claim_id"]: row for row in _rows()}
+    expected = {
+        "RES-10": ("food", "food"),
+        "RES-11": ("participant-meal observation", "family/twin connected component"),
+        "RES-12": ("independent GMrepo person", "independent GMrepo person/component"),
+        "RES-13": ("ZOE food/rank-table", "ZOE food/rank-table"),
+        "RES-14": ("knowledge path", "knowledge path"),
+    }
+    for claim_id, (analysis_unit, inference_unit) in expected.items():
+        assert rows[claim_id]["analysis_unit"] == analysis_unit
+        assert rows[claim_id]["inference_unit"] == inference_unit
+    assert all("source-specific" not in row["analysis_unit"] for row in rows.values())
+    assert all("source-specific" not in row["inference_unit"] for row in rows.values())
 
 
 def test_no_current_quantitative_main_figure_is_claimed():
@@ -152,19 +331,20 @@ def test_synthetic_evidence_is_one_supplementary_positive_control_family():
     assert {row["main_or_supplementary"] for row in synthetic} == {
         "supplementary_method"
     }
-    assert all("real" not in row["data_class"].casefold() for row in synthetic)
 
 
-def test_outline_has_required_paragraph_level_architecture_and_terminology():
+def test_expert_claims_respect_the_audited_boundary():
+    expert = [row for row in _rows() if row["evidence_tier"] == "expert_content_validity"]
+    assert expert
+    joined = " ".join(" ".join(row.values()) for row in expert).casefold()
+    for prohibited in ("97.2%", "two requests", "six experts", "6 experts"):
+        assert prohibited not in joined
+    assert all("expert_review_audit.md" in row["source_path"] for row in expert)
+    assert all("content review" in row["allowed_wording"].casefold() for row in expert)
+
+
+def test_outline_has_required_architecture_and_terminology():
     text = OUTLINE.read_text(encoding="utf-8")
-    for paragraph_id in (
-        *(f"ABS-S{number}" for number in range(1, 7)),
-        *(f"INT-P{number}" for number in range(1, 5)),
-        *(f"RES-P{number}" for number in range(1, 9)),
-        *(f"DIS-P{number}" for number in range(1, 6)),
-    ):
-        assert paragraph_id in text
-
     required_terms = (
         "nutrient profiling system",
         "personalized calibration",
@@ -174,17 +354,22 @@ def test_outline_has_required_paragraph_level_architecture_and_terminology():
         "baseline implementation",
         "method definition -> current feasibility -> robustness positive-control -> implications + hard boundary",
         "not empirical Article submission-ready",
+        "AUTHOR_INPUT_NEEDED",
     )
     for term in required_terms:
         assert term in text
-    assert "precision-ready" not in text.casefold()
-    assert "transforms" not in text.casefold()
+    lowered = text.casefold()
+    assert "precision-ready" not in lowered
+    assert "transforms" not in lowered
+    assert "97.2%" not in text
+    assert "six experts" not in lowered
+    assert "two requests" not in lowered
 
 
-def test_current_claim_policy_accepts_every_nonblocked_allowed_wording(tmp_path):
+def test_current_claim_policy_accepts_every_project_allowed_wording(tmp_path):
     for row in _rows():
         wording = row["allowed_wording"]
-        if not wording:
+        if not wording or row["claim_scope"] != "gmnps_project":
             continue
         candidate = tmp_path / f"{row['claim_id']}.txt"
         candidate.write_text(wording + "\n", encoding="utf-8")
@@ -210,25 +395,111 @@ def test_current_claim_policy_rejects_forbidden_or_real_data_overclaims(
     assert check_claim_inputs([candidate])
 
 
-def test_canonical_claims_have_no_semantic_near_duplicates():
-    rows = _rows()
-    for index, left in enumerate(rows):
-        left_tokens = _canonical_tokens(left["canonical_claim"])
-        for right in rows[index + 1 :]:
-            right_tokens = _canonical_tokens(right["canonical_claim"])
-            union = left_tokens | right_tokens
-            jaccard = len(left_tokens & right_tokens) / len(union) if union else 1.0
-            sequence = SequenceMatcher(
-                None,
-                " ".join(sorted(left_tokens)),
-                " ".join(sorted(right_tokens)),
-            ).ratio()
-            assert max(jaccard, sequence) < 0.88, (
-                left["claim_id"],
-                right["claim_id"],
-                jaccard,
-                sequence,
-            )
+def test_published_context_route_can_bypass_one_phase2_violation(tmp_path):
+    candidate, matrix, audit = _route_fixture(tmp_path)
+    assert check_claim_inputs([candidate])
+    assert check_manuscript_claim_inputs(
+        [candidate], matrix_path=matrix, reference_audit_path=audit
+    ) == ()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("evidence_tier", "computational_feasibility"),
+        ("evidence_role", "method_definition_or_invariant"),
+        ("data_class", "computational_method"),
+        ("claim_scope", "gmnps_project"),
+        ("status", "conditional"),
+    ],
+)
+def test_published_context_route_requires_exact_matrix_classification(
+    tmp_path, field, value
+):
+    candidate, matrix, audit = _route_fixture(tmp_path)
+    with matrix.open(newline="", encoding="utf-8") as handle:
+        row = next(csv.DictReader(handle))
+    row[field] = value
+    _write_csv(matrix, [row])
+    assert check_manuscript_claim_inputs(
+        [candidate], matrix_path=matrix, reference_audit_path=audit
+    )
+
+
+@pytest.mark.parametrize(
+    "candidate_text",
+    [
+        "Microbiome-informed framework supports individualized dietary response prediction \\cite{Smith2025}.\n",
+        "% CLAIM_ID: INT-01\n% CLAIM_ID: INT-01\nMicrobiome-informed framework supports individualized dietary response prediction \\cite{Smith2025}.\n",
+        "% CLAIM_ID: INT-01\nMicrobiome-informed framework supports individualized dietary response prediction \\cite{Smith2025}. A second sentence.\n",
+        "% CLAIM_ID: INT-01\nMicrobiome-informed framework supports broad dietary response prediction \\cite{Smith2025}.\n",
+        "% CLAIM_ID: INT-01\nMicrobiome-informed framework supports individualized dietary response prediction.\n",
+        "% CLAIM_ID: INT-01\nMicrobiome-informed framework supports individualized dietary response prediction \\cite{Smith2025,Extra2026}.\n",
+        "% CLAIM_ID: INT-01\nOur microbiome-informed framework supports individualized dietary response prediction \\cite{Smith2025}.\n",
+    ],
+)
+def test_published_context_route_rejects_inexact_claims(tmp_path, candidate_text):
+    candidate, matrix, audit = _route_fixture(tmp_path)
+    candidate.write_text(candidate_text, encoding="utf-8")
+    assert check_manuscript_claim_inputs(
+        [candidate], matrix_path=matrix, reference_audit_path=audit
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("verification_status", "pending"),
+        ("stable_identifier", ""),
+        ("retraction_status", "unknown"),
+        ("citation_key", "Other2025"),
+        ("claim_id", "INT-02"),
+    ],
+)
+def test_published_context_route_requires_verified_reference_pairs(
+    tmp_path, field, value
+):
+    candidate, matrix, audit = _route_fixture(tmp_path)
+    with audit.open(newline="", encoding="utf-8") as handle:
+        row = next(csv.DictReader(handle))
+    row[field] = value
+    _write_csv(audit, [row])
+    assert check_manuscript_claim_inputs(
+        [candidate], matrix_path=matrix, reference_audit_path=audit
+    )
+
+
+def test_conditional_task1_literature_row_remains_denied(tmp_path):
+    candidate, matrix, audit = _route_fixture(tmp_path)
+    with matrix.open(newline="", encoding="utf-8") as handle:
+        row = next(csv.DictReader(handle))
+    row["status"] = "conditional"
+    _write_csv(matrix, [row])
+    assert check_manuscript_claim_inputs(
+        [candidate], matrix_path=matrix, reference_audit_path=audit
+    )
+
+
+def test_unmarked_and_marked_project_claims_remain_default_denied(tmp_path):
+    candidate, matrix, audit = _route_fixture(tmp_path)
+    project_claim = "GMNPS supports individualized dietary response prediction."
+    with matrix.open(newline="", encoding="utf-8") as handle:
+        row = next(csv.DictReader(handle))
+    row.update(
+        {
+            "allowed_wording": project_claim,
+            "evidence_tier": "locked_method_definition",
+            "evidence_role": "method_definition_or_invariant",
+            "data_class": "computational_method",
+            "claim_scope": "gmnps_project",
+        }
+    )
+    _write_csv(matrix, [row])
+    for text in (project_claim, f"% CLAIM_ID: INT-01\n{project_claim}"):
+        candidate.write_text(text, encoding="utf-8")
+        assert check_manuscript_claim_inputs(
+            [candidate], matrix_path=matrix, reference_audit_path=audit
+        )
 
 
 def test_source_paths_exist_or_name_an_external_blocker():

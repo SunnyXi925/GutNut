@@ -2,7 +2,12 @@
 
 ## Current submission status
 
-The present evidence package is not empirical Article submission-ready. No eligible observed participant-by-meal outcome analysis, production 9,234-food run, or registry-bound Task 4 population, GMrepo, ZOE or knowledge-path analysis has been completed. The only completed quantitative experiment is one correctly specified synthetic positive-control family, which belongs in Supplementary Information as a method check.
+The present evidence package is not empirical Article submission-ready. No
+eligible observed participant-by-meal outcome analysis, production 9,234-food
+run, or registry-bound population, GMrepo, ZOE, or knowledge-path analysis has
+been completed. The only completed quantitative experiment is one correctly
+specified synthetic positive-control family, which belongs in Supplementary
+Information as a method check.
 
 The narrative order is fixed as: `method definition -> current feasibility -> robustness positive-control -> implications + hard boundary`.
 
@@ -10,7 +15,8 @@ The narrative order is fixed as: `method definition -> current feasibility -> ro
 
 **Bounded attribute-level calibration for microbiome-informed nutrient profiling**
 
-This title is provisional. It describes a method-level contribution and must not be strengthened unless external empirical evidence clears the Phase 2 gate.
+This title is provisional. It describes a method-level contribution and must
+not be strengthened unless external empirical evidence clears the Phase 2 gate.
 
 ## Terminology ledger
 
@@ -22,115 +28,181 @@ This title is provisional. It describes a method-level contribution and must not
 | correctly specified synthetic positive-control | Use the complete qualifier every time; never shorten it to validation cohort or digital twin. |
 | Food Compass 2.0 | Describe only as the broad nutrient profiling baseline implementation used here. |
 
-Do not use the title or slogan language rejected by the current evidence tier. Do not describe the method as a bounded offset applied to a final score, and do not imply biological superiority of the expert mask.
+Do not describe the method as a bounded offset applied to a final score, and do
+not imply biological superiority of the expert-revised mask.
 
-## Six-sentence Abstract
+## Abstract
 
 ### ABS-S1: field context
 
-Claim ID: `ABS-01`. State the population-level role of nutrient profiling without attaching a project-derived effect estimate.
+Claim ID: `ABS-01`. State the population-level role of nutrient profiling
+without attaching a project-derived effect estimate. The literature citation
+remains `PENDING_TASK3`.
 
 ### ABS-S2: design gap
 
-Claim ID: `ABS-02`. Define the need for an individual calibration layer around a shared prior. Do not claim that this project observed real person-food heterogeneity.
+Claim ID: `ABS-02`. Define the need for an individual calibration layer around
+a shared prior. Do not claim that this project observed real person-food
+heterogeneity. The literature citation remains `PENDING_TASK3`.
 
 ### ABS-S3: approach
 
-Claim ID: `ABS-03`. Introduce Gut Microbiome-informed Nutrient Profiling System (GMNPS) as locked, bounded, attribute-level personalized calibration inside a nutrient profiling system. Food Compass 2.0 is only the baseline implementation.
+Claim ID: `ABS-03`. Introduce Gut Microbiome-informed Nutrient Profiling System
+(GMNPS) as locked, bounded, attribute-level personalized calibration inside a
+nutrient profiling system. Food Compass 2.0 is only the baseline implementation.
 
 ### ABS-S4: current feasibility
 
-Claim ID: `ABS-04`. State that eligible observed participant-by-meal outcomes are unavailable in the audited data and that the current tier is computational feasibility.
+Claim ID: `ABS-04`. State that eligible observed participant-by-meal outcomes
+are unavailable in the audited data and that the current tier is computational
+feasibility.
 
 ### ABS-S5: completed robustness evidence
 
-Claim ID: `ABS-05`. Report one correctly specified synthetic positive-control family as an implementation-fidelity check. Do not split its recovery and negative controls into multiple independent evidence units.
+Claim ID: `ABS-05`. Report one correctly specified synthetic positive-control
+family as an implementation-fidelity check. Do not split its recovery and
+negative controls into multiple independent evidence units.
 
 ### ABS-S6: implication and hard boundary
 
-Claim ID: `ABS-06`. Close with the direct limitation that external validity is not established. Omit guidance, clinical, causal and real-response language.
+Claim ID: `ABS-06`. Close with the direct limitation that external validity is
+not established. Omit guidance, clinical, causal, and real-response language.
 
 ## Introduction
 
 ### INT-P1: public-health role and scope
 
-Open with nutrient profiling as a population-level food-quality tool. Establish why stable and auditable assessments matter before introducing microbiome information. Primary citations must be verified during Task 3.
+Claim IDs: `INT-01`, `INT-02`. Open with nutrient profiling as a
+population-level food-quality tool, then motivate stable and auditable
+assessment. Both field-context citations remain `PENDING_TASK3` and cannot use
+the manuscript literature exception until Task 3 verifies them.
 
 ### INT-P2: unresolved calibration problem
 
-Contrast a shared population prior with the need to represent individual adaptation. Frame the design problem as calibration within a nutrient profiling system, not replacement of one system by another.
+Claim IDs: `INT-03`, `INT-04`. Contrast a shared population prior with
+individual calibration, and frame calibration around rather than as replacement
+of the shared nutrient-profile reference. Both citations remain
+`PENDING_TASK3`; no observed person-food heterogeneity or preservation result is
+available.
 
 ### INT-P3: method concept and microbiome test case
 
-Define personalized calibration as bounded changes to native attributes before domain recomposition. Introduce the gut microbiome as a plausible test case for calibration features, not as a complete basis for dietary decisions or a causal mechanism.
+Claim IDs: `INT-05`, `INT-06`. Introduce bounded native-attribute calibration
+as a literature-framed design concept and the gut microbiome as a candidate
+feature source. These citations remain `PENDING_TASK3`. Do not present the
+microbiome as a causal mechanism or complete basis for dietary decisions.
 
 ### INT-P4: study objective and evidence ladder
 
-Preview the actual study: locked method definition, audited feasibility state, one correctly specified synthetic positive-control, and expert content review. State before Results that population, direct-response and supporting-evidence slots are blocked by missing external data and production execution.
+Claim IDs: `INT-07`, `INT-08`. Preview only the locked method definition,
+audited feasibility state, one correctly specified synthetic positive-control,
+and available expert content feedback. The project objective and evidence
+boundary remain governed by the Phase 2 default-deny policy, not the published-
+context exception. Population, direct-response, GMrepo, ZOE, and knowledge-path
+slots remain blocked.
 
 ## Results
 
 ### RES-P1: the method is established before any validation claim
 
-Claim IDs: `RES-01`, `RES-02`. Define native attribute calibration, named caps, dynamic domain recomposition, zero-response identity and the absence of population or per-food score centering. Fig. 1 may contain a visibly labelled conceptual schematic only; it is not a quantitative empirical figure.
+Claim IDs: `RES-01`, `RES-02`. Define native attribute calibration, named caps,
+dynamic domain recomposition, zero-response identity, and the absence of
+population or per-food score centering. Fig. 1 may contain a visibly labelled
+conceptual schematic only; it is not a quantitative empirical figure.
 
 ### RES-P2: the evidence gate fixes the current tier
 
-Claim ID: `RES-03`. Report the fail-closed computational-feasibility decision and distinguish evidence authorization from model performance.
+Claim ID: `RES-03`. Report the fail-closed computational-feasibility decision
+and distinguish evidence authorization from model performance.
 
 ### RES-P3: real outcome and production inputs are unavailable
 
-Claim IDs: `RES-04`, `RES-05`. Audit the controlled outcome barrier and the absent production 9,234-food artifact chain. No preservation, heterogeneity or response statistic can enter this paragraph.
+Claim IDs: `RES-04`, `RES-05`. Audit the controlled outcome barrier and the
+absent production 9,234-food artifact chain. No preservation, heterogeneity, or
+response statistic can enter this paragraph.
 
 ### RES-P4: programmed mapping is recovered under correct specification
 
-Claim ID: `RES-06`. Present the correctly specified synthetic positive-control only in Supplementary Fig. S1. Identify independent simulation seeds as the effective repeat unit and avoid clinical uncertainty language.
+Claim ID: `RES-06`. Present the correctly specified synthetic positive-control
+only in Supplementary Fig. S1. Identify independent simulation seeds as the
+effective repeat unit and avoid clinical uncertainty language.
 
 ### RES-P5: assignment controls remove programmed recovery
 
-Claim IDs: `RES-07`, `RES-08`. Report random and Sattolo-deranged assignment within the same positive-control family, then state that this checks implementation fidelity rather than biological misspecification, mask validity or external validity.
+Claim IDs: `RES-07`, `RES-08`. Report random and Sattolo-deranged assignment
+within the same positive-control family, then state that this checks
+implementation fidelity rather than biological misspecification, mask validity,
+or external validity.
 
-### RES-P6: expert review addresses content only
+### RES-P6: available expert feedback addresses content only
 
-Claim ID: `RES-09`. Report six experts and two rounds, with 97.2% group-classification agreement and two requests for clarification. Bind these facts to the C1 and C3 review records. Interpret them only as content validity and interpretability.
+Claim ID: `RES-09`. State only that available feedback informed revisions to
+carbohydrate, zinc, copper, and vitamin A RAE channels and supports content
+review. Do not report an exact expert denominator, unanimous final passage, a C3
+agreement percentage, a clarification-request count, or completed E4 verdicts.
+Anonymous item-level C3 and E4 records are `AUTHOR_INPUT_NEEDED`.
 
 ### RES-P7: population Result and Fig. 2 are blocked
 
-Claim ID: `RES-10`. Mark the complete slot `blocked_external_data`. Do not substitute synthetic preservation, designed caps, test fixtures or historical outputs for a real production person-food analysis.
+Claim ID: `RES-10`. Mark the complete food-level production slot
+`blocked_external_data`. Do not substitute synthetic preservation, designed
+caps, test fixtures, or historical outputs for a production food analysis.
 
-### RES-P8: direct response and generalization Results are blocked
+### RES-P8: direct response and supporting Results are blocked
 
-Claim IDs: `RES-11`, `RES-12`. Mark Fig. 3 and Fig. 4 `blocked_external_data`. Do not insert placeholders for participant-by-meal performance, population preservation, disease signals, aggregate-rank concordance or knowledge-path findings.
+Claim IDs: `RES-11`, `RES-12`, `RES-13`, `RES-14`. Keep participant-meal,
+independent GMrepo person, ZOE food/rank-table, and knowledge-path analyses as
+separate `blocked_external_data` units. Fig. 3 and Fig. 4 remain blocked. Do not
+insert placeholders for response performance, disease signals, aggregate-rank
+concordance, or knowledge-path findings.
 
 ## Discussion
 
 ### DIS-P1: interpret the method-level contribution
 
-Claim ID: `DIS-01`. Explain that the defensible contribution is a reproducible attribute-level formulation of bounded calibration within nutrient profiling. Do not convert this formulation into an effectiveness claim.
+Claim ID: `DIS-01`. Explain that the defensible contribution is a reproducible
+attribute-level formulation of bounded calibration within nutrient profiling.
+Do not convert this formulation into an effectiveness claim.
 
 ### DIS-P2: interpret the positive-control narrowly
 
-Claim ID: `DIS-02`. Explain why programmed truth and assignment controls diagnose implementation fidelity. State that correct specification does not test biological model misspecification or real-world response prediction.
+Claim ID: `DIS-02`. Explain why programmed truth and assignment controls
+diagnose implementation fidelity. Correct specification does not test biological
+model misspecification or real-world response prediction.
 
 ### DIS-P3: delimit expert evidence
 
-Claim ID: `DIS-03`. Treat expert review as content validity and interpretability evidence only. It does not establish outcome validity, readiness, or superiority of the expert-revised mask.
+Claim ID: `DIS-03`. Available expert feedback supports content review only. It
+does not establish outcome validity, readiness, or superiority of the expert-
+revised mask. Anonymous item-level C3 and E4 records remain
+`AUTHOR_INPUT_NEEDED`.
 
 ### DIS-P4: state readiness and the hard boundary
 
-Claim IDs: `DIS-04`, `DIS-05`. State that the current package lacks the real evidence required for an empirical Article and that external validity is not established. Main quantitative figures cannot be assembled from the present evidence.
+Claim IDs: `DIS-04`, `DIS-05`. State that the current package lacks the real
+evidence required for an empirical Article and that external validity is not
+established. Main quantitative figures cannot be assembled from present
+evidence.
 
 ### DIS-P5: specify the future empirical path without forecasting results
 
-Claim ID: `DIS-06`. Require a trusted production food run, eligible observed participant-by-meal outcomes, frozen subject-held-out analyses, and registry-bound supporting evidence. Predefine analysis units, intervals, multiplicity correction, leakage controls and provenance; do not predict success.
+Claim ID: `DIS-06`. Require a trusted production food run, eligible observed
+participant-by-meal outcomes, frozen held-out analyses, and registry-bound
+supporting evidence. Predefine food, family/twin component, independent GMrepo
+person/component, ZOE food/rank-table, and knowledge-path inference units,
+intervals, multiplicity correction, leakage controls, and provenance. Do not
+predict success.
 
 ## Display policy
 
 - Fig. 1: conceptual method schematic only, visibly labelled conceptual.
 - Fig. 2: `blocked_external_data` pending a trusted production population run.
 - Fig. 3: `blocked_external_data` pending eligible observed participant-by-meal outcomes.
-- Fig. 4: `blocked_external_data` pending registry-bound production population, GMrepo, ZOE and knowledge-path analyses.
+- Fig. 4: `blocked_external_data` pending registry-bound GMrepo, ZOE, and knowledge-path analyses.
 - Supplementary Fig. S1: the single correctly specified synthetic positive-control family, labelled synthetic and method-only.
-- Supplementary Tables S1-S3: evidence boundary, locked invariants and two-round expert content review, respectively.
+- Supplementary Tables S1-S3: evidence boundary, locked invariants, and available expert-feedback audit, respectively.
 
-Synthetic results must never be labelled as real data or placed in a main quantitative panel. Until the blocked evidence exists, the manuscript can support a method definition and bounded feasibility account, not a completed empirical Nature Food Article.
+Synthetic results must never be labelled as real data or placed in a main
+quantitative panel. Until the blocked evidence exists, the manuscript can
+support a method definition and bounded feasibility account, not a completed
+empirical Nature Food Article.
