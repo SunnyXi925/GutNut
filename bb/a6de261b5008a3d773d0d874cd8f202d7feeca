@@ -1,0 +1,40 @@
+manuscript/nature_food_submission/narrative_outline.md
+  s_4d75bbbcc79dac::t_1f8f6e31c90b61 98-102
+manuscript/nature_food_submission/expert_review_audit.md
+  s_4d75bbbcc79dac::t_1f8f6e31c90b61 24-30
+code/src/tests/test_manuscript_claim_gate.py
+  s_4d75bbbcc79dac::t_3c182da40ed471 4,17-19,114,118-120,185,187,231,251,253,277-285,355,359-382,386,388,390,395-398,459-499,543-573,597-663
+  s_4d75bbbcc79dac::t_a7267c41cc276b 383-385,387,389,391-394
+  s_4d75bbbcc79dac::t_b30ac063ee29a1 664-668
+code/src/gmnps/validation/manuscript_claim_gate.py
+  s_4d75bbbcc79dac::t_dd53751a4ba3f1 10,49,55-57,60-61,64-66,74,112-117,121-126
+  s_4d75bbbcc79dac::t_2936099482d6e7 269-272,274-275,280-281,293,297-300,302-315,317
+  s_4d75bbbcc79dac::t_0666350e959aaf 159-180,183-203,208,210,212,215,218,223-225,228-230,232-252
+manuscript/nature_food_submission/claim_evidence_matrix.csv
+  s_4d75bbbcc79dac::t_1f8f6e31c90b61 15,24,32
+manuscript/nature_food_submission/expert_review_item_audit.csv
+  s_4d75bbbcc79dac::t_1f8f6e31c90b61 1-91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "bba6de261b5008a3d773d0d874cd8f202d7feeca",
+  "prompts": {},
+  "humans": {
+    "h_f3d5b5bc65ef89": {
+      "author": "fengxi.25 <fengxi.25@jd.com>"
+    }
+  },
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 5,
+      "accepted_lines": 5
+    }
+  }
+}
