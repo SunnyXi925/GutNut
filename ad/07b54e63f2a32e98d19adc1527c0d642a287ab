@@ -1,0 +1,89 @@
+manuscript/nature_food_submission/figures/submission_asset_allowlist.txt
+  s_4d75bbbcc79dac::t_07d2ae8c3350d4 15-19
+docs/reviews/submission_readiness_checklist.md
+  s_4d75bbbcc79dac::t_07d2ae8c3350d4 1-87
+manuscript/nature_food_submission/source_data/frozen_synthetic_positive_control/synthetic_attribute_twin_success_checks.csv
+  s_4d75bbbcc79dac::t_07d2ae8c3350d4 1-6
+manuscript/nature_food_submission/claim_evidence_matrix.csv
+  s_4d75bbbcc79dac::t_07d2ae8c3350d4 5,7,15,18-20,33-34
+manuscript/nature_food_submission/source_data/frozen_synthetic_positive_control/synthetic_attribute_twin_replicate_metrics.csv
+  s_4d75bbbcc79dac::t_07d2ae8c3350d4 1-41
+manuscript/nature_food_submission/source_data/figS1a_programmed_mapping_rmse.csv
+  s_4d75bbbcc79dac::t_07d2ae8c3350d4 1-21
+code/src/tests/test_task4_figure_contract.py
+  s_4d75bbbcc79dac::t_d729f1705f374d 105,300-314,321-322,356,390,442
+  s_4d75bbbcc79dac::t_7df0e308d6362b 444-445
+  s_4d75bbbcc79dac::t_b964e9a9cc107a 332,336-339,353,357-360,421-424
+  s_4d75bbbcc79dac::t_26e7dd4f51fe88 289
+docs/beta_i_method.md
+  s_4d75bbbcc79dac::t_07d2ae8c3350d4 5,8,11,37
+manuscript/nature_food_submission/figures/figure_1_attribute_calibration.svg
+  s_4d75bbbcc79dac::t_07d2ae8c3350d4 111-112,114-144
+docs/reviews/final_nature_food_review.md
+  s_4d75bbbcc79dac::t_07d2ae8c3350d4 1-138
+manuscript/nature_food_submission/sections.tex
+  s_4d75bbbcc79dac::t_b7f59db621b6d2 38-41,58,176-180,183,185,187,189-190,195,224
+  s_4d75bbbcc79dac::t_6a25f3ca291a38 228-230
+  s_4d75bbbcc79dac::t_55ee5f17015f3c 181-182,184,186,188
+  s_4d75bbbcc79dac::t_36fa709a8ac846 123
+manuscript/nature_food_submission/source_data/README.md
+  s_4d75bbbcc79dac::t_07d2ae8c3350d4 43-46,60-62,68-75,90-92,99-100,103,128-129
+manuscript/nature_food_submission/supplementary_methods.tex
+  s_4d75bbbcc79dac::t_55ee5f17015f3c 89,103-105
+  s_4d75bbbcc79dac::t_b7f59db621b6d2 81,83,85-88,90-93,97-101,106,154
+  s_4d75bbbcc79dac::t_f83ac1c4d8f820 94-96,102
+  s_4d75bbbcc79dac::t_9eb4d646b4041e 297-303
+  s_4d75bbbcc79dac::t_904d5410f8991a 8-10,82,84,155-158
+manuscript/nature_food_submission/figures/figure_output_manifest.csv
+  s_4d75bbbcc79dac::t_07d2ae8c3350d4 2-7
+.superpowers/sdd/phase3-task4-report.md
+  s_4d75bbbcc79dac::t_07d2ae8c3350d4 60-64,74-88
+manuscript/nature_food_submission/source_data/source_data_manifest.csv
+  s_4d75bbbcc79dac::t_07d2ae8c3350d4 2-8
+manuscript/nature_food_submission/figures/supplementary_figure_S1_synthetic_positive_control.svg
+  s_4d75bbbcc79dac::t_07d2ae8c3350d4 218,243,262,282,448,453,464,466,476,478,488,490,500,505,510,515,525
+manuscript/nature_food_submission/source_data/frozen_synthetic_positive_control/synthetic_attribute_twin_config.json
+  s_4d75bbbcc79dac::t_07d2ae8c3350d4 1-28
+manuscript/nature_food_submission/source_data/frozen_synthetic_positive_control/synthetic_attribute_twin_manifest.json
+  s_4d75bbbcc79dac::t_07d2ae8c3350d4 1-140
+manuscript/nature_food_submission/supplementary_results.tex
+  s_4d75bbbcc79dac::t_da0764b0f6922e 25,43-45
+  s_4d75bbbcc79dac::t_91a417555bd1c9 76-80
+  s_4d75bbbcc79dac::t_34f65a3570d930 99-100
+  s_4d75bbbcc79dac::t_f83ac1c4d8f820 8-9
+  s_4d75bbbcc79dac::t_65231ca3c24107 63-65
+docs/methods/attribute_level_gmnps_spec.md
+  s_4d75bbbcc79dac::t_07d2ae8c3350d4 169
+manuscript/nature_food_submission/source_data/figS1b_assignment_control_spearman.csv
+  s_4d75bbbcc79dac::t_07d2ae8c3350d4 1-21
+manuscript/nature_food_submission/figures/figure_manifest.csv
+  s_4d75bbbcc79dac::t_07d2ae8c3350d4 6-7
+code/requirements-article.txt
+  s_4d75bbbcc79dac::t_07d2ae8c3350d4 1-10
+manuscript/nature_food_submission/source_data/frozen_synthetic_positive_control/synthetic_attribute_twin_summary.csv
+  s_4d75bbbcc79dac::t_07d2ae8c3350d4 1-65
+code/src/scripts/make_main_figures.py
+  s_4d75bbbcc79dac::t_97006051e2b904 565,682
+  s_4d75bbbcc79dac::t_71b7bf06b4747b 11,488-496,598-612,835,887-930,995,998
+  s_4d75bbbcc79dac::t_d729f1705f374d 149,536,556-564,566-568,630-642,749,876-877
+  s_4d75bbbcc79dac::t_404355d092a2b8 330
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.50",
+  "base_commit_sha": "ad07b54e63f2a32e98d19adc1527c0d642a287ab",
+  "prompts": {},
+  "sessions": {
+    "s_4d75bbbcc79dac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f890b-88fc-7ea0-b2eb-222b89463d66",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "fengxi.25 <fengxi.25@jd.com>",
+      "total_additions": 4023,
+      "total_deletions": 3414,
+      "accepted_lines": 4002
+    }
+  }
+}
