@@ -1,4 +1,4 @@
-\section*{Supplementary Results}
+\section{Supplementary Results}
 
 \subsection*{Programmed mapping was recovered under correct specification}
 
@@ -39,7 +39,7 @@ assignment fidelity under correct specification. Biological misspecification
 was not assessed. Real participant responses were not evaluated. External
 validity was not established.
 
-\subsection*{The evidence audit remained fail closed}
+\subsection*{Combined evidence and expert-record boundary}
 
 The fixed evidence decision remained at computational feasibility. No eligible
 observed participant-by-meal outcome artifact, run-level method-lock instance,
@@ -49,12 +49,14 @@ approved artifact chain, and the supporting GMrepo, ZOE and knowledge-path
 production registries or runs were absent.
 
 \begin{table}[t]
-\caption{\textbf{Evidence availability and authorized interpretation.}}
-\label{tab:supp_evidence_boundary}
+\caption{\textbf{Combined evidence and expert-record boundary.} Missing
+expert record classes are administrative author inputs and are not represented
+as review outcomes.}
+\label{tab:supp_evidence_expert_boundary}
 \centering
 \begin{tabular}{p{0.30\textwidth} p{0.22\textwidth} p{0.38\textwidth}}
 \toprule
-Evidence unit & Status & Authorized interpretation \\
+Evidence or record & Status & Authorized interpretation \\
 \midrule
 Locked attribute-level specification & Available & Computational method definition and invariants \\
 Observed participant-by-meal outcomes & Unavailable & No direct-response or external-validity inference \\
@@ -63,6 +65,10 @@ Correctly specified synthetic positive-control & Available & Implementation fide
 Registry-bound GMrepo run & Not executed & No person-level generalization or disease result \\
 Registry-bound ZOE rank run & Not executed & No aggregate rank-concordance result \\
 Registry-bound knowledge-path run & Not executed & No biological or mechanistic validation result \\
+External C1 feedback workbooks & Available and hash bound & Qualitative nutrient-channel content review \\
+Anonymous item-level C3 records & AUTHOR\_INPUT\_NEEDED & No consensus percentage or final-passage claim \\
+Anonymous item-level E4 records & AUTHOR\_INPUT\_NEEDED & No clinical-readiness or translation verdict \\
+Exact reviewer denominator & Not established & No exact expert-count claim \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -71,22 +77,5 @@ Registry-bound knowledge-path run & Not executed & No biological or mechanistic 
 
 Available expert feedback informed the treatment of carbohydrate, zinc, copper
 and vitamin A as retinol activity equivalents. The available evidence supports
-qualitative content review only; missing record classes are listed in
-Table~\ref{tab:supp_expert_boundary}.
-
-\begin{table}[t]
-\caption{\textbf{Expert-evidence boundary.} Missing records are administrative
-author inputs and are not represented as review outcomes.}
-\label{tab:supp_expert_boundary}
-\centering
-\begin{tabular}{p{0.32\textwidth} p{0.24\textwidth} p{0.34\textwidth}}
-\toprule
-Record & Availability & Manuscript use \\
-\midrule
-External C1 feedback workbooks & Available and hash bound & Qualitative nutrient-channel content review \\
-Anonymous item-level C3 records & AUTHOR\_INPUT\_NEEDED & No consensus percentage or final-passage claim \\
-Anonymous item-level E4 records & AUTHOR\_INPUT\_NEEDED & No clinical-readiness or translation verdict \\
-Exact reviewer denominator & Not established & No exact expert-count claim \\
-\bottomrule
-\end{tabular}
-\end{table}
+qualitative content review only; the combined evidence and expert-record
+boundary is reported in Supplementary Table S3.

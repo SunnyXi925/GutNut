@@ -1,4 +1,4 @@
-\section*{Supplementary Methods}
+\section{Supplementary Methods}
 
 \subsection*{Locked computational specification and provenance}
 
@@ -7,12 +7,21 @@ The frozen specification is \texttt{attribute-gmnps-v1}. Its primary method is
 \texttt{expert\_reviewed\_attribute\_mapping\_v1}, and its recomposition rule is
 \texttt{native\_domain\_fixed\_residual\_v1}. Mapping roles, allocation weights,
 attribute rules, temperatures, cap modes, domain membership and score centring
-were locked before outcome access. Every production run
-must bind immutable source bytes, parsed-content fingerprints, food and
-participant linkage, nutrient units, exposure basis, the development-beta fit,
-the scoring-beta input, configuration, implementation hashes and the trusted
-release-registry snapshot. The current registry contains no approved production
-food artifact; no placeholder production instance was created.
+were locked before outcome access. The six recomputed domains are
+\texttt{nutrient\_ratios}, \texttt{vitamins}, \texttt{minerals},
+\texttt{specific\_lipids}, \texttt{fiber\_and\_protein}, and
+\texttt{phytochemicals}. The complete versioned attribute registry and
+nutrient-to-attribute mapping, including rules, roles, component policies and
+allocation weights, are supplied as Supplementary Data 1 in
+\texttt{supplementary\_data\_1\_attribute\_mapping\_table.csv}.
+
+An eligible production run must bind the trusted release-registry snapshot and
+one approved artifact entry; immutable source bytes and parsed-content
+fingerprints; release labels; food and participant linkage and units;
+nutrient/exposure basis; development and scoring beta inputs; and configuration
+and implementation hashes. The current registry has no approved production
+artifact, so no empirical production-food result is authorized and no
+placeholder production instance was created.
 
 \subsection*{Food Compass attribute scoring}
 
@@ -27,11 +36,13 @@ p_0+\frac{x-t_0}{t_1-t_0}(p_1-p_0),
 \min(p_0,p_1),\max(p_0,p_1)\right].
 \]
 Negative linear exposures are invalid. Ratio rules use the same interpolation
-on \(\log(x)\) and require \(x>0\). Added sugar follows its published discrete
-cut points, binary additive attributes use presence/absence points, and NOVA
-class is interpolated through the locked class-point pairs. The primary nitrite
-rule is the published 50\%-energy footnote interpretation; the conflicting 25\%
-table value is retained only as a named sensitivity setting.
+on \(\log(x)\) and require \(x>0\). Added-sugar cut points are exactly 2.5, 5,
+10, 15, 20, 30, 40, 50 and 60 percent energy, with 0 points at zero exposure
+and -1 through -10 thereafter. Binary additive attributes use presence/absence
+points, and NOVA class is interpolated through \((1,10)\), \((2,7.5)\),
+\((3,5)\), and \((4,-10)\). The primary nitrite rule is the published
+50\%-energy footnote interpretation; the conflicting 25\% table value is
+retained only as a named sensitivity setting.
 
 Composition exposures are expressed per 100 kcal unless the rule explicitly
 uses percentage energy, a ratio, binary presence or NOVA class. The three ratio
@@ -170,6 +181,18 @@ Zero-response identity tolerance & \(10^{-8}\) & None \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\subsection*{FNDDS release sequence and production attestation}
+
+Production composition is restricted to the FCS2-aligned release sequence:
+FNDDS 2001-2002, FNDDS 2003-2004, FNDDS 2005-2006, FNDDS 2007-2008, FNDDS
+2009-2010, FNDDS 2011-2012, FNDDS 2013-2014, FNDDS 2015-2016 and FNDDS
+2017-2018. The trusted registry snapshot must have the fixed schema, registry
+version and SHA-256 digest algorithm and must contain the single approved
+artifact entry bound to the run. The same-immutable-bytes loader hashes source
+bytes, parses those bytes, fingerprints canonical parsed tables and rechecks
+the approved entry before minting a production attestation. Directly constructed
+tables and caller-provided digest strings cannot authorize a production run.
 
 \subsection*{Available expert content review}
 
