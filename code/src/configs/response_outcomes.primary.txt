@@ -1,0 +1,6 @@
+glucose
+triglyceride
+total_cholesterol
+hdl
+ldl
+hba1c

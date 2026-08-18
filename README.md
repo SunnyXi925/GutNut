@@ -1,77 +1,71 @@
 # GMNPS
 
-The source code of the article framework **Personalized calibration transforms nutrient profiling systems for precision nutrition**.
+Minimal, reproducible source code for the Gut Microbiome-informed Nutrient
+Profiling System (GMNPS).
 
-Gut Microbiome-informed Nutrient Profiling System (GMNPS) is implemented here
-as a proof-of-concept for anchored personalized calibration in nutrient
-profiling:
+The repository intentionally contains method code only. Manuscripts, review
+documents, figures, generated results, raw data, and trained models are not
+versioned.
 
-```text
-GMNPS_ij = clip_1-100(FCS2_j + D_ij)
-```
+## Layout
 
-The selected anchored baseline prior is Food Compass 2.0 because of its
-broad and up-to-date NPS attribute coverage. Gut microbiome information contributes a bounded
-personalized deviation, allowing GMNPS to preserve population-level NPS
-consensus while revealing personalized metabolic heterogeneity.
+- `code/src/gmnps/scoring`: anchored and attribute-level scoring.
+- `code/src/gmnps/beta_i`: microbiome health-index and nutrient-weight estimation.
+- `code/src/gmnps/data_sources`: input loaders and public-resource adapters.
+- `code/src/gmnps/knowledge_graph`: signed-path and label-adjudication utilities.
+- `code/src/gmnps/validation`: scientific validation and synthetic controls.
+- `code/src/scripts`: command-line entry points for data preparation, scoring,
+  and validation.
+- `code/src/configs`: versioned method and resource configuration.
+- `code/src/tests`: unit and integration tests.
 
-## Article Workflow
+## Installation
 
-The reproducible article-facing implementation lives under `code/src`:
-
-- `gmnps.scoring`: Food Compass 2.0-anchored scoring and expert-revised masks.
-- `gmnps.data_sources`: audited extraction utilities for public baseline and
-  food-composition sources.
-- `gmnps.validation`: NPS preservation, heterogeneity and digital-gut-twin benchmarks.
-- `gmnps.manuscript`: CSV, figure-source-data and LaTeX table exports.
-- `scripts/run_nature_food_article.py`: command-line runner.
-
-## Quick Start
+Python 3.9 or newer is required.
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[article]"
-
-python code/src/scripts/run_nature_food_article.py synthetic \
-  --output-dir outputs/nature_food_article_synthetic \
-  --n-individuals 120 \
-  --n-foods 80 \
-  --seed 42
+pip install -e ".[dev]"
 ```
 
-To extract the Food Compass 2.0 Table S5 baseline prior from the uploaded
-supplementary PDF text, see `docs/fcs2_table_s5_extraction.md`. Raw PDFs,
-scratch extraction files and generated outputs stay outside Git.
-
-### Versioned beta_i method artifacts
-
-As a narrow reproducibility exception, the compact
-`data/project_data/predict_multi/L7_nutrient_bridge_beta_i` bundle and
-`outputs/provenance_audit` tables are intentionally versioned as reviewable
-method artifacts. The beta_i implementation remains reproducible from the
-documented source inputs; larger generated datasets and routine outputs remain
-outside Git.
-
-For retrospective/public data scoring, provide:
-
-- `weights.csv`: `individual_id` plus nutrient beta columns.
-- `food_nutrients.csv`: `food_id` plus standardized food nutrient columns.
-- `food_metadata.csv`: `food_id`, `food_name`, `food_group`, `FCS2`.
+For a dependency set with conservative version bounds:
 
 ```bash
-python code/src/scripts/run_nature_food_article.py score \
-  --weights data/weights.csv \
-  --nutrients data/food_nutrients.csv \
-  --food-metadata data/food_metadata.csv \
-  --output-dir outputs/nature_food_article
+pip install -r code/requirements.txt
+pip install -e . --no-deps
 ```
 
-## Scientific Scope
+## Reproduction
 
-GMNPS is not framed as replacing Food Compass 2.0. It demonstrates a
-computationally reproducible path for transforming static NPS into precision
-nutrition by adding gut microbiome-informed calibration.
+Run the complete test suite:
 
-The current validation strategy is retrospective and simulation-based. It does
-not claim clinical intervention efficacy.
+```bash
+pytest -q code/src/tests
+```
+
+Run the attribute-level scoring pipeline with the versioned default
+configuration:
+
+```bash
+python code/src/scripts/run_attribute_gmnps.py --help
+python code/src/scripts/run_attribute_validation.py --help
+```
+
+Build individual nutrient weights or audited public-resource inputs:
+
+```bash
+python code/src/scripts/build_beta_i_weights.py --help
+python code/src/scripts/build_official_gmwi2_scores.py --help
+```
+
+Input datasets are supplied by the user and remain outside Git. Commands write
+generated artifacts beneath ignored output directories.
+
+## Reproducibility policy
+
+- Method defaults and resource identifiers are versioned under
+  `code/src/configs`.
+- Tests include deterministic synthetic controls and fixed random seeds.
+- Raw or derived study data, model binaries, article text, citations, figures,
+  and submission assets are excluded from the repository.

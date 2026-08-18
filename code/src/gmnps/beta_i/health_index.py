@@ -238,6 +238,13 @@ def score_health_index(model: HealthIndexModel, clr: pd.DataFrame) -> pd.Series:
     return pd.Series(probability, index=clr.index, name="gut_microbiome_health_index")
 
 
+def score_health_index_logit(model: HealthIndexModel, clr: pd.DataFrame) -> pd.Series:
+    """Return the linear GMWI2-style health-index score before sigmoid compression."""
+    x_std = _standardize_apply(clr, model)
+    linear = model.intercept + x_std.to_numpy(float) @ model.coefficients.to_numpy(float)
+    return pd.Series(linear, index=clr.index, name="gut_microbiome_health_index_logit")
+
+
 def save_health_index(model: HealthIndexModel, path: Path, serialization_backend: str = "pickle") -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

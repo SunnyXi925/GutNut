@@ -8,7 +8,6 @@ import pandas as pd
 
 from scripts.build_beta_i_weights import build_parser as build_beta_i_parser
 from scripts.build_beta_i_weights import run, source_revision
-from scripts.run_l9_v4_scoring import build_parser as build_scoring_parser
 
 
 class Args:
@@ -23,6 +22,10 @@ class Args:
         self.dose = 0.1
         self.clip_abs_beta = 12.0
         self.batch_size = 2
+        self.beta_response_scale = "probability"
+        self.beta_difference = "forward"
+        self.perturbation_l2_norm = 1.0
+        self.coefficient_power = 0.0
 
 
 def test_build_beta_i_weights_script_writes_expected_bundle(tmp_path, monkeypatch):
@@ -110,11 +113,14 @@ def test_build_beta_i_weights_script_writes_expected_bundle(tmp_path, monkeypatc
         "other_evidence_direction": 1.0,
         "min_abs_bridge": 0.0,
         "l2_norm": 1.0,
+        "coefficient_power": 0.0,
     }
     assert manifest["beta_estimator_config"] == {
         "dose": 0.1,
         "clip_abs_beta": 12.0,
         "batch_size": 2,
+        "response_scale": "probability",
+        "difference": "forward",
     }
     assert manifest["health_model_manifest"] == {
         "path": "health_index.joblib.manifest.json",
@@ -190,26 +196,35 @@ def test_source_revision_reports_full_sha_and_dirty_state(tmp_path):
     assert dirty["dirty"] is True
 
 
-def test_production_manifest_has_explicit_source_revision_metadata():
-    root = Path(__file__).resolve().parents[3]
-    manifest_path = root / "data/project_data/predict_multi/L7_nutrient_bridge_beta_i/beta_i_manifest.json"
-    manifest = json.loads(manifest_path.read_text())
-    revision = manifest["source_revision"]
-
-    assert re.fullmatch(r"[0-9a-f]{40}", revision["sha"])
-    assert isinstance(revision["dirty"], bool)
-    assert manifest["git_commit"] == revision["sha"]
-    assert manifest["git_dirty"] is revision["dirty"]
-    assert manifest["git_commit"] != "66aa93c"
-
-
-def test_production_build_and_scoring_defaults_select_sparse_beta_i_bundle():
+def test_production_build_defaults_select_sparse_beta_i_bundle():
     beta_args = build_beta_i_parser().parse_args([])
-    scoring_args = build_scoring_parser().parse_args([])
 
-    assert beta_args.c_value == 0.005
+    assert beta_args.c_value == 0.05
     assert beta_args.health_backend == "numpy"
     assert beta_args.serialization_backend == "pickle"
-    assert scoring_args.weights.endswith(
-        "data/project_data/predict_multi/L7_nutrient_bridge_beta_i/W_personalized.parquet"
+    assert beta_args.dose == 0.25
+    assert beta_args.clip_abs_beta == 25.0
+    assert beta_args.beta_response_scale == "logit"
+    assert beta_args.beta_difference == "central"
+    assert beta_args.perturbation_l2_norm == 2.0
+    assert beta_args.coefficient_power == 0.5
+
+
+def test_build_beta_i_weights_accepts_dual_channel_gmwi2_arguments(tmp_path):
+    args = build_beta_i_parser().parse_args(
+        [
+            "--health-model",
+            "dual_channel_gmwi2",
+            "--dual-channel-feature-weights",
+            str(tmp_path / "weights.csv"),
+            "--official-gmwi2-scores",
+            str(tmp_path / "official.csv"),
+            "--dual-channel-compression-temperature",
+            "0.35",
+        ]
     )
+
+    assert args.health_model == "dual_channel_gmwi2"
+    assert args.dual_channel_feature_weights == tmp_path / "weights.csv"
+    assert args.official_gmwi2_scores == tmp_path / "official.csv"
+    assert args.dual_channel_compression_temperature == 0.35

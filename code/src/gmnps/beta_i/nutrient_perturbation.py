@@ -18,7 +18,8 @@ class NutrientPerturbationConfig:
     lipid_evidence_direction: float = -1.0
     other_evidence_direction: float = 1.0
     min_abs_bridge: float = 0.0
-    l2_norm: float = 1.0
+    l2_norm: float = 2.0
+    coefficient_power: float = 0.5
 
 
 def _channel_weights(nutrients: list[str], config: NutrientPerturbationConfig) -> pd.Series:
@@ -58,12 +59,17 @@ def build_nutrient_perturbations(
         config.other_channel_weight,
     ) < 0:
         raise ValueError("l2_norm and channel weights must be nonnegative")
+    if config.coefficient_power < 0:
+        raise ValueError("coefficient_power must be nonnegative")
     bridge = nutrient_genus.reindex(columns=model.genus_names).fillna(0.0).astype(float)
     bridge.index = bridge.index.astype(str)
     if config.min_abs_bridge > 0:
         bridge = bridge.where(bridge.abs() >= config.min_abs_bridge, 0.0)
-    health_direction = np.sign(model.coefficients.reindex(model.genus_names).fillna(0.0))
-    oriented = bridge.mul(health_direction, axis=1)
+    coef = model.coefficients.reindex(model.genus_names).fillna(0.0).astype(float)
+    health_direction = np.sign(coef)
+    health_strength = np.power(np.abs(coef), config.coefficient_power)
+    health_strength = health_strength.where(health_strength > 0, 0.0)
+    oriented = bridge.mul(health_direction * health_strength, axis=1)
     nutrients = list(oriented.index)
     evidence_directions = _evidence_directions(nutrients, config)
     oriented = oriented.mul(evidence_directions, axis=0)

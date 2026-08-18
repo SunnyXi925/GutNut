@@ -12,6 +12,7 @@ from gmnps.scoring.masks import (
     EXPERT_REVISED_LIPID,
     EXPERT_REVISED_MAC,
     ORIGINAL_MASK_VERSION,
+    PRIMARY_EXCLUDED_FROM_CHANNELS,
     PRIMARY_MASK_VERSION,
 )
 
@@ -94,6 +95,106 @@ def simulate_synthetic_twin(
     return SyntheticTwinBundle(weights, nutrients, food_metadata, true_response, capacities)
 
 
+def simulate_mask_sensitive_twin(
+    n_individuals: int = 160,
+    n_foods: int = 100,
+    seed: int = 42,
+) -> SyntheticTwinBundle:
+    """Create a benchmark where expert exclusions are identifiable.
+
+    The standard synthetic twin uses only expert-revised MAC/LIPID nutrients, so
+    the original and expert-revised masks are intentionally equivalent. This
+    variant adds broad proxy nutrients excluded from the primary channels. They
+    are correlated with the food matrix and individual weights but do not enter
+    the true personalized response. A good primary mask should therefore avoid
+    attributing response recovery to these proxy variables.
+    """
+
+    rng = np.random.default_rng(seed)
+    mac = list(EXPERT_REVISED_MAC)
+    lipid = list(EXPERT_REVISED_LIPID)
+    excluded = sorted(PRIMARY_EXCLUDED_FROM_CHANNELS)
+    other = [f"Other nutrient {i}" for i in range(8)]
+    columns = mac + lipid + excluded + other
+
+    food_ids = [f"food_{i:03d}" for i in range(n_foods)]
+    individual_ids = [f"person_{i:03d}" for i in range(n_individuals)]
+    food_type = rng.choice(["plant", "animal", "mixed"], size=n_foods, p=[0.45, 0.35, 0.20])
+
+    nutrients = pd.DataFrame(0.0, index=food_ids, columns=columns)
+    for j, kind in enumerate(food_type):
+        mac_base = 1.8 if kind == "plant" else 0.3 if kind == "animal" else 0.9
+        lipid_base = 0.3 if kind == "plant" else 1.7 if kind == "animal" else 0.9
+        nutrients.iloc[j, : len(mac)] = rng.gamma(shape=2.0, scale=mac_base / 2.0, size=len(mac))
+        start = len(mac)
+        nutrients.iloc[j, start : start + len(lipid)] = rng.gamma(
+            shape=2.0, scale=lipid_base / 2.0, size=len(lipid)
+        )
+
+    mac_load = nutrients[mac].mean(axis=1)
+    lipid_load = nutrients[lipid].mean(axis=1)
+    mac_z = (mac_load - mac_load.mean()) / (mac_load.std(ddof=0) or 1.0)
+    lipid_z = (lipid_load - lipid_load.mean()) / (lipid_load.std(ddof=0) or 1.0)
+
+    # Broad proxies are correlated with the true substrate axes but are not
+    # included in the ground-truth personalized response.
+    proxy_values = {
+        "Carbohydrate (g)": 0.75 * mac_z + rng.normal(0, 0.75, size=n_foods),
+        "Zinc (mg)": 0.35 * mac_z + rng.normal(0, 0.85, size=n_foods),
+        "Copper (mg)": 0.30 * mac_z + rng.normal(0, 0.85, size=n_foods),
+        "Vitamin A, RAE (mcg_RAE)": 0.55 * lipid_z + rng.normal(0, 0.75, size=n_foods),
+    }
+    for nutrient, values in proxy_values.items():
+        if nutrient in nutrients.columns:
+            shifted = values - values.min() + 0.05
+            nutrients[nutrient] = shifted.astype(float)
+    for nutrient in other:
+        nutrients[nutrient] = rng.gamma(shape=2.0, scale=0.5, size=n_foods)
+
+    universal = 58 + 18 * mac_z - 16 * lipid_z
+    fcs2 = np.clip(universal.to_numpy(dtype=float), 1, 100)
+    food_metadata = pd.DataFrame(
+        {
+            "food_name": [f"Mask-sensitive {kind} food {i}" for i, kind in enumerate(food_type)],
+            "food_group": food_type,
+            "FCS2": fcs2,
+        },
+        index=food_ids,
+    )
+
+    capacity_mac = rng.normal(0.0, 1.0, size=n_individuals)
+    capacity_lipid = rng.normal(0.0, 1.0, size=n_individuals)
+    spurious_proxy = rng.normal(0.0, 1.0, size=n_individuals)
+    capacities = pd.DataFrame(
+        {
+            "capacity_MAC": capacity_mac,
+            "capacity_LIPID": capacity_lipid,
+            "spurious_proxy_capacity": spurious_proxy,
+        },
+        index=individual_ids,
+    )
+
+    weights = pd.DataFrame(0.0, index=individual_ids, columns=columns)
+    weights.loc[:, mac] = capacity_mac[:, None] * rng.uniform(0.7, 1.3, size=len(mac))
+    weights.loc[:, lipid] = -capacity_lipid[:, None] * rng.uniform(0.7, 1.3, size=len(lipid))
+    for nutrient in excluded:
+        if nutrient in weights.columns:
+            weights[nutrient] = spurious_proxy * rng.uniform(0.8, 1.4)
+    weights.loc[:, other] = rng.normal(0, 0.05, size=(n_individuals, len(other)))
+
+    personalized = (
+        9.0 * capacity_mac[:, None] * mac_z.to_numpy()[None, :]
+        - 9.0 * capacity_lipid[:, None] * lipid_z.to_numpy()[None, :]
+    )
+    noise = rng.normal(0, 2.0, size=(n_individuals, n_foods))
+    true_response = pd.DataFrame(
+        np.clip(fcs2[None, :] + personalized + noise, 1, 100),
+        index=individual_ids,
+        columns=food_ids,
+    )
+    return SyntheticTwinBundle(weights, nutrients, food_metadata, true_response, capacities)
+
+
 def _flat_spearman(pred: np.ndarray, truth: np.ndarray, undefined: float = 0.0) -> float:
     pred_rank = pd.Series(pred.ravel()).rank()
     truth_rank = pd.Series(truth.ravel()).rank()
@@ -149,6 +250,34 @@ def _benchmark_row(name: str, pred: np.ndarray, truth: np.ndarray, fcs2: np.ndar
         "personalized_residual_defined": bool(residual_defined),
         "nps_preservation_spearman": _mean_preservation(pred, fcs2),
     }
+
+
+def _excluded_false_driver_rate(
+    bundle: SyntheticTwinBundle,
+    mask_version: str,
+) -> float:
+    """Estimate the raw contribution share from expert-excluded nutrients."""
+
+    shared = [c for c in bundle.weights.columns if c in bundle.nutrients.columns]
+    excluded = [c for c in shared if c in PRIMARY_EXCLUDED_FROM_CHANNELS]
+    if not excluded:
+        return 0.0
+    all_contrib = np.abs(bundle.weights[shared].to_numpy()[:, None, :] * bundle.nutrients[shared].to_numpy()[None, :, :])
+    excl_contrib = np.abs(
+        bundle.weights[excluded].to_numpy()[:, None, :] * bundle.nutrients[excluded].to_numpy()[None, :, :]
+    )
+    denom = float(all_contrib.sum())
+    if denom <= 0:
+        return 0.0
+    if mask_version == PRIMARY_MASK_VERSION:
+        return 0.0
+    return float(excl_contrib.sum() / denom)
+
+
+def _delta_mse(pred: np.ndarray, truth: np.ndarray, fcs2: np.ndarray) -> float:
+    residual_pred = pred - fcs2[None, :]
+    residual_truth = truth - fcs2[None, :]
+    return float(np.mean((residual_pred - residual_truth) ** 2))
 
 
 def run_synthetic_benchmark(
@@ -220,6 +349,36 @@ def run_synthetic_benchmark(
         ("expert-revised mask", anchored_matrix),
     ]:
         rows.append(_benchmark_row(name, pred, truth, fcs2))
+    return pd.DataFrame(rows)
+
+
+def run_mask_sensitive_benchmark(
+    bundle: SyntheticTwinBundle | None = None,
+    seed: int = 42,
+) -> pd.DataFrame:
+    """Benchmark primary mask against original mask in a mask-sensitive world."""
+
+    bundle = bundle or simulate_mask_sensitive_twin(seed=seed)
+    truth = bundle.true_response.to_numpy(dtype=float)
+    fcs2 = bundle.food_metadata["FCS2"].to_numpy(dtype=float)
+
+    rows = []
+    for name, mask_version in [
+        ("expert-revised mask", PRIMARY_MASK_VERSION),
+        ("original mask", ORIGINAL_MASK_VERSION),
+    ]:
+        scored, _, _ = score_individual_foods(
+            bundle.weights,
+            bundle.nutrients,
+            bundle.food_metadata,
+            AnchoredScoringConfig(mask_version=mask_version),
+        )
+        pred = _score_to_matrix(scored, bundle)
+        row = _benchmark_row(name, pred, truth, fcs2)
+        row["mask_version"] = mask_version
+        row["delta_mse"] = _delta_mse(pred, truth, fcs2)
+        row["excluded_nutrient_false_driver_rate"] = _excluded_false_driver_rate(bundle, mask_version)
+        rows.append(row)
     return pd.DataFrame(rows)
 
 

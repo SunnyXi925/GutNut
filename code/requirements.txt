@@ -1,11 +1,10 @@
-# GMNPS reproducible pipeline — pinned to the versions used to produce
-# all manuscript artefacts.  Tested on Python 3.9 – 3.11 (macOS arm64 + Linux x86_64).
+# GMNPS reproducible method environment.
 
 # core scientific
 numpy>=1.23,<2.1
 pandas>=1.5,<2.3
 scipy>=1.10,<1.14
-pyarrow>=12.0           # parquet IO for all L1–L9 artefacts
+pyarrow>=12.0           # parquet IO
 
 # machine learning
 scikit-learn>=1.2,<1.6  # RandomForest, ElasticNet, Ledoit-Wolf, KFold
@@ -20,8 +19,8 @@ statsmodels>=0.14       # mediation / partial correlation (validation)
 # microbiome compositional analysis (optional but recommended)
 # scikit-bio>=0.6       # uncomment if scikit-bio's CLR is required for cross-check
 
-# test / smoke
+# test
 pytest>=7.4
 
-# parsing the Food Compass 2.0 PDF (Result §2.1 anchor)
+# optional public-resource PDF parsing
 pdfplumber>=0.10

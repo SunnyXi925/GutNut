@@ -37,7 +37,7 @@ from scripts import fetch_official_predict_zoe as fetcher
 
 ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = ROOT / "code/src/configs/person_meal_validation.yaml"
-SCHEMA_PATH = ROOT / "docs/methods/method_lock_manifest.schema.json"
+SCHEMA_PATH = ROOT / "code/src/configs/method_lock_manifest.schema.json"
 GATE_PATH = ROOT / "code/src/gmnps/validation/method_lock_gate.py"
 COHORT_SPLIT_PATH = ROOT / "code/src/gmnps/validation/cohort_split.py"
 BENCHMARK_PATH = ROOT / "code/src/gmnps/validation/person_meal_benchmark.py"

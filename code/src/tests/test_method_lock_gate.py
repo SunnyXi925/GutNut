@@ -22,7 +22,7 @@ from gmnps.validation import method_lock_gate as gate_module
 
 
 ROOT = Path(__file__).resolve().parents[3]
-SCHEMA_PATH = ROOT / "docs/methods/method_lock_manifest.schema.json"
+SCHEMA_PATH = ROOT / "code/src/configs/method_lock_manifest.schema.json"
 GATE_PATH = ROOT / "code/src/gmnps/validation/method_lock_gate.py"
 COHORT_SPLIT_PATH = ROOT / "code/src/gmnps/validation/cohort_split.py"
 BENCHMARK_PATH = ROOT / "code/src/gmnps/validation/person_meal_benchmark.py"

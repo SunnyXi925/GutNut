@@ -95,7 +95,7 @@ def test_default_perturbations_stay_in_clr_space_with_channel_norms():
     perturb = build_nutrient_perturbations(
         nutrient_genus,
         model,
-        NutrientPerturbationConfig(),
+        NutrientPerturbationConfig(l2_norm=1.0, coefficient_power=0.0),
     )
 
     assert np.allclose(perturb.sum(axis=1), 0.0, atol=1e-7)
@@ -112,7 +112,7 @@ def test_constant_oriented_perturbation_becomes_zero_after_clr_centering():
     perturb = build_nutrient_perturbations(
         nutrient_genus,
         _model(),
-        NutrientPerturbationConfig(),
+        NutrientPerturbationConfig(coefficient_power=0.0, l2_norm=1.0),
     )
 
     assert np.allclose(perturb.to_numpy(), 0.0)
@@ -132,7 +132,11 @@ def test_mac_and_lipid_evidence_directions_produce_opposite_beta_signs():
         }
     )
     model = _model()
-    perturb = build_nutrient_perturbations(nutrient_genus, model, NutrientPerturbationConfig())
+    perturb = build_nutrient_perturbations(
+        nutrient_genus,
+        model,
+        NutrientPerturbationConfig(coefficient_power=0.0, l2_norm=1.0),
+    )
     clr = pd.DataFrame({"Akkermansia": [0.0], "Escherichia": [0.0]}, index=["s1"])
 
     beta, _ = compute_beta_matrix(
@@ -153,10 +157,41 @@ def test_summarize_perturbations_reports_norm_and_channel():
             "Escherichia": {"Fiber, total dietary (g)": -0.5},
         }
     )
-    perturb = build_nutrient_perturbations(nutrient_genus, _model(), NutrientPerturbationConfig())
+    perturb = build_nutrient_perturbations(
+        nutrient_genus,
+        _model(),
+        NutrientPerturbationConfig(coefficient_power=0.0, l2_norm=1.0),
+    )
     summary = summarize_perturbations(perturb)
     row = summary.set_index("nutrient").loc["Fiber, total dietary (g)"]
     assert row["channel"] == "MAC"
     assert row["channel_weight"] == 1.0
     assert row["evidence_direction"] == 1.0
     assert row["l2_norm"] > 0
+
+
+def test_perturbations_can_retain_health_coefficient_magnitude():
+    model = HealthIndexModel(
+        genus_names=("g_strong", "g_weak", "g_bad"),
+        mean_=pd.Series(0.0, index=["g_strong", "g_weak", "g_bad"]),
+        scale_=pd.Series(1.0, index=["g_strong", "g_weak", "g_bad"]),
+        coefficients=pd.Series({"g_strong": 9.0, "g_weak": 1.0, "g_bad": -1.0}),
+        intercept=0.0,
+        config=HealthIndexConfig(),
+        training_summary={},
+    )
+    bridge = pd.DataFrame(
+        {"g_strong": [1.0], "g_weak": [1.0], "g_bad": [1.0]},
+        index=["Fiber, total dietary (g)"],
+    )
+
+    perturb = build_nutrient_perturbations(
+        bridge,
+        model,
+        NutrientPerturbationConfig(coefficient_power=1.0, l2_norm=3.0),
+    )
+
+    assert abs(perturb.loc["Fiber, total dietary (g)", "g_strong"]) > abs(
+        perturb.loc["Fiber, total dietary (g)", "g_weak"]
+    )
+    assert np.linalg.norm(perturb.loc["Fiber, total dietary (g)"].to_numpy(dtype=float)) == pytest.approx(3.0)

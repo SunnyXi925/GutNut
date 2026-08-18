@@ -17,12 +17,14 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from gmnps.beta_i.beta_estimator import BetaEstimatorConfig, compute_beta_matrix
+from gmnps.beta_i.dual_channel_beta import DualChannelBetaConfig, compute_dual_channel_beta
 from gmnps.beta_i.health_index import HealthIndexConfig, derive_binary_health_labels, fit_health_index, save_health_index
 from gmnps.beta_i.nutrient_perturbation import (
     NutrientPerturbationConfig,
     build_nutrient_perturbations,
     summarize_perturbations,
 )
+from gmnps.scoring.masks import build_channel_vectors
 
 
 HEALTH_LABEL_CONTRADICTION_POLICY = (
@@ -158,20 +160,51 @@ def run(args: argparse.Namespace) -> None:
 
     nutrient_order = json.loads(nutrient_index_path.read_text(encoding="utf-8"))
     bridge = pd.read_parquet(bridge_path).reindex(index=nutrient_order).fillna(0.0)
-    perturbation_config = NutrientPerturbationConfig()
+    perturbation_config = NutrientPerturbationConfig(
+        l2_norm=args.perturbation_l2_norm,
+        coefficient_power=args.coefficient_power,
+    )
     perturb = build_nutrient_perturbations(bridge, model, perturbation_config)
     perturb = perturb.reindex(index=nutrient_order).fillna(0.0)
-    beta_config = BetaEstimatorConfig(
-        dose=args.dose,
-        clip_abs_beta=args.clip_abs_beta,
-        batch_size=args.batch_size,
-    )
-    beta, diagnostics = compute_beta_matrix(
-        clr,
-        perturb,
-        model,
-        beta_config,
-    )
+    health_model_kind = getattr(args, "health_model", "logistic_health_index")
+    if health_model_kind == "dual_channel_gmwi2":
+        weights_path = getattr(args, "dual_channel_feature_weights", None)
+        if weights_path is None:
+            raise ValueError("dual_channel_gmwi2 requires --dual-channel-feature-weights")
+        weights_path = Path(weights_path)
+        if not weights_path.is_absolute():
+            weights_path = root / weights_path
+        feature_weight_frame = pd.read_csv(weights_path)
+        if {"feature", "weight"}.difference(feature_weight_frame.columns):
+            raise ValueError("--dual-channel-feature-weights must contain feature and weight columns")
+        feature_weights = feature_weight_frame.set_index("feature")["weight"]
+        beta_config = DualChannelBetaConfig(
+            dose=args.dose,
+            clip_abs_beta=args.clip_abs_beta,
+            response_scale=args.beta_response_scale,
+            compression_temperature=getattr(args, "dual_channel_compression_temperature", 0.35),
+        )
+        beta, diagnostics = compute_dual_channel_beta(
+            clr,
+            perturb,
+            feature_weights,
+            build_channel_vectors(perturb.index),
+            beta_config,
+        )
+    else:
+        beta_config = BetaEstimatorConfig(
+            dose=args.dose,
+            clip_abs_beta=args.clip_abs_beta,
+            batch_size=args.batch_size,
+            response_scale=args.beta_response_scale,
+            difference=args.beta_difference,
+        )
+        beta, diagnostics = compute_beta_matrix(
+            clr,
+            perturb,
+            model,
+            beta_config,
+        )
     beta = beta.reindex(columns=nutrient_order)
     beta.to_parquet(out_dir / "W_personalized.parquet")
     perturb.to_parquet(out_dir / "nutrient_perturbations.parquet")
@@ -192,8 +225,12 @@ def run(args: argparse.Namespace) -> None:
         exclusion_audit_path,
     ]
     manifest = {
-        "method": "GMWI2-style health-index finite-difference beta_i",
-        "formula": "beta_i,k = (H(M_i + dose * P_k) - H(M_i)) / dose",
+        "method": (
+            "GMWI2-plus-dual-channel finite-difference beta_i"
+            if health_model_kind == "dual_channel_gmwi2"
+            else "GMWI2-style health-index finite-difference beta_i"
+        ),
+        "formula": "beta_i,k = (H_scale(M_i + dose * P_k) - H_scale(M_i - dose * P_k)) / (2 * dose) when beta_difference='central', otherwise forward finite difference",
         "n_samples": int(beta.shape[0]),
         "n_nutrients": int(beta.shape[1]),
         "n_genera": int(clr.shape[1]),
@@ -202,6 +239,7 @@ def run(args: argparse.Namespace) -> None:
         "health_index_config": asdict(health_config),
         "nutrient_perturbation_config": asdict(perturbation_config),
         "beta_estimator_config": asdict(beta_config),
+        "health_model_kind": health_model_kind,
         "health_model_manifest": {
             "path": health_model_manifest_path.name,
             "sha256": sha256_file(health_model_manifest_path),
@@ -244,14 +282,26 @@ def build_parser() -> argparse.ArgumentParser:
     root = Path(__file__).resolve().parents[3]
     parser.add_argument("--root", default=str(root))
     parser.add_argument("--output-dir", default=str(root / "data/project_data/predict_multi/L7_nutrient_bridge_beta_i"))
-    parser.add_argument("--c-value", type=float, default=0.005)
+    parser.add_argument("--c-value", type=float, default=0.05)
     parser.add_argument("--max-iter", type=int, default=2000)
     parser.add_argument("--random-state", type=int, default=20260803)
     parser.add_argument("--health-backend", choices=("numpy", "sklearn"), default="numpy")
     parser.add_argument("--serialization-backend", choices=("pickle", "joblib"), default="pickle")
-    parser.add_argument("--dose", type=float, default=0.1)
-    parser.add_argument("--clip-abs-beta", type=float, default=12.0)
+    parser.add_argument("--dose", type=float, default=0.25)
+    parser.add_argument("--clip-abs-beta", type=float, default=25.0)
     parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--beta-response-scale", choices=("probability", "logit"), default="logit")
+    parser.add_argument("--beta-difference", choices=("forward", "central"), default="central")
+    parser.add_argument("--perturbation-l2-norm", type=float, default=2.0)
+    parser.add_argument("--coefficient-power", type=float, default=0.5)
+    parser.add_argument(
+        "--health-model",
+        choices=("logistic_health_index", "dual_channel_gmwi2"),
+        default="logistic_health_index",
+    )
+    parser.add_argument("--dual-channel-feature-weights", type=Path)
+    parser.add_argument("--official-gmwi2-scores", type=Path)
+    parser.add_argument("--dual-channel-compression-temperature", type=float, default=0.35)
     return parser
 
 

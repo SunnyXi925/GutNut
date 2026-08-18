@@ -169,7 +169,7 @@ _LOCKED_IMPLEMENTATION_PATHS = frozenset(
 )
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 _TRUSTED_METHOD_LOCK_SCHEMA_PATH = (
-    _REPOSITORY_ROOT / "docs/methods/method_lock_manifest.schema.json"
+    _REPOSITORY_ROOT / "code/src/configs/method_lock_manifest.schema.json"
 )
 _TRUSTED_RELEASE_REGISTRY_PATH = (
     _REPOSITORY_ROOT / "code/src/configs/fcs2_fndds_release_registry.json"

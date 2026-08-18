@@ -50,14 +50,3 @@ def test_load_official_gmwi2_scores_rejects_generic_score_column(tmp_path):
 
     with pytest.raises(ValueError, match="one of: official_gmwi2_score, gmwi2_score, gmwi2"):
         load_official_gmwi2_scores(path)
-
-
-def test_runner_rejects_official_mode_without_score_file(tmp_path):
-    from scripts.run_personalized_calibration_experiments import build_parser, run
-
-    args = build_parser().parse_args(
-        ["--root", str(tmp_path), "--microbiome-health-mode", "official_gmwi2"]
-    )
-
-    with pytest.raises(ValueError, match="official_gmwi2 mode requires --official-gmwi2-scores"):
-        run(args)

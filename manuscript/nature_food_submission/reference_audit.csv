@@ -1,5 +1,0 @@
-claim_id,citation_key,support_role,verification_status,stable_identifier,retraction_status
-INT-01,labonte2018nutrientprofiles,direct_claim_support,verified,doi:10.1093/advances/nmy045,clear
-INT-02,scarborough2007developing,direct_claim_support,verified,doi:10.1017/S1368980007223870,clear
-INT-03,zeevi2015personalized,direct_claim_support,verified,doi:10.1016/j.cell.2015.11.001,clear
-INT-06,zeevi2015personalized,direct_claim_support,verified,doi:10.1016/j.cell.2015.11.001,clear
