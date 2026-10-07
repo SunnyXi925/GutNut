@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "gutnut"
 version = "0.2.0"
-description = "Microbiome-informed nutrient profiling and empirical-reference response calibration"
+description = "The source code of the article: Gut microbiome-informed calibration of nutrient profiling reconciles population consensus with precision nutrition"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -15,15 +15,12 @@ dependencies = [
   "scikit-learn>=1.2,<2",
 ]
 
-[project.optional-dependencies]
-dev = ["pytest>=7,<10", "joblib>=1.2,<2"]
-
 [project.urls]
 Repository = "https://github.com/SunnyXi925/GutNut"
 
-[tool.setuptools.packages.find]
-where = ["code/src"]
-include = ["gmnps*"]
+[tool.setuptools]
+packages = ["gutnut", "gutnut.beta_i", "gutnut.scoring", "gutnut.response"]
+include-package-data = false
 
-[tool.pytest.ini_options]
-testpaths = ["code/src/tests"]
+[tool.setuptools.package-dir]
+gutnut = "."

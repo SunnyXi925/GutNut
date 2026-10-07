@@ -1,4 +1,4 @@
-"""Expert-reviewed nutrient mappings for attribute-level GMNPS calibration."""
+"""Expert-reviewed nutrient mappings for attribute-level GutNut calibration."""
 from __future__ import annotations
 
 from collections import defaultdict
@@ -9,7 +9,7 @@ from typing import Iterable, NamedTuple
 
 import pandas as pd
 
-from gmnps.scoring.fcs2_attribute_rules import (
+from gutnut.scoring.fcs2_attribute_rules import (
     FCS2_RULES,
     ratio_gate_passes_from_exposures,
 )
