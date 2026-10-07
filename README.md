@@ -1,8 +1,8 @@
-# Code for “Gut microbiome-informed calibration of nutrient profiling reconciles population consensus with precision nutrition”
+# GutNut（Gut Microbiome-informed Nutrient Profiling System）
 
 ## Installation
 
-Python 3.10 or newer is required.
+Python 3.10 or newer.
 
 ```bash
 git clone https://github.com/SunnyXi925/GutNut.git
