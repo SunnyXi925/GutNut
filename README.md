@@ -1,49 +1,66 @@
-# GutNut（Gut Microbiome-informed Nutrient Profiling System）
+# GutNut
 
-## Installation
+**A microbiome-informed Bayesian adaptation framework for personalized nutrient profiling**
 
-Python 3.10 or newer.
+Code and verified result tables for the manuscript. The framework adapts a fixed population
+predictor through three personal numbers, obtained in closed form from three measured meals: an
+overall response level and one slope for each of two named nutrient axes.
 
-```bash
-git clone https://github.com/SunnyXi925/GutNut.git
-cd GutNut
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install .
+## What the analysis establishes
+
+| Claim | Evidence |
+|---|---|
+| The two channel slopes improve prediction beyond a personal offset | 3.1% (95% CI 1.1-4.9) in 44 free-living participants; 4.5% (3.7-5.4) in 998 participants eating standardized meals |
+| The gain exceeds a classical mixed model given the same calibration meals | 8.2% and 16.3% against the best linear unbiased predictor |
+| Channel slopes transport across cohorts; the personal level does not | frozen transport: 6.9% (P = 0.005) versus 0.1% (P = 0.46) |
+| Three meals are enough | the calibration curve is reported to eleven meals and flattens after three |
+| The microbial component contributes nothing detectable | equivalent to host conditioning within a margin eight times smaller than the channel effect; permuting the microbiome-to-participant link reproduces its apparent advantage (P = 0.73) |
+| Personal scores do not reorder foods | within-person ordering of observed responses is unchanged in both cohorts |
+
+The last two are negative results and are reported in the main text.
+
+## Layout
+
+```
+analysis/lib/            model orchestration, evaluation protocols, prior arms, statistics
+analysis/experiments/    one script per experiment, each writing a table and a provenance record
+analysis/figures/        R script for Figures 2 and 3
+manuscript/              article and supplementary LaTeX sources, bibliography, rendered tables
+supplementary/           28 supplementary tables as CSV, plus the claim-to-evidence map
+docs/                    methods-gap closure and annotation dispositions
+build/                   compiled article and supplementary information
+beta_i/, response/, scoring/   modules retained from the earlier version of this project
 ```
 
-## Food scoring
+## Reproducing
 
-Supply person-by-genus abundance DataFrames and a nutrient-by-genus `directions`
-DataFrame. Align `metadata`, `points`, `weights` and `exposures` by food ID.
-`metadata` must contain `fcs2`; point and weight columns follow `ATTRIBUTES`
-in `scoring/native_scoring.py`. Nutrient exposures use the names defined in
-`scoring/fcs2_attribute_mapping.py` and are expressed per 100 kcal.
-
-```python
-from gutnut.beta_i.nutrient_capacity import NutrientCapacityProjector
-from gutnut.scoring.native_scoring import NativeFoodScorer, NUTRIENTS
-from gutnut.scoring.uncapped_consensus_scorer import UncappedConsensusScorer
-
-projector = NutrientCapacityProjector(directions).fit(development_microbiome)
-exposures.attrs["basis"] = "per_100_kcal"
-native = NativeFoodScorer.from_frames(metadata, points, weights, exposures)
-scorer = UncappedConsensusScorer(native)
-signals = projector.transform(query_microbiome).loc[:, NUTRIENTS]
-scores = scorer.predict(signals)
+```sh
+python3 analysis/experiments/t0_reproduce.py        # regression lock on published numbers
+python3 analysis/experiments/t1_decomposition.py    # three-layer decomposition
+python3 analysis/experiments/t4_external.py         # external replication and frozen transport
+python3 analysis/experiments/t3_permutation.py      # microbial negative control
+python3 analysis/experiments/t9_simulation.py       # identifiability simulation
+Rscript  analysis/figures/make_figures_v38.R
+tectonic -X compile manuscript/sn-article.tex --outdir build
 ```
 
-## Response fitting and prediction
+Requires Python 3.11 with pandas, numpy, scikit-learn, scipy and statsmodels, and R with ggplot2,
+patchwork, ggbeeswarm, RColorBrewer and hexbin. Each script writes the SHA-256 of its inputs to
+`analysis/provenance/`.
 
-Supply participant-indexed `train_people` and event-level `train_meals` containing
-the response `target`. Required host, microbial and meal columns are defined in
-`response/schema.py`. Include `family_group`, unique participant IDs and unique
-`meal_event_id` values; keep related participants in the same training partition.
+Grouped cross-validation uses family membership where available and participant identity
+otherwise. Confidence intervals are percentile intervals from 2,000 paired participant-bootstrap
+resamples. Permutations number 200. Sign tests exclude participants tied under both models.
 
-```python
-from gutnut.response.training import fit_stacked_response
+## Data
 
-model = fit_stacked_response(train_people, train_meals)
-predictions = model.predict(query_people, query_meals)
-components = model.predict_components(query_people, query_meals)
-```
+The free-living cohort is the public CGMacros dataset (doi:10.1038/s41597-025-05851-7). The
+standardized-meal cohort is used under the original study's access conditions. The food library
+uses FNDDS 2017-18 food codes. Analysis code and fitted parameters are in this repository;
+cohort data are not redistributed here.
+
+## Status
+
+Prediction is improved; food ordering and prospective food choice are not yet demonstrated. The
+food-library scores are a projection of the fitted model and supply candidates for prospective
+testing rather than validated recommendations.

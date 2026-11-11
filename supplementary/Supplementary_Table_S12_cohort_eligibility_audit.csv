@@ -1,0 +1,6 @@
+resource,path,per_meal_postprandial,cgm,meal_composition,verdict
+CRA013939 (Zhang 2024 Adv Sci / CHNS),data/project_data/CRA013939/processed,False,False,False,"NOT usable as an adaptive cohort: cross-sectional, habitual diet only, no per-meal postprandial responses, no CGM; individual-level abundances not present"
+predict_multi L2 predict1_real,data/project_data/predict_multi/L2_phenotype/predict1_real,True,True,False,"NOT usable as evidence: the project provenance registry classifies these response files as real_synthetic_status=""simulation_local"", allowed_analytical_role=""simulation_training"", resource ids local_predict1_synthetic_{glucose,triglyceride,c_peptide}"
+external/american_gut,data/project_data/external/american_gut,False,False,False,NOT usable: no postprandial responses
+gmrepo / cmd sqlite snapshots,"data/project_data/{gmrepo_training,cmd_training}",False,False,False,"NOT usable: cross-sectional microbiome only, no meals and no responses"
+verification/zoe2025,data/project_data/verification/zoe2025,False,False,False,NOT usable: aggregate published tables

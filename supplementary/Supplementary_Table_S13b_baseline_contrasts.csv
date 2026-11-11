@@ -1,0 +1,11 @@
+cohort,contrast,method_name,reference_name,method,reference,difference,diff_lo,diff_hi,relative_pct,rel_lo,rel_hi,participants,better,sign_p
+CGMacros,gutnut_vs_lmm_blup,full,lmm_blup,1.98017,2.15609,0.17593,0.06113,0.29526,8.1595,3.06565,12.99978,44,31,0.00956
+CGMacros,gutnut_vs_lmm_population,full,lmm_population,1.98017,2.53239,0.55222,0.34212,0.75871,21.80641,15.27795,27.2772,44,35,0.00011
+CGMacros,lmm_blup_vs_lmm_population,lmm_blup,lmm_population,2.15609,2.53239,0.3763,0.17846,0.59179,14.85935,7.70214,21.67969,44,25,0.45138
+CGMacros,shared_vs_lmm_population,shared,lmm_population,2.36388,2.53239,0.16851,-0.0616,0.42648,6.65422,-2.63996,16.20892,44,26,0.29122
+CGMacros,gutnut_vs_intercept_only,full,intercept_only,1.98017,2.04196,0.06179,0.0192,0.10356,3.02622,0.98994,4.73943,44,33,0.00126
+PREDICT_UK,gutnut_vs_lmm_blup,full,lmm_blup,0.29852,0.35672,0.0582,0.05179,0.06472,16.31498,14.66287,17.95976,998,737,0.0
+PREDICT_UK,gutnut_vs_lmm_population,full,lmm_population,0.29852,0.36877,0.07025,0.06329,0.07734,19.05008,17.40707,20.66127,998,761,0.0
+PREDICT_UK,lmm_blup_vs_lmm_population,lmm_blup,lmm_population,0.35672,0.36877,0.01205,0.01114,0.01296,3.26833,3.03893,3.50045,998,779,0.0
+PREDICT_UK,shared_vs_lmm_population,shared,lmm_population,0.3291,0.36877,0.03968,0.03431,0.0451,10.75863,9.36747,12.11159,998,696,0.0
+PREDICT_UK,gutnut_vs_intercept_only,full,intercept_only,0.29852,0.31367,0.01515,0.0124,0.01792,4.82877,3.96762,5.68918,998,607,0.0

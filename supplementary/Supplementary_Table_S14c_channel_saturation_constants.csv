@@ -1,0 +1,31 @@
+fold,variant,u_channel1,u_channel2,channel1,channel2
+0,fibre_totalfat,1.85,22.2,"exposure__Fiber, total dietary (g)",exposure__Total Fat (g)
+0,fibre_sfa,1.85,3.4962,"exposure__Fiber, total dietary (g)","exposure__Fatty acids, total saturated (g)"
+0,fibre_mufa,1.85,9.5003,"exposure__Fiber, total dietary (g)","exposure__Fatty acids, total monounsaturated (g)"
+0,fibre_pufa,1.85,7.3153,"exposure__Fiber, total dietary (g)","exposure__Fatty acids, total polyunsaturated (g)"
+0,macmix_totalfat,8.7158,22.2,__macmix__,exposure__Total Fat (g)
+0,macmix_sfa,8.7158,3.4962,__macmix__,"exposure__Fatty acids, total saturated (g)"
+1,fibre_totalfat,1.7,22.2,"exposure__Fiber, total dietary (g)",exposure__Total Fat (g)
+1,fibre_sfa,1.7,3.4962,"exposure__Fiber, total dietary (g)","exposure__Fatty acids, total saturated (g)"
+1,fibre_mufa,1.7,9.5003,"exposure__Fiber, total dietary (g)","exposure__Fatty acids, total monounsaturated (g)"
+1,fibre_pufa,1.7,7.3153,"exposure__Fiber, total dietary (g)","exposure__Fatty acids, total polyunsaturated (g)"
+1,macmix_totalfat,8.7168,22.2,__macmix__,exposure__Total Fat (g)
+1,macmix_sfa,8.7168,3.4962,__macmix__,"exposure__Fatty acids, total saturated (g)"
+2,fibre_totalfat,1.85,22.2,"exposure__Fiber, total dietary (g)",exposure__Total Fat (g)
+2,fibre_sfa,1.85,3.4962,"exposure__Fiber, total dietary (g)","exposure__Fatty acids, total saturated (g)"
+2,fibre_mufa,1.85,9.5003,"exposure__Fiber, total dietary (g)","exposure__Fatty acids, total monounsaturated (g)"
+2,fibre_pufa,1.85,7.3153,"exposure__Fiber, total dietary (g)","exposure__Fatty acids, total polyunsaturated (g)"
+2,macmix_totalfat,8.7158,22.2,__macmix__,exposure__Total Fat (g)
+2,macmix_sfa,8.7158,3.4962,__macmix__,"exposure__Fatty acids, total saturated (g)"
+3,fibre_totalfat,1.85,22.2,"exposure__Fiber, total dietary (g)",exposure__Total Fat (g)
+3,fibre_sfa,1.85,3.4962,"exposure__Fiber, total dietary (g)","exposure__Fatty acids, total saturated (g)"
+3,fibre_mufa,1.85,9.5003,"exposure__Fiber, total dietary (g)","exposure__Fatty acids, total monounsaturated (g)"
+3,fibre_pufa,1.85,7.3153,"exposure__Fiber, total dietary (g)","exposure__Fatty acids, total polyunsaturated (g)"
+3,macmix_totalfat,8.7158,22.2,__macmix__,exposure__Total Fat (g)
+3,macmix_sfa,8.7158,3.4962,__macmix__,"exposure__Fatty acids, total saturated (g)"
+4,fibre_totalfat,2.0,22.2,"exposure__Fiber, total dietary (g)",exposure__Total Fat (g)
+4,fibre_sfa,2.0,3.4962,"exposure__Fiber, total dietary (g)","exposure__Fatty acids, total saturated (g)"
+4,fibre_mufa,2.0,9.5003,"exposure__Fiber, total dietary (g)","exposure__Fatty acids, total monounsaturated (g)"
+4,fibre_pufa,2.0,7.3153,"exposure__Fiber, total dietary (g)","exposure__Fatty acids, total polyunsaturated (g)"
+4,macmix_totalfat,8.7156,22.2,__macmix__,exposure__Total Fat (g)
+4,macmix_sfa,8.7156,3.4962,__macmix__,"exposure__Fatty acids, total saturated (g)"

@@ -1,0 +1,367 @@
+\documentclass[10pt]{article}
+\usepackage[a4paper,margin=20mm]{geometry}
+\usepackage{graphicx,booktabs,longtable,amsmath,amssymb}
+\usepackage[colorlinks=true,allcolors=blue]{hyperref}
+\setlength{\emergencystretch}{1em}
+\renewcommand{\arraystretch}{1.05}
+\title{Supplementary Information\\[2mm]
+\large A microbiome-informed Bayesian adaptation framework for personalized nutrient profiling}
+\author{}\date{}
+\begin{document}
+\maketitle
+
+All quantities below are participant-balanced unless stated otherwise, in units of
+mmol\,l$^{-1}$\,h. Grouped cross-validation uses family membership where available and
+participant identity otherwise, with a fixed seed. Confidence intervals are percentile intervals
+from 2{,}000 paired participant-bootstrap resamples. Permutations number 200 and random
+calibration draws number five. Sign tests exclude participants whose value is identical under both
+models being compared.
+
+\tableofcontents
+\clearpage
+
+\section*{Supplementary Note 1: Regression lock and two previously unreported facts}
+\addcontentsline{toc}{section}{Note 1: Regression lock}
+
+Eighteen quantities reported in the preceding version of this analysis were recomputed from the
+saved out-of-fold predictions. All reproduce within a tolerance of $1.5\times10^{-3}$
+(Supplementary Table~S1).
+
+Two facts follow from the same recomputation and were not previously reported. First, the personal
+response level accounts for 83.6\% of the total improvement over the shared predictor, so a
+headline that quotes only the total conflates a level correction available to any method with the
+composition-dependent adaptation that is specific to this representation. Second, applying the
+conditional prior with no measured meals does not help. On the 902-meal query set the prior-only
+prediction gives 2.3917 against 2.3639 for the shared predictor; on the 594-meal common query set
+used for the calibration curve it gives 2.3610 against 2.3699. The direction depends on which
+later meals are scored, so biological context provides no dependable benefit before the first
+measured meal.
+
+\input{si_tables/S1}
+\clearpage
+
+\section*{Supplementary Note 2: Three-layer decomposition and the primary estimand}
+\addcontentsline{toc}{section}{Note 2: Three-layer decomposition}
+
+The primary estimand is the reduction in participant-balanced RMSE of the full three-coefficient
+model relative to intercept-only calibration at three calibration meals. The reduction relative to
+the shared predictor is reported for context only.
+
+In the free-living cohort the shared predictor reaches 2.364, intercept-only calibration 2.041 and
+the full model 1.977 (Supplementary Table~S2). The channel increment is 0.064
+(95\% CI, 0.022--0.107), a relative reduction of 3.11\% (1.15--4.89), with lower error in 33 of 44
+participants (sign test $P=0.0013$). An unshrunk personal mean reaches 2.121, so the
+empirical-Bayes prior contributes 0.080 (95\% CI, 0.016--0.154) on its own. The lipid channel is
+not supported in this cohort (0.032; 95\% CI, $-0.007$ to 0.079; $P=0.45$), whereas the
+carbohydrate channel is (0.075; 95\% CI, 0.037--0.117; $P=1.1\times10^{-4}$). Supplementary
+Table~S3 gives every contrast on both metrics.
+
+The bootstrap standard error of the primary estimand is 0.0216, giving a minimum detectable effect
+at 80\% power of 0.0605 against an observed effect of 0.0636. This cohort is therefore only just
+powered for its own primary comparison and has no power at all for effects of order 0.006.
+
+\input{si_tables/S2}
+\input{si_tables/S3}
+\clearpage
+
+\section*{Supplementary Note 3: Prior arms, nested selection and expert review}
+\addcontentsline{toc}{section}{Note 3: Prior arms and selection}
+
+Conditional priors are grouped into four arms that do not overlap: population, host, microbial and
+an exploratory host-plus-microbial arm. Selection runs separately inside each arm and the chosen
+configuration is asserted to remain in its arm. Without this discipline a microbial arm can be
+occupied by a host-plus-microbial representation, which makes any microbial increment
+uninterpretable. Supplementary Table~S7 lists the configuration selected in every outer fold and
+arm; the microbial arm selected a taxon representation in four folds and a functional
+representation in one.
+
+Six nutrition experts reviewed the nutrient-channel assignments and their supporting evidence in
+two rounds, before the adaptive analysis was run. In the second round 176 of 180 assignment
+judgements were rated reasonable and 169 of 180 evidence explanations were rated sufficient. A
+separate review of food-group explanations rated 68 of 72 reasonable. A third review of case
+communication rated 64 of 96 reasonable, that is 66.7\% (95\% CI, 56.8--75.3\%), which is a
+negative finding and is reported as one.
+
+\input{si_tables/S7}
+\clearpage
+
+\section*{Supplementary Note 4: Negative control for microbial conditioning}
+\addcontentsline{toc}{section}{Note 4: Negative control}
+
+The microbiome enters the model in two roles: it shapes the prior estimated from training
+participants, and it selects which training participants a new participant resembles. The negative
+control breaks both. Every participant, in training and in held-out data, receives another
+participant's complete vector of 2{,}001 microbial and functional features. The empirical-Bayes
+moments and the conditional prior are then re-estimated and the evaluation repeated. Two hundred
+permutations were drawn.
+
+The observed advantage of microbial conditioning over an unconditional prior is $+0.00216$. The
+permutation reference distribution has median $+0.00229$ and a 2.5th to 97.5th percentile range of
+0.00189 to 0.00269, so the observed value sits at the 27.5th percentile with a permutation
+$P$ of 0.73. The observed microbial-arm RMSE of 1.9812 is matched by a permuted median of 1.9811.
+Breaking the true microbiome-to-participant correspondence therefore changes nothing. What the
+conditional prior gains is attributable to weighting training participants at all, not to the
+biological variable used for the weighting.
+
+\input{si_tables/S8}
+\clearpage
+
+\section*{Supplementary Note 5: External replication and frozen transport}
+\addcontentsline{toc}{section}{Note 5: External replication and transport}
+
+The procedure was repeated in full, including nested selection, in 998 participants eating seven
+standardized meal compositions. Calibration meals were drawn at random because these meals carry
+no time order, and five independent draws were evaluated.
+
+Beyond the personal offset the channels reduce error by 4.54\% (95\% CI, 3.71--5.39), with lower
+error in 615 of 998 participants. Both channels are supported, the lipid channel by 3.44\%
+(95\% CI, 0.0083--0.0131) and the carbohydrate channel by 1.21\% (0.0029--0.0045). Against an
+unshrunk personal mean the full model gains 7.29\%.
+
+For transport, the shared predictor and the prior were fitted on the 998-participant cohort,
+frozen, and applied to a geographically separate cohort of 100 participants. No target-cohort data
+entered training or selection, and disjointness was asserted. The channel increment is 6.92\%
+(95\% CI, 0.0129--0.0327; $P=0.005$). The personal response level does not transport
+(0.0010; 95\% CI, $-0.019$ to 0.019; $P=0.46$). Supplementary Tables~S4 and~S5 give all models and
+contrasts for both cohorts.
+
+\input{si_tables/S4}
+\input{si_tables/S5}
+\clearpage
+
+\section*{Supplementary Note 6: Prior-arm equivalence}
+\addcontentsline{toc}{section}{Note 6: Prior-arm equivalence}
+
+The equivalence margin was fixed in advance at 0.005, one third of the channel increment. In the
+998-participant cohort, host conditioning beats an unconditional prior by $+0.00200$
+(95\% CI, 0.00013--0.00380) and microbial conditioning by $+0.00181$ ($-0.00006$ to 0.00361).
+Microbial against host conditioning gives $-0.00019$ ($-0.00058$ to 0.00020), which falls inside
+the equivalence margin in all five draws. The bootstrap standard error implies a minimum
+detectable advantage at 80\% power of 0.00056, which is 4\% of the channel increment. The
+conclusion is equivalence with power, not an uninformative null.
+
+\input{si_tables/S6}
+\clearpage
+
+\section*{Supplementary Note 7: Classical baselines}
+\addcontentsline{toc}{section}{Note 7: Classical baselines}
+
+A linear mixed model with linear fixed effects, a random intercept and random channel slopes was
+fitted on the training participants. For each held-out participant the best linear unbiased
+predictor was computed from the identical calibration meals using the fitted variance components,
+so the comparison differs only in the model, not in the information supplied.
+
+In free living the mixed model reaches 2.532 without calibration and 2.156 with it, against 1.980
+for the full model, a margin of 8.16\% (95\% CI, 0.061--0.295; 31 of 44 participants). In
+standardized meals it reaches 0.369 and 0.357 against 0.299, a margin of 16.32\%
+(95\% CI, 0.0518--0.0647; 737 of 998). Decomposing the margin, the nonlinear shared predictor
+accounts for 10.76\% in the larger cohort, where it is estimated precisely; in the 44-participant
+cohort the same comparison does not reach significance ($P=0.291$). The personal calibration gain
+of the present method, 4.83\%, exceeds that of the mixed model's own random slopes, 3.27\%.
+
+\input{si_tables/S13a}
+\input{si_tables/S13b}
+\clearpage
+
+\section*{Supplementary Note 8: Identifiability simulation}
+\addcontentsline{toc}{section}{Note 8: Identifiability simulation}
+
+Personal coefficients were drawn from a known Gaussian population distribution with standard
+deviations $(1.2,1.0,1.0)$, and meals were simulated with correlated fibre and fat exposures
+mapped through the same saturating link. The grid crossed calibration length
+$k\in\{1,3,5,10\}$, exposure correlation $\rho\in\{0,0.3,0.6,0.9\}$, residual scale
+$\{0.5,1,2\}$ and prior displacement $\{0,1\}$ prior standard deviations, with 400 replicates per
+cell.
+
+With a correct prior, coverage at the 50\%, 80\% and 95\% levels remains near nominal at every
+calibration length and correlation. Under a prior displaced by one prior standard deviation,
+nominal 95\% coverage falls to 0.82--0.87. Coefficient recovery is poor throughout: at three meals
+the recovery error for a channel slope is 0.935 against a prior standard deviation of 1.0, and the
+posterior standard deviation shrinks by only 7.7\%. Transfer error to unseen compositions
+nevertheless falls from 0.711 at one meal to 0.551 at three and 0.354 at ten. Three measured meals
+therefore locate a participant within the population distribution without estimating their
+coefficients, and personal adjustments must be read as model-based attributions.
+
+\input{si_tables/S9}
+\clearpage
+
+\section*{Supplementary Note 9: Uncertainty calibration, design conditioning and a second sensor}
+\addcontentsline{toc}{section}{Note 9: Calibration and conditioning}
+
+The residual noise variance is a single empirical-Bayes scalar shared by all participants, taking
+values between 2.69 and 3.69 across outer folds. Three calibration meals and three coefficients
+leave no residual degree of freedom from which a per-participant value could be estimated.
+
+Interval honesty is assessed by posterior predictive coverage rather than by a calibration error
+summary. Nominal 50\%, 80\% and 95\% intervals cover 0.659, 0.871 and 0.963 of observations, and
+the standardized residuals have a standard deviation of 0.870 with a probability integral
+transform mean of 0.482. Intervals are therefore conservative. The calibration slope is 0.884 and
+the intercept 0.262, consistent with compression at high responses. Posterior standard deviations
+fall by 36.4\%, 19.5\% and 17.5\% for the response level and the two channel slopes.
+
+Three-meal calibration designs in free living are frequently ill conditioned. The median condition
+number is 31.3 and 39\% of participants exceed 100. Prediction gain is nevertheless uncorrelated
+with conditioning, which is consistent with a prior-dominated posterior.
+
+Each meal carries a second continuous glucose sensor on 1{,}093 of 1{,}122 occasions, correlated
+with the primary sensor at 0.865 with a median absolute difference of 0.679. This is a measurement
+replication and not a second biological endpoint. Repeating the analysis on the second sensor gives
+2.637 for the shared predictor, 2.335 for intercept-only calibration and 2.243 for the full model,
+a channel increment of 0.0923 (95\% CI, 0.0313--0.1566; 27 of 44; $P=0.17$). The increment is
+reproduced in magnitude while remaining an order of magnitude smaller than the disagreement
+between the two sensors.
+
+\input{si_tables/S10}
+\clearpage
+
+\section*{Supplementary Note 10: Cohort description, strata and responders}
+\addcontentsline{toc}{section}{Note 10: Cohort description}
+
+The free-living cohort comprises 14 participants with normal glucose tolerance, 16 with
+prediabetes and 14 with type 2 diabetes. Median age is 51 years, median body mass index
+30.2\,kg\,m$^{-2}$, median HbA1c 5.95\% and 28 of 44 participants are female. Of the meals, 6.6\%
+have a positive incremental area of exactly zero. The standardized-meal cohorts have median ages
+of 44 and 41 years and median body mass indices of 25.3 and 25.9\,kg\,m$^{-2}$, with 28.6\% of
+meals at exactly zero.
+
+The channel increment is positive in all three glycaemic strata, with median per-participant gains
+of 0.028, 0.022 and 0.040 and 11 of 14, 12 of 16 and 10 of 14 participants improving.
+
+\input{si_tables/S11a}
+\input{si_tables/S11b}
+\clearpage
+
+\section*{Supplementary Note 11: Channel instantiation}
+\addcontentsline{toc}{section}{Note 11: Channel instantiation}
+
+The nutrient mask is a specification rather than a property of the method, so the choice of
+exposures is an empirical question. Six instantiations were compared in the 998-participant cohort
+with saturation constants set to the median non-zero exposure within each training fold.
+
+Total fat is the best lipid coordinate of those tested. Full-model error is 0.3077 with a
+twelve-item carbohydrate composite and total fat, and 0.3079 with fibre and total fat. Replacing
+total fat by a fatty-acid fraction is worse in every case, reaching 0.3410 for saturated fat. The
+channel increment itself becomes negative for the saturated and polyunsaturated instantiations,
+meaning that personal calibration on those coordinates actively harms prediction. A composite of
+twelve expert-assigned carbohydrate exposures performs equivalently to fibre alone.
+
+The channel coordinate therefore needs to carry dose rather than compositional quality. This
+conclusion is bounded by the composition space available: across only seven standardized meals,
+fatty-acid fractions are nearly collinear with total fat and with meal identity.
+
+\input{si_tables/S14a}
+\input{si_tables/S14b}
+\input{si_tables/S14c}
+\clearpage
+
+\section*{Supplementary Note 12: Evaluation protocols and the calibration curve}
+\addcontentsline{toc}{section}{Note 12: Protocols and calibration curve}
+
+Three protocols were compared. Under the fixed protocol every history length is scored on one
+common query set. Under the deployment protocol the query set begins immediately after
+calibration. Under the random protocol calibration meals are drawn at random rather than taken as
+the first $k$.
+
+The deployment protocol, which is the realistic one and scores more meals, gives a larger channel
+increment than the fixed protocol (0.0736 against 0.0618 at three meals), so the fixed design was
+not favourable. The random protocol, however, reduces the three-meal increment to 0.0343 with an
+interval crossing zero ($P=0.55$); significance returns at five meals. Read together with the
+condition numbers of Note 9, this identifies a requirement on the calibration set rather than a
+failure of the method: measured meals must span the channel exposures. In standardized meals,
+which span a wide composition range by design, the increment is strong under random calibration.
+
+The calibration curve was extended to eleven meals so that the point at which it flattens is
+observed. On the common query set, full-model error is 2.361 with the prior alone, 2.143 after one
+meal, 2.053 after two, 1.936 after three, 1.919 after five, 1.891 after seven, 1.918 after nine
+and 1.886 after eleven. Three meals capture approximately nine tenths of the improvement that
+eleven meals reach. The channel increment is present at every history length, between 3.3\% and
+5.5\% on the common query set.
+
+\input{si_tables/S15a}
+\input{si_tables/S15b}
+\input{si_tables/S17a}
+\input{si_tables/S17b}
+\clearpage
+
+\section*{Supplementary Note 13: Food scores against observed responses}
+\addcontentsline{toc}{section}{Note 13: Food scores}
+
+The personal response level shifts every food by the same amount and therefore cannot change any
+within-participant ordering. This identity was verified numerically before the comparisons below,
+so only the channel slopes can move an ordering.
+
+Within-participant pairwise concordance with observed responses does not improve with calibration
+in either cohort: $-0.0012$ (95\% CI, $-0.0103$ to 0.0075) in free living and $+0.0008$
+($-0.0049$ to 0.0064) in standardized meals. Ties are frequent because each standardized-meal
+participant contributes seven meals; 749 of 996 participants are exactly tied, and a sign test
+that fails to exclude them is severely misleading.
+
+Against a population nutritional-quality score the model orders observed responses 22.41
+percentage points better (95\% CI, 21.03--23.77). The shared predictor alone already achieves
+22.33 points of that margin, so composition modelling rather than personalization delivers it.
+
+Of the total variance of the 44 by 1{,}226 score matrix, 69.6\% lies between participants, 8.4\%
+between foods and 22.0\% in the person-by-food interaction. The mean absolute personal adjustment
+is 2.94 score points. Personalization changes rankings substantially: the median rank shift is 94
+places and a median of one food survives in a participant's top ten, while agreement with the
+nutritional-quality reference falls slightly, from a median Spearman correlation of 0.433 to 0.397.
+
+The library contains 1{,}226 items with FNDDS 2017-18 food codes expressed per 100\,kcal across 66
+nutrient fields and 12 food groups, with a nutritional-quality reference for every item. Dairy and
+beverages contribute only 4 and 11 items, so no group-level conclusion is drawn for them. Fibre is
+zero for 12.0\% of items and fat for 0.9\%.
+
+\input{si_tables/S16a}
+\input{si_tables/S16b}
+\input{si_tables/S16c}
+\clearpage
+
+\section*{Supplementary Note 14: Cohort eligibility audit}
+\addcontentsline{toc}{section}{Note 14: Cohort eligibility}
+
+Candidate additional cohorts held locally were audited for eligibility as adaptive validation
+data, which requires per-meal postprandial responses, microbial profiling and meal composition in
+the same participants. None qualifies. Cross-sectional microbiome resources carry no meal-level
+response. One resource carries per-meal responses but is recorded in the project provenance
+registry as simulation material and is excluded from all evidence. The two cohorts used in this
+work are therefore the complete set of eligible data.
+
+\input{si_tables/S12}
+\clearpage
+
+\section*{Supplementary Figures}
+\addcontentsline{toc}{section}{Supplementary Figures}
+
+\noindent\textbf{Supplementary Fig. 1 $\vert$ Personal measurements reduce coefficient uncertainty.}\\
+\includegraphics[width=\textwidth]{figure/Supplementary_Figure_1.pdf}
+
+Prior and posterior coefficient standard deviations for the response level and the two channel
+slopes in 44 participants after three measured meals. Lines pair estimates from the same
+participant; black marks indicate medians. Median decreases are 36.4\%, 19.5\% and 17.5\%.
+Standard deviations are conditional on the fitted model.
+
+\clearpage
+\noindent\textbf{Supplementary Fig. 2 $\vert$ Nutritional quality and response ordering.}\\
+\includegraphics[width=\textwidth]{figure/Supplementary_Figure_2.pdf}
+
+Participant-balanced error and within-participant ordering accuracy for an affine-calibrated
+nutritional score, the shared predictor and a static channel model. Ordering uses native score
+directions with half credit for ties.
+
+\clearpage
+\noindent\textbf{Supplementary Fig. 3 $\vert$ Error components and prior-information effects.}\\
+\includegraphics[width=\textwidth]{figure/Supplementary_Figure_3.pdf}
+
+Participant-balanced mean squared error partitioned into within-person variation and squared mean
+error, and paired error reduction for the microbiome-informed prior relative to population and
+host priors across calibration histories.
+
+\clearpage
+\noindent\textbf{Supplementary Fig. 4 $\vert$ Personal nutrient information beyond calibration compositions.}\\
+\includegraphics[width=\textwidth]{figure/Supplementary_Figure_4.pdf}
+
+Relative error reduction for all later meals, for compositions absent from personal calibration
+and for channel exposure pairs absent from personal calibration, together with the distribution of
+1{,}000 joint reassignments of the channel slopes between participants within the same outer fold.
+
+\end{document}

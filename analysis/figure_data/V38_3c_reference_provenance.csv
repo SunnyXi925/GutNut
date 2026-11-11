@@ -1,0 +1,3 @@
+model,query_set,rmse,profile_rmse
+GutNut,902 meals from the sixth,1.977238,1.812291
+GutNut,594 meals from the twelfth,1.9355,1.757

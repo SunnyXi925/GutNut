@@ -1,0 +1,363 @@
+\documentclass[pdflatex,sn-nature]{sn-jnl}
+
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{amsthm}
+\usepackage{mathrsfs}
+\usepackage[title]{appendix}
+\usepackage{xcolor}
+\usepackage{textcomp}
+\usepackage{manyfoot}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage{algorithmicx}
+\usepackage{algpseudocode}
+\usepackage{listings}
+
+\newcommand{\GutNut}{\mathrm{GutNut}}
+\newcommand{\aucunit}{\mathrm{mmol\,l^{-1}\,h}}
+\newcommand{\sigmoid}{\operatorname{sigmoid}}
+
+\theoremstyle{thmstyleone}
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{thmstyletwo}
+\newtheorem{example}{Example}
+\newtheorem{remark}{Remark}
+\theoremstyle{thmstylethree}
+\newtheorem{definition}{Definition}
+
+\hypersetup{hypertexnames=false}
+\setlength{\bibsep}{0.75em}
+\raggedbottom
+
+\begin{document}
+
+\title[A microbiome-informed Bayesian adaptation framework]{A microbiome-informed Bayesian adaptation framework for personalized nutrient profiling}
+
+\abstract{Personalizing nutrition requires turning a short measurement history into evidence that applies to foods a person has never eaten. We present GutNut, a microbiome-informed Bayesian adaptation framework that formulates this as structured transfer in nutrient-channel coordinates. A fixed population predictor is adapted through three personal numbers, obtained in closed form from three measured meals: an overall response level and one slope for each of two named nutrient axes, fibre and fat. Beyond a personal offset, the two slopes reduce participant-balanced prediction error by 3.1\% (95\% confidence interval (CI), 1.1--4.9) in 44 free-living participants and by 4.5\% (3.7--5.4) in 998 participants eating standardized meals, and by 8.2\% and 16.3\% against a linear mixed model given the same calibration meals. Under frozen cross-cohort transport the slopes carry over (6.9\%, $P=0.005$) while the personal level does not ($P=0.46$). The microbial component of the framework, which conditions the prior on gut microbial similarity, is indistinguishable from conditioning on host phenotype, and its apparent advantage is reproduced by permuting the microbiome-to-participant link ($P=0.73$); we therefore report it as a well-powered negative result rather than as a source of gain. Calibration improves predicted response magnitude but not within-person food ordering.}
+
+\keywords{few-shot adaptation, structured transfer, empirical Bayes, postprandial glucose, nutrient profiling, computational nutrition}
+
+\maketitle
+
+\section{Introduction}\label{sec1}
+
+Nutrient profiling systems give each food one number, and that number is the same for everyone. The science behind them is well established, and the World Health Organization defines their task as ranking foods by composition to prevent disease~\cite{labonte,martin2023,who_profiling2022}. Yet the same meal raises blood glucose far more in one person than in another~\cite{zeevi,berry}. Richer food descriptions do not close this gap, because a better description of a food still says nothing about a particular eater~\cite{mozafarian,barrett}.
+
+The gap is a computational one. A person can realistically measure a handful of meals. A food library contains thousands of items they will never measure. The task is to convert the short measurement history into something that applies to the unmeasured items~\cite{computationalnutrition2025,massara2026}. Two obvious routes are bounded. Adding a personal offset shifts every food by the same amount, so it never changes how one food compares with another. Correcting individual foods requires having measured each of them, so nothing is learned about the rest of the library.
+
+A workable route needs coordinates that every food shares. Nutrient exposures are such coordinates. Any food can be placed on a fibre axis and a fat axis, whether or not the person has eaten it. We use this to define the object this paper is about. We call it a nutrient channel: a named nutrient axis along which a person is allowed to differ from the population. A person is then described by three numbers. One is their overall response level. The other two say how strongly their response rises with exposure on each channel. Everything else stays fixed at the population model, which is deliberate. Restricting where individuals may differ is what makes a three-number profile estimable from three meals, and what keeps every personal adjustment attributable to a nutrient a nutritionist can name.
+
+Estimating these three numbers has a closed-form solution, and that is a practical advantage rather than a mathematical nicety. The shared predictor is never retrained for a new person, so adding someone costs three matrix operations instead of a training run. The same solution returns the uncertainty of each number, so a profile arrives with its own error bars. The prediction for any meal splits exactly into the three contributions, so a reader can see which nutrient drove a personal adjustment. Learning the population distribution of these numbers first, then updating it with a person's own meals, places the method among structured transfer estimators whose behaviour is understood~\cite{dvcm2026,contextadaptive2026,harrison2020,grant2018,finn2017}.
+
+The gut microbiome is the biological context we expected to supply that population distribution. Microbial communities sit between dietary substrate and host metabolism, they differ between people in how they process those substrates, and those differences are measurable before any meal is recorded~\cite{sanz2025,koh,makki,gurry_fermentation2021}. Whether that measurability translates into predictive value is an empirical question, and we treat it as one.
+
+We ask four questions of this design. Does a short measurement history improve prediction beyond a personal offset? Does the answer hold in a second, independent cohort and survive transport to a third? What can three meals actually identify, and what remains dominated by the prior? Does biological context help before any meal is measured? The answers include two negatives that we report in the main text, because they bound what a personalized food score can currently claim.
+
+\section{Results}\label{sec2}
+\subsection{A three-number personal profile on named nutrient axes}
+
+GutNut separates what is common from what is personal. A shared predictor learns the response that food composition, host attributes and meal context produce in the population. Gradient boosting was selected for this role in every outer fold, so the shared part is free to be nonlinear. Personal adaptation then works only on what that predictor leaves over (Fig.~\ref{fig:framework}).
+
+The personal part is deliberately small. For participant $i$ and meal $j$,
+\begin{equation}
+\widehat y_{ij}=g_\theta(x_{ij},h_i,c_{ij})+\widehat\beta_{i0}
+ +\sum_{k\in\mathcal M}\phi_k(x_{ij,k})\widehat\beta_{ik}.
+\label{eq:prediction}
+\end{equation}
+Here $\widehat\beta_{i0}$ is the participant's overall response level, the amount by which their responses sit above or below the population at the same composition. The two remaining coefficients are channel slopes. Each says how much the predicted response moves per unit of exposure on its own channel. The set $\mathcal M$ is the nutrient mask, which is the list of exposures permitted to carry personal differences. In the free-living cohort that list has two entries, microbiota-accessible carbohydrate represented by total dietary fibre and lipid represented by total fat. The remaining macronutrients still enter the shared predictor; they are excluded from the personal part, not from the model.
+
+Exposure enters through a saturating transform $\phi_k(x)=x/(u_k+x)$ rather than as raw grams. The constant $u_k$ is the exposure at which the channel reaches half its maximum effect, so it sets the dose scale on which a person is allowed to differ. We fixed $u_{\mathrm{MAC}}=5$\,g and $u_{\mathrm{LIPID}}=20$\,g in advance, near the median non-zero exposure of each nutrient in the training data. Replacing these constants with the training-fold median computed inside each fold leaves every conclusion unchanged, so the result does not rest on the two numbers.
+
+The mask is a specification, not a property of the method. Any set of named exposures can occupy it, and which set is chosen is an empirical question that we answer below.
+
+A new participant starts from a population distribution over these three numbers, estimated by empirical Bayes from the training participants. Their own measured meals then update it in closed form. The posterior covariance and mean are
+\begin{equation}
+\begin{aligned}
+V_i&=\left(\Sigma_i^{-1}+X_i^{\mathsf T}X_i/\sigma^{2}\right)^{-1},\\
+\widehat\beta_i&=V_i\left(\Sigma_i^{-1}\mu_i+X_i^{\mathsf T}r_i/\sigma^{2}\right),
+\end{aligned}
+\label{eq:update_overview}
+\end{equation}
+where $\mathcal N(\mu_i,\Sigma_i)$ is the Gaussian prior assigned to that participant, $X_i$ holds the intercept column and the two saturating exposures of their calibration meals, $r_i$ holds the residuals of those meals relative to the shared predictor, and $\sigma^{2}$ is a single residual variance shared by all participants. It is shared by necessity: three meals and three coefficients leave no degree of freedom from which a personal residual variance could be estimated.
+
+Before fixing the two channels we asked six nutrition experts to review the nutrient assignments and the evidence behind them. In the second round 176 of 180 assignment judgements were rated reasonable and 169 of 180 evidence explanations were rated sufficient. The review protocol, expertise, blinding and rater agreement are reported in the Supplementary Information.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{figure/Figure_1.pdf}
+\caption{\textbf{The GutNut framework.} A conditional prior and the evidence from three measured meals form the posterior over a person's response level and two channel slopes. A nutrient mask turns food composition into saturating fibre and fat exposures, which the personal slopes weight and add to the shared response prediction $g$. Food scoring omits the response level and combines the two channel contributions with the shared prediction $g_\star$ at a reference context. MAC and LIPID denote the channels related to microbiota-accessible carbohydrates and lipids. iAUC denotes incremental area under the glucose curve. Contours and icons are schematic.}
+\label{fig:framework}
+\end{figure}
+
+\subsection{What the three numbers buy beyond a personal offset}
+
+A personal offset is the control that matters, because it is what any method can obtain from a short history without touching composition. We therefore report the calibration gain in three layers rather than as one headline. In 44 free-living participants and 902 later meals, the shared predictor reached 2.364\,$\aucunit$. Adding only the personal response level brought this to 2.041. Adding the two channel slopes brought it to 1.977 (Fig.~\ref{fig:prediction}a).
+
+The level correction accounts for 83.6\% of the total improvement. The channels contribute the remaining 0.064\,$\aucunit$, a reduction of 3.1\% beyond the offset (95\% CI, 1.1--4.9\%), with lower error in 33 of 44 participants (sign test $P=0.0013$). Stating the two layers separately is not a concession. The offset is available to everyone, so the channels are what this representation adds.
+
+Two further comparisons place that increment. An unshrunk personal mean, the arithmetic average of the calibration residuals, reaches only 2.121, so the empirical-Bayes prior earns 0.080\,$\aucunit$ on its own (95\% CI, 0.016--0.154). A classical linear mixed model with a random intercept and random channel slopes, given the identical calibration meals, reaches 2.156 through its best linear unbiased predictor. GutNut improves on it by 8.2\% (95\% CI, 0.061--0.295). Most of that margin comes from the freedom to make the shared part nonlinear while the personal part stays closed-form.
+
+How many meals are enough is now answered rather than assumed. On a query set shared across history lengths, error falls steeply to three meals and then flattens. The prior alone gives 2.361. One meal gives 2.143, three give 1.936, and eleven give 1.886 (Fig.~\ref{fig:prediction}a). Three meals therefore capture roughly nine tenths of the gain that eleven meals reach. The channel increment itself is present at every history length, between 3.3\% and 5.5\% on the common query set, so it is not an artefact of stopping at three.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{figure/Figure_2.pdf}
+\caption{\textbf{A short measurement history improves prediction of later meals.}
+\textbf{a}, Participant-balanced RMSE for the shared predictor, the conditional prior alone and calibration histories of one to eleven meals, scored on one common query set. Half densities and small points show 44 participants; larger points, black intervals and labels show the participant-balanced value and its 95\% confidence interval.
+\textbf{b}, Cumulative absolute-error distributions with equal total weight per participant. Shading marks the gap between the curves.
+\textbf{c}, Individual RMSE reductions relative to the shared predictor after one, three and eleven meals, ordered by the three-meal change. Connecting lines span each participant's observed values; positive values indicate lower error.
+\textbf{d,e}, Shared-model (d) and GutNut (e) response predictions on 902 later meals. Hexagon colour shows meal count; marginal histograms show observed and predicted distributions. Axes, bins and colour limits are shared. Dashed lines indicate identity. Confidence intervals use 2,000 participant-bootstrap resamples.}
+\label{fig:prediction}
+\end{figure}
+
+\subsection{The profile replicates in a second cohort and the channel numbers travel}
+
+A single pilot cohort cannot establish that a representation generalizes. We therefore repeated the whole procedure, including nested selection, in 998 participants who ate standardized meals, with calibration meals drawn at random so that no ordering effect can contribute.
+
+The increment replicates and sharpens. Beyond the personal offset, the channels reduce error by 4.5\% (95\% CI, 3.7--5.4\%), with lower error in 615 of 998 participants. Against the mixed-model predictor the margin is 16.3\% (95\% CI, 0.052--0.065). Both channels are supported here, the lipid channel contributing 3.4\% and the carbohydrate channel 1.2\%, each with intervals far from zero. In the 44-participant cohort the lipid channel alone had not reached significance (95\% CI, $-0.007$ to 0.079), which is consistent with limited power rather than with an inactive channel (Fig.~\ref{fig:modules}a--c).
+
+The transport test is the one we consider decisive. We fitted the shared predictor and the prior on one cohort, froze them, and applied them to a geographically separate cohort of 100 participants, with no target-cohort data entering training or selection. The channel slopes carry over: the increment is 6.9\% (95\% CI, 0.013--0.033; $P=0.005$). The personal response level does not carry over at all (0.001; 95\% CI, $-0.019$ to 0.019; $P=0.46$).
+
+This separation is informative beyond the accuracy numbers. How strongly a person responds per unit of fibre or fat behaves as a portable property of that person. Where their responses sit overall behaves as a property of the cohort and its measurement conditions. A method that personalizes by offset alone therefore has nothing to transport, whereas one that personalizes along shared nutrient coordinates does.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{figure/Figure_3.pdf}
+\caption{\textbf{Each component of the personal profile is removable and inspectable.}
+\textbf{a,b}, Absolute and within-person-centred RMSE for matched updates. Half densities and small points show 44 participants; larger points, intervals and labels show the participant-balanced value and its 95\% confidence interval.
+\textbf{c}, Paired ablation effects for absolute and within-person-centred RMSE, in $\aucunit$. The solid line and shaded region mark GutNut itself, whose own values are given on the panel; positive differences favour GutNut.
+\textbf{d}, Within-person-centred and mean-response components of error; end labels show total MSE.
+\textbf{e}, Individual microbial-conditioning effects across calibration histories, relative to the population prior.
+\textbf{f}, Paired effects relative to population, host and independently tuned non-microbial priors. Half densities and small points show individual differences; larger points and intervals show aggregate effects and 95\% confidence intervals. The shaded band and dashed line show the reference distribution obtained when the microbiome-to-participant link is permuted. Positive values favour microbial conditioning.}
+\label{fig:modules}
+\end{figure}
+
+\subsection{What three meals can and cannot identify}
+
+Three meals and three coefficients leave the model just identified, so we tested directly what can be recovered. On generated data with known coefficients, the closed-form intervals are honest: coverage at the 50\%, 80\% and 95\% levels stays near nominal whenever the prior is correct. Under a prior displaced by one prior standard deviation, nominal 95\% coverage falls to between 0.82 and 0.87, which sets the cost of a misspecified prior.
+
+The coefficients themselves are a different matter. At three meals the posterior standard deviation of a channel slope shrinks by only about 8\%, and the recovered slope is almost as far from the truth as the prior is wide. Prediction nevertheless improves: transfer error to unseen compositions falls from 0.711 to 0.551 over the same range. The honest reading is that three meals locate a person within the population distribution rather than estimate their coefficients. Personal adjustments should therefore be read as model-based attributions, not as measured nutrient sensitivities (Fig.~\ref{fig:channels}).
+
+Real calibration sets are worse conditioned than the simulation assumed. In the free-living cohort the median condition number of a three-meal design is 31, and 39\% of participants exceed 100. The cause is visible in the meals themselves: three consecutive breakfasts can carry almost identical fibre and fat, which leaves the two channels nearly indistinguishable for that person.
+
+This has a direct consequence that we report rather than hide. When calibration meals are drawn at random instead of taken as the first three, the free-living increment drops to 1.7\% and its interval crosses zero. In the standardized-meal cohort, where calibration was random by design but the seven meals deliberately span a wide composition range, the increment is strong and stable. The requirement is therefore on the calibration set, not on the method: the measured meals must spread across the channel exposures. In free living this argues for choosing which meals to measure instead of taking whichever come first.
+
+Posterior intervals on real data are conservative rather than optimistic. Nominal 50\%, 80\% and 95\% intervals cover 66\%, 87\% and 96\% of observations, and the standardized residuals have a standard deviation of 0.87. The shared residual variance is pooled across participants of very different variability, which widens every interval.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{figure/Figure_4.pdf}
+\caption{\textbf{Personal profiles decompose into named channel contributions.}
+\textbf{a}, Prior (open) and posterior (filled) coefficients joined within each participant, ordered by posterior fibre-channel slope. All coefficient panels share the same axis scale.
+\textbf{b}, Fibre and fat contributions to 902 later-meal predictions. Half densities summarize contribution distributions; points represent meals and are coloured by saturating nutrient exposure $\phi_k$.
+\textbf{c}, Differences between microbiome-informed and population-prior predictions, separated into response-level, fibre and fat contributions. The three contributions sum to each meal's prediction difference.
+\textbf{d}, Within-person-centred nutrient adjustments and shared-model residuals. Hexagon colour shows meal count; the dashed line indicates identity.
+\textbf{e}, Participant-level percentage reductions in coefficient standard deviation. Posterior estimates use three calibration meals throughout.}
+\label{fig:channels}
+\end{figure}
+
+\subsection{Two things the profile does not do}
+
+\textbf{Microbial context does not help.} The design places a new participant in the population distribution using similarity in biological context, and the gut microbiome is the context we expected to carry that information. It does not. Against a prior conditioned on host phenotype, microbial conditioning changes error by $-0.0002$\,$\aucunit$ (95\% CI, $-0.0006$ to 0.0002), which is equivalent within a margin eight times smaller than the channel effect, in every resampling draw. The comparison is well powered: in 998 participants the smallest detectable advantage at 80\% power is 0.0006, or 4\% of the channel increment.
+
+The small advantage that microbial conditioning does show over an unconditional prior is not microbial. Permuting the link between microbiomes and participants, so that every person receives someone else's complete profile of 2,001 microbial and functional features, reproduces it exactly~\cite{negcontrol2023}. Across 200 permutations the observed advantage sits at the 27.5th percentile of the permutation distribution ($P=0.73$), and the permuted median error of 1.9811 matches the observed 1.9812 (Fig.~\ref{fig:modules}f). What the conditional prior gains comes from weighting training participants at all, not from which participants the microbiome selects.
+
+Cold start gains nothing either. Applying the conditional prior with no measured meals leaves error essentially where the shared predictor left it, and the direction depends on which later meals are scored: 2.392 against 2.364 on one query set and 2.361 against 2.370 on another. Biological context therefore does not provide a usable head start before the first meal is measured.
+
+\textbf{Personal scores do not reorder foods.} Applying the calibrated profiles to 1,226 foods, each standardized to 100\,kcal, produces a personal score for every person and food (Fig.~\ref{fig:atlas}). The personal term changes those rankings substantially. The median rank shift is 94 places out of 1,226, and a median of only one food survives in a participant's top ten.
+
+Whether the change is an improvement is a separate question, and the answer is no. Within-person ordering of observed responses does not improve in either cohort, by $-0.001$ (95\% CI, $-0.010$ to 0.008) in free living and 0.001 (95\% CI, $-0.005$ to 0.006) in standardized meals. The personal response level cannot change an ordering at all, since it shifts every food equally, so only the channels could have moved it, and they did not measurably.
+
+One ordering result is strongly positive and belongs to the shared model rather than to personalization. Against a population nutritional-quality score~\cite{barrett}, the model orders observed responses 22.4 percentage points better. Almost all of that margin, 22.3 points, is already present without any personal calibration. Composition modelling beats a quality score at ranking postprandial responses; personalization is not what delivers it.
+
+The structure of the score matrix says why. Of its total variance, 69.6\% lies between participants, 8.4\% between foods, and 22.0\% in the person-by-food interaction that a personalized food score is meant to capture. Finally, replacing total fat with a fat-quality fraction makes calibration worse rather than better, by 8.0\% for saturated fat and 3.4\% for polyunsaturated fat. The channel coordinate needs to carry dose, not compositional quality, at least across the seven standardized compositions available here.
+
+We therefore present the food library as a projection of the fitted model, not as a demonstrated improvement in food choice. It supplies candidates for prospective testing.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{figure/Figure_5.pdf}
+\caption{\textbf{Projecting personal profiles onto a food library.}
+\textbf{a}, Response-score adjustments for 1,226 foods and 44 participants. Category-band widths reflect food counts; colours and numbers correspond to d. Foods are ordered by nutritional quality within categories.
+\textbf{b}, Personal scores for the same representative food in each category. Half densities and small points show all participants; larger points and black intervals show medians and interquartile ranges.
+\textbf{c}, Mean personal response score versus population nutritional quality, with the latter's marginal distribution.
+\textbf{d}, Category-level mean absolute adjustments on a $\log(1+x)$ axis. Points, thick intervals and thin intervals show medians, interquartile ranges and fifth to ninety-fifth percentiles across 44 participants. All 53,944 scores evaluate 100-kcal portions; higher scores indicate lower predicted glycaemic responses. Scores are a projection of the fitted model; no observed response is available for these foods.}
+\label{fig:atlas}
+\end{figure}
+\section{Methods}\label{sec11}
+
+\subsection{Study populations and glycaemic responses}
+
+We analysed standardized-meal measurements from PREDICT~\cite{berry,asnicar} and free-living measurements from CGMacros~\cite{cgmacros2025}. This secondary analysis involved no new recruitment; ethics approval, consent and access conditions are described by the source studies. The standardized-meal cohort comprised 998 participants in 758 family groups, with 6,981 responses to seven meal compositions. Inputs included food composition, host and meal-context variables, 12 microbial measurements and six functional fields. The free-living cohort comprised 44 participants with microbial data and 1,122 eligible meals spanning breakfast, lunch, dinner and snacks. Microbial inputs comprised 1,979 taxon-presence indicators and 22 ordinal functional scores. Functional fields were complete for 42 participants; missing entries for two participants were imputed within each training partition. The 353 distinct recorded macronutrient compositions defined meal groups for evaluation.
+
+The response was the two-hour positive incremental glucose area under the curve, in $\aucunit$, computed by the trapezoidal convention used for glycaemic index measurement~\cite{wolever2004}. For CGMacros, we calculated this quantity from the Libre glucose series relative to glucose at meal onset. Concentrations in mg\,dl$^{-1}$ were divided by 18.01559, and positive area was integrated over 120 minutes using piecewise-linear segments with explicit zero crossings. Eligible meals had finite, non-negative composition, positive energy and glucose observations bracketing the response window, with no measurement gap exceeding 20 minutes. We excluded meals on the first collection day and meals followed by another recorded meal within two hours. PREDICT supplied two-hour response measurements. Food attributes expressed per 100\,kcal were converted to consumed exposures using recorded meal energy.
+
+\subsection{Population prediction and nutrient-level adaptation}
+
+The shared predictor $g_\theta$ estimates the response associated with food, host and meal context before personal calibration. Food inputs included available energy, carbohydrate, protein, fat, fibre and sugar quantities, together with scaled linear and log-transformed values and macronutrient ratios. Scaling constants were 500\,kcal for energy and 50, 20, 20, 5 and 25\,g for carbohydrate, protein, fat, fibre and sugar, respectively. Host and context measurements entered as separate inputs to account for response variation associated with measured participant characteristics and meal circumstances. Free-living context comprised baseline glucose, sine and cosine of clock time, and meal-type indicators. Median imputation and standardization were fitted in the training partition; standardized host and context features were clipped to $[-8,8]$.
+
+Candidate shared models were ridge regression with penalties 0.01, 0.1 and 1, and gradient boosting with histogram-based splits and three or seven terminal leaves. The ridge representation included food--host interactions. Boosting used 180 iterations, learning rate 0.045, minimum leaf size 30 and an L2 penalty of 10, with early stopping disabled. Each participant contributed equal total weight, divided among their meals. The adaptive analysis compared ridge regression with penalty 0.1 and seven-leaf boosting; boosting was selected in all five outer folds. Three-fold grouped cross-fitting within the training data supplied shared-model residuals for estimation of personal coefficients.
+
+The nutrient mask defines which food exposures can enter the personal adjustment through the MAC and LIPID channels. MAC groups microbiota-accessible carbohydrate substrates and associated food-matrix attributes; LIPID groups lipid-related exposures and associated metabolic attributes. In the adaptive analysis, MAC exposure was represented by total dietary fibre and LIPID exposure by total fat. Their saturating functions were $\phi_k(x)=x/(u_k+x)$, with scale constants $u_{\mathrm{MAC}}=5$\,g and $u_{\mathrm{LIPID}}=20$\,g. The constant $u_k$ is the exposure at which a channel reaches half its maximum effect. Both values were fixed before the adaptive analysis, close to the median non-zero exposure of each nutrient in the training data. A sensitivity analysis that instead sets $u_k$ to the training-fold median non-zero exposure, estimated inside each fold, is reported in Supplementary Table~S14c and leaves the conclusions unchanged. Other available macronutrients remained inputs to the shared predictor. In the standardized-meal analysis, the MAC and LIPID masks used the corresponding available food attributes, covering 21 of the 26 nutrient inputs. The full assignments accompany the analysis code.
+
+\subsection{Microbial representations and personal response priors}
+
+For taxon-presence data, genus-level features were the mean of member-taxon detection indicators. Continuous microbial measurements in the static analysis were represented using candidate log, centred log-ratio or Hellinger transformations. Because microbial profiles acquired in separate cohorts carry study-specific variation~\cite{netmoss,falony,zhernakova}, all transformations, scaling and component bases were fitted within the training partition of each cohort and applied unchanged to held-out participants. Features were centred and scaled in training participants, with variance floors for rare or nearly invariant coordinates. Representations exceeding 40 coordinates were reduced by training-fitted principal components to at most 24 components and no more than the number of training participants minus three. Functional scores retained their ordinal measurement scale and were median-imputed, centred and scaled using training data.
+
+The adaptive model assigns a Gaussian distribution to three personal coefficients: an intercept, MAC and LIPID. For training participant $i$, let $r_i$ be the cross-fitted shared-model residuals and $X_i$ the design matrix containing an intercept and the two exposure functions. Population coefficient moments were estimated by 25 empirical-Bayes iterations. Each iteration used participant posterior means and covariances to update the population moments and residual-noise variance. Covariance estimates were shrunk by 20\% towards their diagonal and given a small diagonal regularizer. Residual-noise variance had a floor of 0.01 in squared response units.
+
+For a new participant, Gaussian similarity weights over training participants supplied conditional coefficient moments. Candidate similarity representations comprised microbial, functional or combined host--microbial information. The conditional covariance equally mixed the population covariance and the similarity-weighted covariance. Candidate bandwidths were 0.3, 1 and 3; conditional means mixed population and similarity-weighted means with weights of 0 or 0.5 on the latter. Model selection used response prediction within the training data. Population-prior candidates also compared residual-noise multipliers of 0.3, 1 and 3.
+
+\subsection{Updating personal profiles from measured meals}
+
+For the first $k$ eligible meals of a new participant, residuals relative to the shared predictor update the conditional prior $\mathcal N(\mu_i,\Sigma_i)$. The posterior covariance and mean are
+\begin{equation}
+V_i=\left(\Sigma_i^{-1}+X_i^{\mathsf T}X_i/\sigma^2\right)^{-1},
+\qquad
+\widehat\beta_i=V_i\left(\Sigma_i^{-1}\mu_i+X_i^{\mathsf T}r_i/\sigma^2\right),
+\label{eq:update}
+\end{equation}
+where $X_i$ and $r_i$ now contain the new participant's calibration meals and $\sigma^2$ is a single residual-noise variance shared by all participants. It is shared by construction: three calibration meals and three coefficients leave no residual degree of freedom from which a per-participant value could be estimated. Fitted values ranged from 2.69 to 3.69 across outer folds. The posterior mean supplies the coefficients in equation~\ref{eq:prediction}. Inner-fold selection used three calibration meals. Evaluation compared histories of zero, one, two, three, five, seven, nine and eleven meals; the fixed protocol scores every history on a common query set, and the calibration curve is reported to eleven meals so that the point at which it flattens is observed rather than assumed (Supplementary Table~S17a). Prior-only predictions used no personal response observations.
+
+Reduced-channel models isolated the terms responsible for personal adaptation. Intercept-only, intercept-plus-MAC, intercept-plus-LIPID and nutrient-only updates used the corresponding marginal prior mean and covariance, the same calibration responses and the same residual-noise variance. Their remaining parameters were held fixed. Matched population and host priors retained the principal model's shared predictor, nutrient channels and other hyperparameters. A separate non-microbial comparator selected its own configuration within the inner folds, and an all-macronutrient comparator expanded the eligible personal exposures. For each meal, the difference between microbiome-informed and population-prior predictions was decomposed into the intercept difference and the two exposure-weighted coefficient differences.
+
+\subsection{Food scoring and response ordering}
+
+Personal food scoring evaluates the composition-dependent response at a reference context. The score is
+\begin{equation}
+S_i(x)=100\,\sigmoid\!\left[-\frac{g_\theta(x,h_i,c_\star)+\sum_{k\in\mathcal M}\phi_k(x_k)\widehat\beta_{ik}}{\tau}\right],
+\label{eq:score}
+\end{equation}
+with $\tau=1\,\aucunit$. The reference context $c_\star$ fixes meal-context variables at their training medians and retains the participant's host attributes. The personal intercept is omitted from food scoring, leaving the nutrient contributions additive before the logistic transformation. The scale parameter was fixed independently of the evaluation responses. Each of the 44 participants' outer-fold models, calibrated on three meals, scored 1,226 foods at a common 100-kcal portion. For display, foods were grouped into twelve nutritional categories. The representative food for each category was the one nearest its median mean absolute score adjustment.
+
+The standardized-meal analysis used a static version of the nutrient-channel model. A microbial main effect and interactions between microbial features and eligible nutrient exposures were fitted to cross-fitted residuals of the shared predictor. Candidate weighted-ridge penalties were $10^{-3}$, $10^{-2}$, $10^{-1}$, 1, 10 and 100. Representations comprised nutrient routing, a nutrient mask without taxon-specific routing, a radial-basis expansion, log-transformed doses and an unrestricted food representation. Candidates included main effects, interactions or both, and a model with a within-person-centred residual objective. Inner-fold participant-balanced RMSE selected the representation and penalty; the shared predictor was also a candidate. Matched comparisons removed the microbial term or retained its main or interaction component.
+
+Food Compass 2.0 supplied the nutritional-quality reference~\cite{barrett}. Food-ordering comparisons used its native direction. For standardized-meal response prediction, an affine regression from Food Compass 2.0 to glucose response was fitted in each outer training partition with participant-balanced weights. The nutritional comparator used this score as its sole predictor. Food-library displays show population nutritional quality and personal response score as separate quantities.
+
+\subsection{Composition transfer and profile correspondence}
+
+We performed additional post hoc diagnostics using the saved outer-fold predictions and three-meal personal coefficients, without refitting or selecting models. A recorded composition was defined by the vector of energy, carbohydrate, protein, fat and fibre, rounded to six decimal places, reproducing the original meal-composition identifiers. For each participant, a future meal was unseen in personal calibration if this vector was absent from their first three eligible meals. We separately classified whether its fibre--fat pair was absent from those meals. All future meals began with the sixth eligible meal. We evaluated both seen and unseen subsets using the same matched shared, intercept-only and full predictions. These definitions concern absence from a participant's calibration history; the compositions could occur in the population training data.
+
+Subset RMSE gave each represented participant equal weight. Profile RMSE centred errors within each participant and subset. Relative reductions were recomputed within 2,000 paired participant-bootstrap resamples, with 95\% percentile intervals and random seed 20261103. Subsets overlap and do not constitute independent replications. Supplementary Table~3 gives all subset comparisons and their denominators.
+
+For the correspondence diagnostic, we kept the shared prediction and personal intercept fixed and jointly reassigned each participant's MAC and LIPID posterior means to another participant in the same outer test fold. Each reassignment used an independently drawn within-fold permutation with no fixed points, preserving the pairing between the two nutrient coefficients. We generated 1,000 reassignments using random seed 20261104 and evaluated each on the same 902 future meals. We report medians and 2.5th--97.5th percentiles of these reassignment distributions. They describe the sensitivity of the fitted predictions to participant correspondence, rather than sampling confidence intervals or an intervention on nutrient biology.
+
+\subsection{Evaluation and statistical analysis}
+
+Each cohort used five outer grouped folds and three inner grouped folds. Family membership defined the standardized-meal groups, and participant identity defined the free-living groups; the random seed was 20261012. Representation fitting, imputation, shared-model selection and prior estimation used the corresponding training data. Participant-balanced RMSE was the square root of the mean of participant-specific mean squared errors. Profile RMSE applied the same aggregation to errors centred within each participant. These quantities measure absolute response error and variation within individuals, respectively.
+
+Food ordering compared mean observed response with mean predicted score for each food within a participant; tied scores or responses received half credit. The retrospective choice gap was the observed response of the highest-scored food, averaged over score ties, minus that participant's lowest observed mean food response. Paired effects used 2,000 bootstrap resamples of PREDICT families or free-living participants, with 95\% percentile intervals. Error reductions were reference minus GutNut; accuracy differences were GutNut minus reference. Relative reductions were calculated from unrounded estimates and, for the primary adaptive comparison, within each bootstrap sample. No $P$ values were calculated. The intervals quantify sampling variation conditional on the out-of-fold predictions; they do not include uncertainty from algorithm development because both cohorts informed model design.
+
+Models were fitted in Python using NumPy 2.4.6, pandas 3.0.5, SciPy 1.17.1 and scikit-learn 1.9.0. Figures were generated in R using ggplot2 and RColorBrewer. Participant distributions display individual observations, with medians and interquartile ranges where indicated; aggregate RMSE intervals use participant-bootstrap resampling. Cumulative absolute-error distributions give each participant equal total weight, divided among their evaluation meals. Signed heatmaps use symmetric colour limits. The food-score atlas uses an asinh scale with a width of three score points, and category-adjustment distributions use a $\log(1+x)$ axis.
+
+\subsection{Estimands, evaluation protocols and prior arms}
+
+The primary estimand was specified before the external analysis: the reduction in
+participant-balanced RMSE of the full three-coefficient model relative to intercept-only
+calibration, at three calibration meals. The total reduction relative to the shared predictor is
+reported for context only, because the level correction it contains is available to any method.
+Secondary estimands were the prior source, the channel decomposition and the protocol
+sensitivities. No multiplicity correction was applied to the secondary comparisons, which are
+therefore exploratory.
+
+Three evaluation protocols were used. Under the fixed protocol the query set begins at a common
+meal index for every calibration length, so lengths are directly comparable. Under the deployment
+protocol the query set begins immediately after the calibration meals, which is the realistic
+setting and uses every later meal. Under the random protocol the calibration meals are drawn at
+random rather than taken as the first $k$, which removes any ordering confound; the standardized
+meal cohort uses the random protocol throughout because those meals carry no time order.
+Conclusions are reported from all three.
+
+Conditional priors were grouped into four arms that do not overlap: a population arm with no
+conditioning, a host arm conditioned on host phenotype alone, a microbial arm conditioned on
+taxon or functional representations alone, and an exploratory arm combining host and microbial
+information. Inner-fold selection was run separately inside each arm, and the selected
+configuration was asserted to remain in its arm. The per-fold selections are listed in
+Supplementary Table~S7.
+
+\subsection{Negative control for microbial conditioning}
+
+Following the internal negative-control construction for permutation inference~\cite{negcontrol2023},
+the link between microbiomes and participants was broken in both roles the microbiome plays. Each
+participant in the training partition received another participant's complete vector of 2,001
+microbial and functional features, and the same substitution was applied to the held-out
+participants, so neither prior estimation nor prior conditioning retained the true correspondence.
+The empirical-Bayes moments and the conditional prior were then re-estimated and the evaluation
+repeated. We drew 200 permutations with seed 20261108 and report the permutation p value
+$(1+\#\{\text{permuted}\ge\text{observed}\})/(1+B)$.
+
+\subsection{Identifiability simulation}
+
+Personal coefficients were generated from a known Gaussian population distribution and meals were
+simulated with correlated fibre and fat exposures mapped through the same saturating link. The
+grid crossed calibration length, exposure correlation, residual scale and prior displacement, with
+400 replicates per cell. We recorded coefficient recovery, posterior contraction, interval
+coverage at the 50\%, 80\% and 95\% levels and transfer error to unseen compositions. Interval
+honesty is assessed by posterior predictive coverage rather than by a calibration error summary,
+because the latter conflates model and observation uncertainty~\cite{ppc2021}.
+
+\subsection{Ordering, food library and reporting conventions}
+
+Within-participant ordering accuracy is the pairwise concordance between observed and predicted
+responses, with half credit for ties. Because the personal response level shifts every food by the
+same amount, it cannot alter any within-participant ordering, and this identity was verified
+numerically. Sign tests exclude participants whose concordance is identical under both models; in
+the standardized-meal cohort 749 of 996 participants are tied in this sense, and reporting a sign
+test without that exclusion is misleading.
+
+The food library contains 1,226 items with FNDDS 2017-18 food codes, expressed per 100\,kcal
+across 66 nutrient fields and 12 food groups, with a nutritional-quality reference available for
+every item. Dairy and beverages contribute only 4 and 11 items, so group-level comparisons are not
+drawn for them. Scores are a projection of the fitted model onto the library; no observed response
+is available for these items.
+
+Participant-level bootstrap resampling follows established practice for repeated postprandial
+measurements~\cite{aegis2026}. All intervals are percentile intervals from 2,000 paired
+participant resamples and are conditional on the fitted out-of-fold predictions.
+
+\section{Discussion}\label{sec12}
+
+The contribution of this work is a representation, not a score. Personal differences are confined to a small number of named nutrient axes, a person is summarised by three numbers on those axes, and the numbers are obtained in closed form from a handful of measured meals. Because the axes are shared by every food, a profile estimated from three meals applies to foods the person has never eaten. Because the update is closed-form, the population model is never retrained for a new person, each number arrives with its own uncertainty, and every prediction decomposes exactly into the three contributions. This places the method among structured transfer estimators in which the amount borrowed from the population is controlled by the evidence available in the target~\cite{dvcm2026,contextadaptive2026}.
+
+Two results give that representation its empirical standing. The increment beyond a personal offset replicates in an independent cohort twenty times larger than the first, and it survives a frozen transport to a separate cohort in which no target data touched training or selection. The second of these also produces the finding we consider most interesting. Channel slopes transport; the personal response level does not. A personal offset is tied to the cohort and its measurement conditions, whereas sensitivity per unit of a named nutrient behaves as a property of the person. Personalization built only on offsets therefore has nothing to carry across settings.
+
+Against a classical linear mixed model with random intercept and random channel slopes, given the same calibration meals, the margin is 8.2\% in free living and 16.3\% in standardized meals. Most of it comes from a single design choice: the shared part is allowed to be nonlinear while the personal part stays three-dimensional and closed-form. The structured prior contributes the remainder, and it is worth 0.080\,$\aucunit$ on its own against an unshrunk personal mean.
+
+Two negative results bound what this can claim, and both belong in the main text rather than in a limitations paragraph. The first concerns the microbiome. We expected microbial similarity to place a new person in the population distribution before any meal was measured, and it does not. Microbial conditioning is statistically indistinguishable from host conditioning in 998 participants, with a smallest detectable advantage of 0.0006\,$\aucunit$, and the small advantage it shows over an unconditional prior is reproduced exactly when the microbiome-to-participant link is permuted. The useful part of the conditional prior is the act of weighting training participants, not the biological variable used to weight them. This is consistent with an independent report that personal response history contributes more than microbial features, with the latter's value depending on sample timing~\cite{contribution2026}, and it does not argue against microbial biology~\cite{quinn,lancaster2022}. It argues that a single cross-sectional profile, at either of the two resolutions available here, does not carry predictive information about nutrient-specific response.
+
+The second concerns food ordering. Calibration improves how strongly a person is predicted to respond, and it does not improve which of two foods is predicted to respond less. The personal response level cannot change an ordering by construction, and the channel slopes did not change it measurably in either cohort. The personal term does move the food library a great deal, leaving a median of one food in a participant's top ten, but we cannot show that the movement is in the right direction. A personalized food score is therefore a hypothesis generator here, and the test it needs is prospective choice among nutritionally comparable alternatives~\cite{guess2024,willett}.
+
+The analysis also produced a practical design rule. Three meals carry roughly nine tenths of the gain that eleven meals reach, but only if those meals differ in the channel exposures. When calibration meals were drawn at random from free-living intake, where many participants eat near-identical breakfasts, the increment lost significance; in standardized meals that span a wide composition range by design, it did not. Which meals to measure therefore matters as much as how many, and the condition number of a participant's calibration design is a quantity that can be monitored before trusting their profile.
+
+Several limitations follow directly from the evidence rather than from convention. The endpoint is a two-hour positive glucose area, and a second sensor on the same meals disagrees by a median of 0.68\,$\aucunit$, which is an order of magnitude larger than the channel increment; the increment is nonetheless reproduced on that second sensor. The coefficients are not identified at three meals even though prediction improves, so they should not be read as measured nutrient sensitivities. Intervals are model-based posterior predictive intervals, conservative here and anti-conservative under a displaced prior, with no distribution-free guarantee. Only the conditional mean is modelled, although between-participant differences in residual variability are substantial~\cite{aegis2026}. Replacing total fat by a fat-quality fraction made calibration worse, but across only seven standardized compositions, so the comparison bounds this design rather than fat quality in general. Finally, the channel mask is specified by experts rather than learned, and what we characterise is identifiability within that specification.
+
+What the framework offers a reader is therefore narrow and testable. It turns a short measurement history into a small number of transferable coordinates, it says precisely which nutrient moved each prediction, and it states where that machinery stops working. Multimodal predictors that replace manual dietary logging~\cite{ppgrimage2026} and foundation models for continuous glucose~\cite{gluformer2026} are improving the shared part of this problem quickly. The personal part, as represented here, improves with three measured meals, transports across cohorts, and does not yet reorder a plate.
+
+\backmatter
+
+\bmhead{Supplementary information}
+
+Supplementary Information accompanies this paper and contains Supplementary Notes 1--13 and Supplementary Tables S1--S17.
+
+\bmhead{Acknowledgements}
+
+The authors thank the independent experts who assessed the nutritional coherence of the nutrient-channel assignments. JoyCode assisted with English-language drafting and scientific visualization; the authors verified all text, numbers and figures.
+
+\section*{Declarations}
+
+\begin{itemize}
+\item \textbf{Funding.} This work was supported by the Beijing Natural Science Foundation (JQ24021) and the National Natural Science Foundation of China (62125207 and 62472411).
+\item \textbf{Conflict of interest/Competing interests.} The authors declare no competing interests.
+\item \textbf{Ethics approval and consent to participate.} This study analysed existing human-participant datasets and involved no new participant contact, recruitment or sample collection. The original studies obtained ethics approval and written informed consent; the present analysis used de-identified data under the custodians' access conditions.
+\item \textbf{Consent for publication.} Not applicable.
+\item \textbf{Data availability.} Figure source data, participant-level prediction summaries and food-library score outputs accompany this manuscript. The standardized-meal data are subject to the original study's access conditions. The free-living data are available through the published dataset record~\cite{cgmacros2025}, and the nutritional-quality reference is described with Food Compass 2.0~\cite{barrett}.
+\item \textbf{Materials availability.} No new physical materials were generated in this study.
+\item \textbf{Code availability.} Analysis code, fitted model parameters, fold assignments and the per-fold selected configurations accompany this manuscript.
+\end{itemize}
+
+\bibliography{sn-bibliography}
+
+\end{document}

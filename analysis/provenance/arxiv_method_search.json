@@ -1,0 +1,174 @@
+{
+ "few-shot hierarchical Bayes adaptation": [
+  [
+   "Reconciling meta-learning and continual learning with online mixtures of tasks",
+   "1812.06080v3",
+   "2018-12",
+   "Learning-to-learn or meta-learning leverages data-driven inductive bias to increase the efficiency of learning on a novel task. This approach encounters difficulty when transfer is not advantageous, for instance, when tasks are considerably dissimilar or chang"
+  ]
+ ],
+ "ALPaCA online Bayesian regression prior": [
+  [
+   "Meta-Learning Priors for Efficient Online Bayesian Regression",
+   "1807.08912v2",
+   "2018-07",
+   "Gaussian Process (GP) regression has seen widespread use in robotics due to its generality, simplicity of use, and the utility of Bayesian predictions. The predominant implementation of GP regression is a nonparameteric kernel-based approach, as it enables fit"
+  ]
+ ],
+ "varying coefficient transfer / random slopes identifiability": [
+  [
+   "Minimax optimal adaptive structured transfer learning through semi-parametric domain-varying coefficient model",
+   "2602.17967v1",
+   "2026-02",
+   "Transfer learning aims to improve inference in a target domain by leveraging information from related source domains, but its effectiveness critically depends on how cross-domain heterogeneity is modeled and controlled. When the conditional mechanism linking c"
+  ],
+  [
+   "Context-Adaptive Inference: A Unified Statistical and Foundation-Model View",
+   "2607.23304v1",
+   "2026-07",
+   "Modern predictive systems are expected to adapt their behavior to the specific situation they are facing. A clinical model should not treat every patient the same; a retrieval-augmented model should change its answer when given different evidence; a mixture-of"
+  ]
+ ],
+ "posterior predictive calibration coverage ML": [
+  [
+   "Why Calibration Error is Wrong Given Model Uncertainty: Using Posterior Predictive Checks with Deep Learning",
+   "2112.01477v1",
+   "2021-12",
+   "Within the last few years, there has been a move towards using statistical models in conjunction with neural networks with the end goal of being able to better answer the question, \"what do our models know?\". From this trend, classical metrics such as Predicti"
+  ],
+  [
+   "Conformal Bayes under Label Shift: Post-Hoc Calibration vs. In-Training Adaptation",
+   "2606.11865v2",
+   "2026-06",
+   "Conformal Bayes combines Bayesian posterior predictives with conformal calibration to produce prediction sets that are both statistically valid and geometrically efficient. We study conformal Bayes under label shift from a unified perspective, identifying two "
+  ],
+  [
+   "Conformal Bayes under Continuous Label Shift: Sensitivity Analysis and the Limits of Exact Validity",
+   "2609.27976v2",
+   "2026-08",
+   "Conformal Bayes combines Bayesian posterior predictive scores with conformal calibration. Under continuous label shift, both the score and calibration weights depend on an unknown response density ratio. Existing methods typically estimate a single exponential"
+  ],
+  [
+   "CREDO: Epistemic-Aware Conformalized Credal Envelopes for Regression",
+   "2603.06826v1",
+   "2026-03",
+   "Conformal prediction delivers prediction intervals with distribution-free coverage, but its intervals can look overconfident in regions where the model is extrapolating, because standard conformal scores do not explicitly represent epistemic uncertainty. Creda"
+  ],
+  [
+   "Conformal Bayes for Two-Sided Censored Gaussian Regression under Label Shift",
+   "2607.02173v1",
+   "2026-07",
+   "Prediction under label shift becomes nonstandard when responses are censored. In a two-sided censored Gaussian model, latent values below $L$ and above $U$ are recorded at the boundary values, so the observed predictive distribution is mixed, with atoms at $L$"
+  ],
+  [
+   "Uncertainty and Explainability in Deep Rough Volatility: A Neural Information-Theoretic Posterior Approach",
+   "2609.31570v1",
+   "2026-09",
+   "Deep learning has substantially accelerated the calibration of complex stochastic-volatility models, but neural point calibration alone does not capture the uncertainty remaining after an implied-volatility (IV) surface has been observed. We develop a simulati"
+  ]
+ ],
+ "equivalence testing / negative controls in ML evaluation": [
+  [
+   "Simultaneous Hypothesis Testing Using Internal Negative Controls with An Application to Proteomics",
+   "2303.01552v2",
+   "2023-03",
+   "Negative control is a common technique in scientific investigations and broadly refers to the situation where a null effect (''negative result'') is expected. Motivated by a real proteomic dataset, we will present three promising and closely connected methods "
+  ],
+  [
+   "Distinguishing case-mix from context heterogeneity in prognostic regression model synthesis settings",
+   "2608.12885v1",
+   "2026-08",
+   "Prognostic regression models often synthesize data from multiple sites, whether within a multi-site study, across federated settings, or in individual participant data meta-analysis. Here, a site is any data source, such as a hospital, registry, trial, or stud"
+  ]
+ ],
+ "conformal prediction personalization": [
+  [
+   "Multi-Agent Conformal Prediction with Personalized Statistical Validity",
+   "2606.00717v1",
+   "2026-05",
+   "Uncertainty quantification is essential in high-stakes machine learning tasks. However, one of the principled solutions, conformal prediction, faces challenges under limited local calibration data, privacy constraints, and data heterogeneity. In multi-agent se"
+  ],
+  [
+   "Conformal Prediction for Causal Effects of Continuous Treatments",
+   "2407.03094v4",
+   "2024-07",
+   "Uncertainty quantification of causal effects is crucial for safety-critical applications such as personalized medicine. A powerful approach for this is conformal prediction, which has several practical benefits due to model-agnostic finite-sample guarantees. Y"
+  ],
+  [
+   "Conformal Prediction for Dose-Response Models with Continuous Treatments",
+   "2409.20412v2",
+   "2024-09",
+   "Understanding the dose-response relation between a continuous treatment and the outcome for an individual can greatly drive decision-making, particularly in areas like personalized drug dosing and personalized healthcare interventions. Point estimates are ofte"
+  ],
+  [
+   "Personalized Imputation in metric spaces via conformal prediction: Applications in Predicting Diabetes Development with Continuous Glucose Monitoring Information",
+   "2403.18069v1",
+   "2024-03",
+   "The challenge of handling missing data is widespread in modern data analysis, particularly during the preprocessing phase and in various inferential modeling tasks. Although numerous algorithms exist for imputing missing data, the assessment of imputation qual"
+  ],
+  [
+   "Efficient Conformal Prediction under Data Heterogeneity",
+   "2312.15799v2",
+   "2023-12",
+   "Conformal Prediction (CP) stands out as a robust framework for uncertainty quantification, which is crucial for ensuring the reliability of predictions. However, common CP methods heavily rely on data exchangeability, a condition often violated in practice. Ex"
+  ],
+  [
+   "GRAPHLCP: Structure-Aware Localized Conformal Prediction on Graphs",
+   "2605.08074v1",
+   "2026-05",
+   "Conformal prediction (CP) provides a distribution-free approach to uncertainty quantification with finite-sample guarantees. However, applying CP to graph neural networks (GNNs) remains challenging as the combinatorial nature of graphs often leads to insuffici"
+  ]
+ ],
+ "glucose postprandial prediction microbiome ML": [
+  [
+   "Joint Modeling of Conditional Mean and Variability in Multilevel Functional Data: Application to Postprandial Glucose Trajectories in the AEGIS Study",
+   "2611.07937v1",
+   "2026-11",
+   "Functional data analysis provides a framework for studying time-varying associations between covariates and high-frequency biological signals. In digital health, participants often contribute repeated functional trajectories, yet existing multilevel regression"
+  ],
+  [
+   "Use of Continuous Glucose Monitoring with Machine Learning to Identify Metabolic Subphenotypes and Inform Precision Lifestyle Changes",
+   "2511.03986v1",
+   "2025-11",
+   "The classification of diabetes and prediabetes by static glucose thresholds obscures the pathophysiological dysglycemia heterogeneity, primarily driven by insulin resistance (IR), beta-cell dysfunction, and incretin deficiency. This review demonstrates that co"
+  ],
+  [
+   "Learning Difference Equations with Structured Grammatical Evolution for Postprandial Glycaemia Prediction",
+   "2307.01238v1",
+   "2023-07",
+   "People with diabetes must carefully monitor their blood glucose levels, especially after eating. Blood glucose regulation requires a proper combination of food intake and insulin boluses. Glucose prediction is vital to avoid dangerous post-meal complications i"
+  ],
+  [
+   "From Prediction to Intervention: Personalized Meal-Level Glucose Regulation via an LLM Agent",
+   "2608.13581v1",
+   "2026-07",
+   "Personalized glucose regulation remains a central yet unresolved challenge in precision nutrition, as postprandial glucose response varies substantially across individuals. Existing approaches based on glycemic indices fail to adequately account for such heter"
+  ],
+  [
+   "GlucoFM: A Dual-Stream Foundation Model for Continuous Glucose Monitoring",
+   "2605.30865v2",
+   "2026-05",
+   "Continuous glucose monitoring (CGM) provides a dense view of daily metabolic physiology, yet existing generic time-series and CGM-specific foundation models often encode glucose traces as entangled single-stream sequences, leaving their multiscale temporal str"
+  ],
+  [
+   "LLM-Powered Prediction of Hyperglycemia and Discovery of Behavioral Treatment Pathways from Wearables and Diet",
+   "2503.03935v2",
+   "2025-03",
+   "Postprandial hyperglycemia, marked by the blood glucose level exceeding the normal range after consuming a meal, is a critical indicator of progression toward type 2 diabetes in people with prediabetes and in healthy individuals. A key metric for understanding"
+  ]
+ ],
+ "personalized nutrition few-shot calibration": [
+  [
+   "Predicting Postprandial Glycemic Response from Meal Images, Clinical Variables, and Gut Microbiome Information",
+   "2609.24453v1",
+   "2026-09",
+   "Predicting postprandial glycemic response (PPGR) is fundamental to personalized nutrition and type 2 diabetes management, yet existing approaches typically rely on manually reported dietary intake, limiting their scalability in free-living settings. We propose"
+  ],
+  [
+   "MealMeter: Using Multimodal Sensing and Machine Learning for Automatically Estimating Nutrition Intake",
+   "2503.11683v1",
+   "2025-03",
+   "Accurate estimation of meal macronutrient composition is a pre-perquisite for precision nutrition, metabolic health monitoring, and glycemic management. Traditional dietary assessment methods, such as self-reported food logs or diet recalls are time-intensive "
+  ]
+ ]
+}
