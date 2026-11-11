@@ -14,6 +14,8 @@ outputs/
 results/
 models/
 figures/
+!analysis/figures/
+!analysis/figures/*.R
 manuscript/
 *.csv
 *.tsv
