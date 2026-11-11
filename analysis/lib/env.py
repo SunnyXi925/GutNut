@@ -16,7 +16,8 @@ import hashlib, json, os, sys
 ROOT = Path(__file__).resolve().parents[1]        # analysis/
 REPO = ROOT.parent                                 # repository root
 
-MODEL = Path(os.environ.get('GUTNUT_MODEL_ROOT', ROOT / 'model')).expanduser()
+MODEL = Path(os.environ.get('GUTNUT_MODEL_ROOT',
+                            Path(__file__).resolve().parent / 'model')).expanduser()
 SOURCE = Path(os.environ.get('GUTNUT_SOURCE_DATA', REPO / 'source_data')).expanduser()
 FOOD_LIBRARY = Path(os.environ.get('GUTNUT_FOOD_LIBRARY', REPO / 'food_library')).expanduser()
 COHORT_DATA = Path(os.environ.get('GUTNUT_COHORT_DATA', SOURCE)).expanduser()
@@ -67,7 +68,7 @@ def load_cgmacros():
 
 def load_predict(country=None):
     import pandas as pd
-    f = pd.read_parquet(SOURCE / 'predict.parquet')
+    f = pd.read_parquet(cohort_file('predict.parquet'))
     if country is not None:
         f = f[f.country.eq(country)]
     return f.reset_index(drop=True)

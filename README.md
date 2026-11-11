@@ -59,7 +59,9 @@ Rscript  analysis/figures/make_figures_v38.R        # figures 2 and 3
 ```
 
 `t3_permutation.py` is the slowest script at roughly thirty minutes on one machine; the others
-finish in seconds to a few minutes. `t14` must run before the R script.
+finish in seconds to a few minutes. Two scripts consume another script's output: `t4b` reads the
+predictions written by `t4`, and the R script reads the table written by `t14`. Run those pairs in
+order.
 
 ## Conventions
 
