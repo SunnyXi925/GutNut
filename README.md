@@ -1,85 +1,115 @@
 # GutNut
 
-A microbiome-informed Bayesian adaptation framework for personalized nutrient profiling.
+Analysis code for **A microbiome-informed Bayesian adaptation framework for personalized nutrient profiling**.
 
-This repository contains the analysis code for the framework. A fixed population predictor is
-adapted through three personal numbers, obtained in closed form from a small number of measured
-meals: an overall response level and one slope for each of two named nutrient axes. The code
-reproduces every quantity reported in the manuscript, including the negative results.
+The method adapts a fixed nonlinear population predictor of postprandial glucose response to an
+individual through three numbers obtained in closed form from a handful of measured meals: an
+overall response level and one slope for each of two named nutrient channels, microbiota-accessible
+carbohydrate represented by total dietary fibre and lipid represented by total fat. Because the
+channels are coordinates that every food shares, a profile estimated from three meals produces
+predictions for foods the person has never eaten.
 
-No study data, fitted artifacts, manuscript sources or generated tables are stored here.
+This repository contains only the code needed to reproduce the reported analyses. Manuscript
+sources, figures, supplementary documents and result files are not part of it.
+
+## What the code establishes
+
+- **The adaptation gain belongs to the representation, not to one estimator.** With the population
+  predictor, the calibration meals, the query meals, the design matrix and the residual variance
+  held fixed, nine adaptation rules are compared on identical residuals
+  (`t16_fair_baselines.py`). Fitting the three coefficients without shrinkage is far worse than no
+  personalization; isotropic shrinkage recovers only part of the loss; four different ways of
+  obtaining a correlated three-coordinate prior agree on the nutrient-channel increment.
+- **Choosing the calibration meals is part of the method.** Nutrient composition is known before a
+  meal is eaten, so the calibration set can be selected by the same posterior algebra that performs
+  the update (`t17_calibration_design.py`, `lib/design.py`). Seven deployable selectors and an
+  oracle upper bound are scored on a query set that does not move.
+- **One tolerance for every equality-based test.** `lib/stats.py` defines
+  `COMPARISON_TOLERANCE = 1e-10` once; every sign test and better-or-worse count in the project
+  uses it, reports the number of ties next to the number of informative pairs, and is recounted at
+  `1e-12`, `1e-10` and `1e-8`.
+- **Negative controls under five exchangeability assumptions.** The microbiome-to-participant link
+  is broken within fold, within glycaemic stratum, within blocks of host-similar participants, in
+  the conditioning step alone and in the prior-estimation step alone
+  (`t18_permutation_nulls.py`).
+- **Audits rather than assertions.** `t22_figure_audit.py` checks every figure file for content
+  outside its visible box, `t24_registry.py` builds the statistical registry and the
+  headline-number provenance map, and `t26_consistency.py` recomputes every headline number and
+  fails if the manuscript and the result files disagree.
 
 ## Layout
 
 ```
-analysis/
-  lib/            orchestration, evaluation protocols, prior arms, statistics
-    model/        the model package (masked operator, conditional adapter, nutrient masks)
-  experiments/    one script per experiment; each writes a table and an input hash manifest
-  figures/        R script for the two revised figures
+analysis/lib/            environment resolution, statistics, protocols, prior arms, runner
+analysis/lib/baselines.py  adaptation rules under one fixed population predictor
+analysis/lib/design.py     calibration-set selection criteria
+analysis/lib/model/      the model package: masked operator, conditional adapter, masks
+analysis/experiments/    one script per reported experiment
+analysis/figures/        R scripts for the revised figures
+requirements.txt         pinned Python environment
 ```
-
-Each experiment writes its outputs to `analysis/results/` and the SHA-256 of its inputs to
-`analysis/provenance/`. Both directories are created on first run and are not tracked.
 
 ## Inputs
 
-Paths are read from the environment, so nothing machine-specific is committed.
+No machine-specific path is committed. Four environment variables resolve the input locations, and
+every script fails early with the list of files it could not find.
 
-| Variable | Default | Contents |
-|---|---|---|
-| `GUTNUT_MODEL_ROOT` | `analysis/lib/model` | the model package; the default already holds it |
-| `GUTNUT_SOURCE_DATA` | `./source_data` | `module_predictions.csv`, `CG_future_predictions.csv`, `microbial_history_predictions.csv`, `microbial_history_coefficients.csv`, `predict.parquet` |
-| `GUTNUT_COHORT_DATA` | `GUTNUT_SOURCE_DATA` | `cgmacros_functional.parquet`, `cgmacros.parquet` |
-| `GUTNUT_FOOD_LIBRARY` | `./food_library` | `metadata.parquet`, `food_exposures.parquet` |
+| Variable | Contents |
+|---|---|
+| `GUTNUT_COHORT_DATA` | `cgmacros_functional.parquet`, `predict.parquet` |
+| `GUTNUT_SOURCE_DATA` | `module_predictions.csv`, `CG_future_predictions.csv`, `microbial_history_predictions.csv`, `microbial_history_coefficients.csv` |
+| `GUTNUT_FOOD_LIBRARY` | `metadata.parquet`, `food_exposures.parquet` |
+| `GUTNUT_MODEL_ROOT` | the model package; defaults to `analysis/lib/model` |
 
-The free-living cohort is the public CGMacros dataset (doi:10.1038/s41597-025-05851-7). The
-standardized-meal cohort is available under the original study's access conditions and is not
-redistributed. The food library uses FNDDS 2017-18 food codes.
+The cohort data are governed by the access conditions of the original studies: the standardized-meal
+measurements are available under the source study's conditions, and the free-living measurements are
+available through the published dataset record. The food library is derived from FNDDS 2017-18 food
+codes with a published nutritional-quality reference.
 
 ## Running
 
-```sh
-python3 analysis/experiments/t0_reproduce.py        # regression lock on the published numbers
-python3 analysis/experiments/t1_decomposition.py    # three-layer decomposition of the gain
-python3 analysis/experiments/t1b_runner_check.py    # runner agrees with the saved predictions
-python3 analysis/experiments/t3_permutation.py      # microbial negative control (200 permutations)
-python3 analysis/experiments/t4_external.py         # external replication and frozen transport
-python3 analysis/experiments/t4b_arm_contrasts.py   # equivalence between prior arms
-python3 analysis/experiments/t5_channels.py         # channel instantiation comparison
-python3 analysis/experiments/t6_protocols.py        # fixed, deployment and random protocols
-python3 analysis/experiments/t7_baselines.py        # linear mixed model and ridge head
-python3 analysis/experiments/t8_calibration.py      # coverage, conditioning, second sensor
-python3 analysis/experiments/t9_simulation.py       # identifiability simulation
-python3 analysis/experiments/t10_cohorts.py         # cohort description and responders
-python3 analysis/experiments/t11_foodscore.py       # food scores against observed responses
-python3 analysis/experiments/t13_calibration_curve.py  # calibration curve to eleven meals
-python3 analysis/experiments/t14_figure_data.py     # source data for the figures
-Rscript  analysis/figures/make_figures_v38.R        # figures 2 and 3
+```bash
+python -m pip install -r requirements.txt
+export GUTNUT_COHORT_DATA=/path/to/cohorts
+export GUTNUT_SOURCE_DATA=/path/to/saved_predictions
+export GUTNUT_FOOD_LIBRARY=/path/to/food_library
+
+cd analysis
+python experiments/t0_reproduce.py          # regression lock on the published values
+python experiments/t1_decomposition.py      # three-layer decomposition, primary estimand
+python experiments/t16_fair_baselines.py    # adaptation rules under a fixed shared predictor
+python experiments/t17_calibration_design.py  # calibration-set design
+python experiments/t26_consistency.py       # numerical consistency of every headline number
 ```
 
-`t3_permutation.py` is the slowest script at roughly thirty minutes on one machine; the others
-finish in seconds to a few minutes. Two scripts consume another script's output: `t4b` reads the
-predictions written by `t4`, and the R script reads the table written by `t14`. Run those pairs in
-order.
+Every script writes a JSON summary and its tables to `analysis/results/`, and an input hash
+manifest to `analysis/provenance/`. Seeds are fixed in the scripts and recorded in the output.
+Run `t0_reproduce.py` first: it is the regression lock and will fail if the inputs are not the ones
+the paper used.
 
-## Conventions
+Scripts in order: `t0` regression lock, `t1`/`t1b` decomposition and runner check, `t3` permutation
+negative control, `t4`/`t4b` external replication, frozen transport and prior-arm contrasts,
+`t5` channel instantiation, `t6` evaluation protocols, `t7` classical baselines, `t8` uncertainty
+calibration and design conditioning, `t9` identifiability simulation, `t10` cohort description,
+`t11` food scores and ordering, `t13` calibration curve, `t14`/`t25` figure source data,
+`t16` adaptation rules, `t17` calibration-set design, `t18` alternative permutation nulls,
+`t19` captured fraction, `t20` sensitivity analyses, `t21` cohort representativeness,
+`t22`/`t23` figure audit and re-export, `t24` statistical registry and provenance map,
+`t26` consistency check.
 
-Grouped cross-validation uses family membership where available and participant identity
-otherwise. Confidence intervals are percentile intervals from 2,000 paired participant-bootstrap
-resamples. Permutations number 200 and random calibration draws number five. Sign tests exclude
-participants whose value is identical under both models being compared. All units are
-mmol l⁻¹ h.
+Figures are produced with R and `ggplot2`:
 
-## Requirements
+```bash
+GUTNUT_FIGURE_DATA=figure_data GUTNUT_FIGURE_OUT=figure Rscript figures/make_figures_v38.R
+GUTNUT_FIGURE_DATA=figure_data GUTNUT_FIGURE_OUT=figure Rscript figures/make_figure6_v39.R
+```
 
-Python 3.11 with pandas 3.0.6, numpy 2.4.6, scikit-learn 1.9.1, scipy 1.17.1, statsmodels 0.14.6
-and pyarrow. R with ggplot2, patchwork, ggbeeswarm, RColorBrewer and hexbin for the figures.
+## Environment
 
-## Scope
+Python 3.11 with the pinned versions in `requirements.txt`. R with `ggplot2`, `patchwork`,
+`ggbeeswarm`, `RColorBrewer` and `hexbin` for the figures.
 
-The code establishes that calibration improves predicted response magnitude beyond a personal
-offset, that the channel slopes transport across cohorts while the personal level does not, and
-that microbial conditioning contributes nothing detectable. It does not establish that personal
-scores reorder foods, and the food-library output is a projection of the fitted model rather than
-a validated recommendation.
+## Citation
+
+Please cite the manuscript. A persistent archive with a digital object identifier will be deposited
+on acceptance.

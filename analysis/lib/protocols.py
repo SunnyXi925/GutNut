@@ -3,10 +3,11 @@ import numpy as np, pandas as pd
 
 
 def inject_random_order(frame, seed, pid_col='participant_id'):
-    """Give每位参与者一个固定种子下的随机餐次顺序,并合成 timestamp 供 predict_history 使用。
+    """Give every participant a seeded random meal order and a synthetic timestamp.
 
-    PREDICT 的标准化餐食没有时间序,随机顺序避免「前三餐」带来的顺序混杂;
-    顺序本身存盘以便复算。
+    The standardized meals carry no time order, so a random order removes any
+    confound that taking the earliest three meals would introduce. The order is
+    stored with the predictions so that the run can be reproduced exactly.
     """
     f = frame.reset_index(drop=True).copy()
     rng = np.random.default_rng(seed)

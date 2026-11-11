@@ -71,7 +71,10 @@ def paired_delta(frame, a, b, B=2000, seed=SEED):
     draws = diff[ix].mean(1)
     return dict(point=float(diff.mean()), lo=float(np.quantile(draws, .025)),
                 hi=float(np.quantile(draws, .975)), participants=int(len(diff)),
-                better=int((diff > 0).sum()), sign_p=stats.sign_test(int((diff > 0).sum()), int(len(diff))))
+                **stats.tie_aware_counts(diff),
+                min_abs_nonzero_delta=float(np.abs(diff)[np.abs(diff) > 0].min())
+                if np.any(diff != 0) else 0.0,
+                tie_sensitivity=stats.tie_sensitivity(diff))
 
 
 # ---------- Q1: ordering of observed responses --------------------------------------

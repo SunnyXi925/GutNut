@@ -54,6 +54,16 @@ for proto in ('common', 'deployment'):
                             **stats.paired_bootstrap(L['full'], L['intercept_only'], 'mse', seed=SEED)))
             eff.append(dict(protocol=proto, history_k=k, contrast='total_vs_shared',
                             **stats.paired_bootstrap(L['full'], L['shared'], 'mse', seed=SEED)))
+per = []
+for proto in ('common', 'deployment'):
+    for k in KS:
+        d = P[(P.protocol == proto) & (P.history_k == k)]
+        for model in ('shared', 'intercept_only', 'full'):
+            L = stats.person_losses(d, model)
+            per.append(L.assign(protocol=proto, history_k=k, model=model).reset_index())
+PER = pd.concat(per, ignore_index=True)
+PER.to_csv(env.RESULTS / 't13_person_mse.csv', index=False)
+
 T, E = pd.DataFrame(tab), pd.DataFrame(eff)
 T.to_csv(env.RESULTS / 't13_calibration_curve.csv', index=False)
 E.to_csv(env.RESULTS / 't13_calibration_contrasts.csv', index=False)
