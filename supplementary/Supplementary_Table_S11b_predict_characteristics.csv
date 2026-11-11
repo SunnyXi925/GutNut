@@ -1,3 +1,0 @@
-cohort,participants,families,meals,meal_compositions,age_median,bmi_median,female_n,target_median,target_zero_pct
-PREDICT_UK,998,758,6981,7,44.0,25.3,651,0.541,28.63
-PREDICT_US,100,100,699,7,41.0,25.9,68,0.567,27.61

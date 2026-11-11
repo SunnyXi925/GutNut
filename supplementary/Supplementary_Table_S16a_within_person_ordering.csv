@@ -1,5 +1,0 @@
-cohort,comparison,mean_a,mean_b,difference,participants,better,worse,tied,sign_p_excluding_ties,ci_lo,ci_hi
-CGMacros,full_vs_shared,0.7058,0.70696,-0.00116,44,20,21,3,1.0,-0.01035,0.00753
-PREDICT_UK,full_vs_shared,0.92587,0.92505,0.00082,996,125,122,749,0.89877,-0.00487,0.00644
-PREDICT_UK,full_vs_food_compass,0.92587,0.70177,0.2241,996,748,67,181,0.0,0.21027,0.23765
-PREDICT_UK,shared_vs_food_compass,0.92505,0.70177,0.22328,996,768,88,140,0.0,0.21,0.23697

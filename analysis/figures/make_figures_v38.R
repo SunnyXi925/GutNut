@@ -3,9 +3,11 @@
 # unchanged from make_figures_v17.R so the visual language of the paper is preserved.
 suppressPackageStartupMessages({library(ggplot2);library(patchwork);library(ggbeeswarm);library(RColorBrewer)})
 set.seed(20261018)
-OLD <- '/Users/fengxi.25/Downloads/1017GutNut/source_data'
-NEW <- '/Users/fengxi.25/Desktop/GMNPS/GutNut_NCS_evidence_2026-11-08/figure_data'
-OUT <- '/Users/fengxi.25/Desktop/GMNPS/GutNut_NCS_evidence_2026-11-08/figure'
+# Input and output locations come from the environment; defaults are relative to the
+# repository root, so the script runs from there without machine-specific paths.
+OLD <- Sys.getenv('GUTNUT_SOURCE_DATA', 'source_data')
+NEW <- Sys.getenv('GUTNUT_FIGURE_DATA', 'figure_data')
+OUT <- Sys.getenv('GUTNUT_FIGURE_OUT', 'figure')
 dir.create(OUT, showWarnings=FALSE)
 readold <- function(n) read.csv(file.path(OLD,paste0(n,'.csv')),check.names=FALSE,stringsAsFactors=FALSE)
 readnew <- function(n) read.csv(file.path(NEW,paste0(n,'.csv')),check.names=FALSE,stringsAsFactors=FALSE)

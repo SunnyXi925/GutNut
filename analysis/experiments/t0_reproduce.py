@@ -24,7 +24,7 @@ def balanced(d, pred):
 env.sha256_manifest([env.SOURCE / 'module_predictions.csv',
                      env.SOURCE / 'microbial_history_predictions.csv',
                      env.SOURCE / 'CG_future_predictions.csv',
-                     env.MODEL / 'data/cgmacros_functional.parquet'], 't0')
+                     env.cohort_file('cgmacros_functional.parquet')], 't0')
 
 m = pd.read_csv(env.SOURCE / 'module_predictions.csv')
 cg = pd.read_csv(env.SOURCE / 'CG_future_predictions.csv')

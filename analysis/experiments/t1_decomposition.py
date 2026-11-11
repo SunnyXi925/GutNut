@@ -13,7 +13,7 @@ SEED = 20261108
 f = env.load_cgmacros()
 env.sha256_manifest([env.SOURCE / 'module_predictions.csv',
                      env.SOURCE / 'CG_future_predictions.csv',
-                     env.MODEL / 'data/cgmacros_functional.parquet'], 't1')
+                     env.cohort_file('cgmacros_functional.parquet')], 't1')
 
 # --- raw personal mean: shared prediction + arithmetic mean residual of first k meals ---
 f = f.sort_values(['participant_id', 'timestamp', 'meal_event_id']).reset_index(drop=True)

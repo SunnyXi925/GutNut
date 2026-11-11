@@ -29,7 +29,7 @@ assert arms.arm_of(CFGS[POP_CFG]) == 'population'
 f = env.load_cgmacros()
 MICRO_COLS = [c for c in f.columns if c.startswith(('micro__', 'function__'))]
 print('microbial columns:', len(MICRO_COLS))
-env.sha256_manifest([env.MODEL / 'data/cgmacros_functional.parquet'], 't3')
+env.sha256_manifest([env.cohort_file('cgmacros_functional.parquet')], 't3')
 
 
 def permute_microbiome(frame, rng):

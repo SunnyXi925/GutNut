@@ -21,7 +21,7 @@ SEED = 20261109
 cg = env.load_cgmacros().sort_values(['participant_id', 'timestamp', 'meal_event_id']).reset_index(drop=True)
 n = cg.groupby('participant_id').size()
 assert n.min() > COMMON_START, n.min()
-env.sha256_manifest([env.MODEL / 'data/cgmacros_functional.parquet'], 't13')
+env.sha256_manifest([env.cohort_file('cgmacros_functional.parquet')], 't13')
 
 rows = []
 for fold, (a, b) in enumerate(splits(cg, 5)):

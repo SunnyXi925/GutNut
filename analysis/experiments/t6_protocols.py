@@ -21,7 +21,7 @@ KS = (1, 3, 5)
 COLS = ['shared', 'raw_personal_mean', 'intercept_only', 'full']
 
 cg = env.load_cgmacros().sort_values(['participant_id', 'timestamp', 'meal_event_id']).reset_index(drop=True)
-env.sha256_manifest([env.MODEL / 'data/cgmacros_functional.parquet'], 't6')
+env.sha256_manifest([env.cohort_file('cgmacros_functional.parquet')], 't6')
 
 rows = []
 for fold, (a, b) in enumerate(splits(cg, 5)):

@@ -38,7 +38,7 @@ def run(frame, target_col='target'):
 
 f = env.load_cgmacros()
 P, sigma_table = run(f)
-env.sha256_manifest([env.MODEL / 'data/cgmacros_functional.parquet'], 't8')
+env.sha256_manifest([env.cohort_file('cgmacros_functional.parquet')], 't8')
 
 # --- posterior predictive coverage -------------------------------------------------
 # predictive variance = x' V x + sigma^2 ; V is diagonal-approximated by stored sds

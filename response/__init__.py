@@ -1,1 +1,0 @@
-"""GutNut core method implementation."""

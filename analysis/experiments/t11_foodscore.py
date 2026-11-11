@@ -22,7 +22,7 @@ from conditional_adapter import adapter_configs
 SEED, K, TAU = 20261109, 3, 1.0
 U = dict(mac=5.0, lipid=20.0)
 CFG = adapter_configs()['masked_host_taxa_bw1.0_mean0.5']
-LIB = Path('/Users/fengxi.25/Desktop/GMNPS/data/training/native_meals_20261011/food_library')
+LIB = env.require('food library')
 
 
 def pair_concordance(obs, pred):
@@ -205,8 +205,8 @@ results['food_library'] = dict(
 grp.rename('foods').to_frame().to_csv(env.RESULTS / 't11_food_library_groups.csv')
 
 env.sha256_manifest([LIB / 'metadata.parquet', LIB / 'food_exposures.parquet',
-                     env.MODEL / 'data/cgmacros_functional.parquet',
-                     env.MODEL / 'data/predict.parquet'], 't11')
+                     env.cohort_file('cgmacros_functional.parquet'),
+                     env.cohort_file('predict.parquet')], 't11')
 env.dump(results, 't11_foodscore')
 
 import json

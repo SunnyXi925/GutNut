@@ -40,3 +40,11 @@ manuscript/
 *.tar*
 .env
 .env.*
+
+# Analysis runtime outputs
+analysis/results/
+analysis/provenance/
+figure_data/
+figure/
+source_data/
+food_library/

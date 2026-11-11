@@ -121,8 +121,8 @@ def report(M, tag):
 
 
 if __name__ == '__main__':
-    env.sha256_manifest([env.MODEL / 'data/cgmacros_functional.parquet',
-                         env.MODEL / 'data/predict.parquet'], 't7')
+    env.sha256_manifest([env.cohort_file('cgmacros_functional.parquet'),
+                         env.cohort_file('predict.parquet')], 't7')
     tabs, effs = [], []
     print('CGMacros')
     cg = env.load_cgmacros().sort_values(['participant_id', 'timestamp', 'meal_event_id']).reset_index(drop=True)

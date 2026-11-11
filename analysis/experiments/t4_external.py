@@ -118,7 +118,7 @@ def summarise(P, tag):
 
 
 if __name__ == '__main__':
-    env.sha256_manifest([env.MODEL / 'data/predict.parquet'], 't4')
+    env.sha256_manifest([env.cohort_file('predict.parquet')], 't4')
     log('=== PREDICT UK internal few-shot replication ===')
     uk = env.load_predict('UK')
     log('UK', uk.shape, 'people', uk.participant_id.nunique(), 'families', uk.family_group.nunique())

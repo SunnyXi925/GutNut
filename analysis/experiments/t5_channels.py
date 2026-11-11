@@ -59,7 +59,7 @@ def median_nonzero(frame, spec):
 
 
 uk = env.load_predict('UK')
-env.sha256_manifest([env.MODEL / 'data/predict.parquet'], 't5')
+env.sha256_manifest([env.cohort_file('predict.parquet')], 't5')
 rows, sel = [], []
 for fold, (a, b) in enumerate(splits(uk, 5)):
     tr_raw, te_raw = uk.iloc[a].reset_index(drop=True), uk.iloc[b].reset_index(drop=True)
